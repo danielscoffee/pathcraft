@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Pathcraft Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <style>#map { height: 100vh; }</style>
+</head>
+<body>
+<div id="map"></div>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script>
+const map = L.map('map').setView([-8.0545, -34.8805], 17);
+// TODO: IMPLEMENT THIS DYNAMICALLY at ./app
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+fetch('streets.json').then(r => r.json()).then(data => {
+  L.geoJSON(data, { style: { color: '#999', weight: 2 }}).addTo(map);
+});
+
+fetch('route.json').then(r => r.json()).then(data => {
+  L.geoJSON(data, { style: { color: 'red', weight: 4 }}).addTo(map);
+});
+</script>
+</body>
+</html>
