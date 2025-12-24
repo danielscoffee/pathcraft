@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="pathcraft-test-suite">
+
+  <!-- =========================== -->
+  <!-- NODES (Vertices)            -->
+  <!-- =========================== -->
+  
+  <!-- The Intersection (Start Area) -->
+  <node id="1" lat="-8.05428" lon="-34.88130" />
+  <node id="2" lat="-8.05428" lon="-34.88080" /> <!-- Junction A -->
+
+  <!-- The "Trap" Path (Dead End) -->
+  <node id="3" lat="-8.05428" lon="-34.88030" />
+  <node id="99" lat="-8.05428" lon="-34.87980" /> <!-- Dead End Node -->
+
+  <!-- The "Long" Path (Detour) -->
+  <node id="4" lat="-8.05450" lon="-34.88080" />
+  <node id="5" lat="-8.05480" lon="-34.88080" />
+  
+  <!-- The Destination -->
+  <node id="6" lat="-8.05480" lon="-34.88030" />
+
+  <!-- =========================== -->
+  <!-- WAYS (Edges)                -->
+  <!-- =========================== -->
+
+  <!-- Way 100: Entrance Street -->
+  <way id="100">
+    <nd ref="1"/>
+    <nd ref="2"/>
+    <tag k="highway" v="residential"/>
+    <tag k="name" v="Start St"/>
+  </way>
+
+  <!-- Way 200: The False Hope (Dead End) -->
+  <!-- Looks like it goes east, but stops at node 99 -->
+  <way id="200">
+    <nd ref="2"/>
+    <nd ref="3"/>
+    <nd ref="99"/>
+    <tag k="highway" v="residential"/>
+    <tag k="name" v="Dead End Alley"/>
+  </way>
+
+  <!-- Way 300: The Detour (Southwards) -->
+  <way id="300">
+    <nd ref="2"/>
+    <nd ref="4"/>
+    <nd ref="5"/>
+    <tag k="highway" v="residential"/>
+    <tag k="name" v="Long Way Ave"/>
+  </way>
+
+  <!-- Way 400: The One-Way Connection (Eastwards to Goal) -->
+  <!-- IMPORTANT: If your parser ignores 'oneway', it might try to go backwards later -->
+  <way id="400">
+    <nd ref="5"/>
+    <nd ref="6"/>
+    <tag k="highway" v="residential"/>
+    <tag k="oneway" v="yes"/> 
+    <tag k="name" v="One Way St"/>
+  </way>
+
+
+
+</osm>
