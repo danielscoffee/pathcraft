@@ -3,7 +3,7 @@ package geojson
 import (
 	"encoding/json"
 
-	"github.com/qoppatech/exp-pathcraft/internal/graph"
+	"github.com/qoppatech/exp-pathcraft/internal/domain/graph"
 )
 
 // TODO: IMPLEMENT DYNAMICS CONVERSION - STUDY HOW TO DO THIS

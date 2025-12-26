@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/qoppatech/exp-pathcraft/internal/geo"
-	"github.com/qoppatech/exp-pathcraft/internal/graph"
-	"github.com/qoppatech/exp-pathcraft/internal/routing/astar"
+	"github.com/qoppatech/exp-pathcraft/internal/domain/geo"
+	"github.com/qoppatech/exp-pathcraft/internal/domain/graph"
+	"github.com/qoppatech/exp-pathcraft/internal/domain/routing/astar"
 )
 
 // WARN: THIS ROUTER IS MORE TO DEBUG AND TEST THE GEOJSON OUTPUTS AND BASIC ROUTING THAN A PRODUCTION FEAT
