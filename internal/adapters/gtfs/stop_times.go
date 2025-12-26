@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	. "github.com/qoppatech/exp-pathcraft/internal/domain/time"
+	. "github.com/danielscoffee/pathcraft/internal/domain/time"
 )
 
 type StopID string
