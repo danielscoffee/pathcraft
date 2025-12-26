@@ -4,8 +4,8 @@ import (
 	"container/heap"
 	"errors"
 
-	. "github.com/danielscoffee/pathcraft/internal/domain/geo"
-	"github.com/danielscoffee/pathcraft/internal/domain/graph"
+	"github.com/danielscoffee/pathcraft/internal/geo"
+	"github.com/danielscoffee/pathcraft/internal/graph"
 )
 
 var ErrNoPath = errors.New("no path found")
@@ -18,7 +18,7 @@ type Path struct {
 	NodesCount int
 }
 
-func AStar(g *graph.Graph, source, target graph.NodeID, h Heuristic) (Path, error) {
+func AStar(g *graph.Graph, source, target graph.NodeID, h geo.Heuristic) (Path, error) {
 	if !g.HasNode(source) || !g.HasNode(target) {
 		return Path{}, ErrNodeNotFound
 	}

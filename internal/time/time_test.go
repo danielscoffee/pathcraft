@@ -3,7 +3,7 @@ package time_test
 import (
 	"testing"
 
-	"github.com/danielscoffee/pathcraft/internal/domain/time"
+	"github.com/danielscoffee/pathcraft/internal/time"
 )
 
 func TestParseTime(t *testing.T) {

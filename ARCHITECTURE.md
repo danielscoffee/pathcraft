@@ -8,7 +8,20 @@ It is designed to work as:
 - an **HTTP server (ready-to-run)**
 - an **embedded engine** inside other systems
 
-The architecture follows **Hexagonal Architecture**.
+The architecture follows **Modular Monolith** 
+
+> An initial evaluation considered a Hexagonal (Ports and Adapters) architecture. However, given
+the current scope of the project and its focus on algorithmic correctness, performance, and
+rapid iteration, a Modular Monolith provides a better trade-off between clarity, maintainability,
+and development velocity.
+> The codebase is organized into well-defined modules with explicit boundaries and dependency
+direction, ensuring low coupling and high cohesion while avoiding unnecessary architectural
+overhead.
+> This approach keeps the system easy to reason about today, while still allowing a future
+transition to a Hexagonal architecture if the project evolves to require multiple delivery
+mechanisms or infrastructure abstractions.
+
+
 
 ---
 
@@ -25,25 +38,25 @@ The architecture follows **Hexagonal Architecture**.
 
 ## 2. High-Level Architecture
 
-┌──────────────────────────────────┐
-│ Interfaces                       │
-│ CLI | HTTP | Future gRPC         │
-└───────────────────▲──────────────┘
-                    │
-┌───────────────────┴──────────────┐
-│ Engine Facade                    │
-│ Mode selection, policies, config │
-└───────────────────▲──────────────┘
-                    │
-┌───────────────────┴──────────────┐
-│ Core Domain                      │
-│ Graph | Geo | Routing Algorithms │
-└───────────────────▲──────────────┘
-                    │
-┌───────────────────┴──────────────┐
-│ Adapters                         │
-│ OSM | GTFS | GeoJSON | Cache     │
-└──────────────────────────────────┘
+- An example based on this repo:
+
+```mermaid
+flowchart TB
+    %% Layers
+    Interfaces["Interfaces<br/>CLI · HTTP · Future gRPC"]
+
+    Engine["Engine Facade<br/>Mode selection<br/>Policies<br/>Configuration"]
+
+    Core["Core Domain<br/>Graph · Geo · Routing Algorithms"]
+
+    Adapters["Adapters<br/>OSM · GTFS · GeoJSON · Cache"]
+
+    %% Dependency flow (top-down usage, bottom-up dependencies)
+    Interfaces --> Engine
+    Engine --> Core
+    Adapters --> Core
+    Adapters --> Engine
+```
 
 ---
 

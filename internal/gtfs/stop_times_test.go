@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	. "github.com/danielscoffee/pathcraft/internal/adapters/gtfs"
-	"github.com/danielscoffee/pathcraft/internal/domain/time"
+	"github.com/danielscoffee/pathcraft/internal/gtfs"
+	"github.com/danielscoffee/pathcraft/internal/time"
 )
 
 // TODO: Separate test files in StopTimes package and dedicate the time specifics to time package tests
@@ -19,7 +19,7 @@ trip2,09:00:00,09:00:00,stopA,1
 trip2,09:15:00,09:16:00,stopB,2
 `
 
-	stopTimes, err := ParseStopTimes(strings.NewReader(csvData))
+	stopTimes, err := gtfs.ParseStopTimes(strings.NewReader(csvData))
 	if err != nil {
 		t.Fatalf("ParseStopTimes() error = %v", err)
 	}
@@ -47,14 +47,14 @@ func TestParseStopTimes_MissingColumn(t *testing.T) {
 	csvData := `trip_id,arrival_time,stop_id,stop_sequence
 trip1,08:00:00,stopA,1
 `
-	_, err := ParseStopTimes(strings.NewReader(csvData))
+	_, err := gtfs.ParseStopTimes(strings.NewReader(csvData))
 	if err == nil {
 		t.Error("expected error for missing column, got nil")
 	}
 }
 
 func TestBuildIndex(t *testing.T) {
-	stopTimes := []StopTime{
+	stopTimes := []gtfs.StopTime{
 		{TripID: "trip1", StopID: "stopA", ArrivalTime: 8 * 3600, DepartureTime: 8 * 3600, StopSequence: 1},
 		{TripID: "trip1", StopID: "stopB", ArrivalTime: 8*3600 + 600, DepartureTime: 8*3600 + 660, StopSequence: 2},
 		{TripID: "trip1", StopID: "stopC", ArrivalTime: 8*3600 + 1200, DepartureTime: 8*3600 + 1200, StopSequence: 3},
@@ -63,12 +63,12 @@ func TestBuildIndex(t *testing.T) {
 		{TripID: "trip2", StopID: "stopC", ArrivalTime: 9*3600 + 1800, DepartureTime: 9*3600 + 1800, StopSequence: 3},
 	}
 
-	tripRoutes := TripToRoute{
+	tripRoutes := gtfs.TripToRoute{
 		"trip1": "routeR",
 		"trip2": "routeR",
 	}
 
-	idx := BuildIndex(stopTimes, tripRoutes)
+	idx := gtfs.BuildIndex(stopTimes, tripRoutes)
 
 	routes := idx.RoutesAtStop("stopA")
 	if len(routes) != 1 || routes[0] != "routeR" {
@@ -95,23 +95,23 @@ func TestBuildIndex(t *testing.T) {
 }
 
 func TestEarliestTrip(t *testing.T) {
-	stopTimes := []StopTime{
+	stopTimes := []gtfs.StopTime{
 		{TripID: "trip1", StopID: "stopA", ArrivalTime: 8 * 3600, DepartureTime: 8 * 3600, StopSequence: 1},
 		{TripID: "trip2", StopID: "stopA", ArrivalTime: 9 * 3600, DepartureTime: 9 * 3600, StopSequence: 1},
 		{TripID: "trip3", StopID: "stopA", ArrivalTime: 10 * 3600, DepartureTime: 10 * 3600, StopSequence: 1},
 	}
 
-	tripRoutes := TripToRoute{
+	tripRoutes := gtfs.TripToRoute{
 		"trip1": "routeR",
 		"trip2": "routeR",
 		"trip3": "routeR",
 	}
 
-	idx := BuildIndex(stopTimes, tripRoutes)
+	idx := gtfs.BuildIndex(stopTimes, tripRoutes)
 
 	tests := []struct {
 		minTime  time.Time
-		expected TripID
+		expected gtfs.TripID
 	}{
 		{7 * 3600, "trip1"},
 		{8 * 3600, "trip1"},

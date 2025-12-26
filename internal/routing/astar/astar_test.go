@@ -3,8 +3,8 @@ package astar_test
 import (
 	"testing"
 
-	"github.com/danielscoffee/pathcraft/internal/domain/graph"
-	astar "github.com/danielscoffee/pathcraft/internal/domain/routing/astar"
+	"github.com/danielscoffee/pathcraft/internal/graph"
+	"github.com/danielscoffee/pathcraft/internal/routing/astar"
 )
 
 // buildTestGraph creates a simple grid-like graph:

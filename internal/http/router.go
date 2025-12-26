@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/danielscoffee/pathcraft/internal/domain/geo"
-	"github.com/danielscoffee/pathcraft/internal/domain/graph"
-	"github.com/danielscoffee/pathcraft/internal/domain/routing/astar"
+	"github.com/danielscoffee/pathcraft/internal/geo"
+	"github.com/danielscoffee/pathcraft/internal/graph"
+	"github.com/danielscoffee/pathcraft/internal/routing/astar"
 )
 
 // WARN: THIS ROUTER IS MORE TO DEBUG AND TEST THE GEOJSON OUTPUTS AND BASIC ROUTING THAN A PRODUCTION FEAT

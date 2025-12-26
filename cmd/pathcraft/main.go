@@ -6,13 +6,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/danielscoffee/pathcraft/internal/adapters/http"
-	"github.com/danielscoffee/pathcraft/internal/adapters/osm"
-	"github.com/danielscoffee/pathcraft/internal/domain/geo"
-	"github.com/danielscoffee/pathcraft/internal/domain/graph"
-	m "github.com/danielscoffee/pathcraft/internal/domain/mobility"
-	astar "github.com/danielscoffee/pathcraft/internal/domain/routing/astar"
-	t "github.com/danielscoffee/pathcraft/internal/domain/time"
+	"github.com/danielscoffee/pathcraft/internal/geo"
+	"github.com/danielscoffee/pathcraft/internal/graph"
+	"github.com/danielscoffee/pathcraft/internal/http"
+	"github.com/danielscoffee/pathcraft/internal/mobility"
+	"github.com/danielscoffee/pathcraft/internal/osm"
+	"github.com/danielscoffee/pathcraft/internal/routing/astar"
+	t "github.com/danielscoffee/pathcraft/internal/time"
 )
 
 func main() {
@@ -142,7 +142,7 @@ func cmdRoute(args []string) error {
 	file := fs.String("file", "", "OSM file to parse (.osm or .osm.gz)")
 	from := fs.Int64("from", 0, "Source node ID")
 	to := fs.Int64("to", 0, "Target node ID")
-	speed := fs.Float64("speed", m.DefaultWalkingSpeedMPS, "Walking speed in m/s (default: 1.4 = 5 km/h)")
+	speed := fs.Float64("speed", mobility.DefaultWalkingSpeedMPS, "Walking speed in m/s (default: 1.4 = 5 km/h)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}

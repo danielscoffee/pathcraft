@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	. "github.com/danielscoffee/pathcraft/internal/domain/time"
+	"github.com/danielscoffee/pathcraft/internal/time"
 )
 
 type StopID string
@@ -24,8 +24,8 @@ type RouteID string
 type StopTime struct {
 	TripID        TripID
 	StopID        StopID
-	ArrivalTime   Time
-	DepartureTime Time
+	ArrivalTime   time.Time
+	DepartureTime time.Time
 	StopSequence  int
 }
 
@@ -41,8 +41,8 @@ type RoutePattern struct {
 
 type TripStopTime struct {
 	TripID        TripID
-	ArrivalTime   Time
-	DepartureTime Time
+	ArrivalTime   time.Time
+	DepartureTime time.Time
 }
 
 type StopTimeIndex struct {
@@ -90,7 +90,7 @@ func (idx *StopTimeIndex) GetStopSequence(stopID StopID, routeID RouteID) int {
 	return seq
 }
 
-func (idx *StopTimeIndex) EarliestTrip(routeID RouteID, stopSequence int, minDepartureTime Time) *TripStopTime {
+func (idx *StopTimeIndex) EarliestTrip(routeID RouteID, stopSequence int, minDepartureTime time.Time) *TripStopTime {
 	trips := idx.TripsAtRouteStop(routeID, stopSequence)
 	if len(trips) == 0 {
 		return nil
@@ -153,12 +153,12 @@ func ParseStopTimes(r io.Reader) ([]StopTime, error) {
 			return nil, fmt.Errorf("line %d: %w", lineNum, err)
 		}
 
-		arrivalTime, err := ParseTime(record[arrivalIdx])
+		arrivalTime, err := time.ParseTime(record[arrivalIdx])
 		if err != nil {
 			return nil, fmt.Errorf("line %d: invalid arrival_time: %w", lineNum, err)
 		}
 
-		departureTime, err := ParseTime(record[departureIdx])
+		departureTime, err := time.ParseTime(record[departureIdx])
 		if err != nil {
 			return nil, fmt.Errorf("line %d: invalid departure_time: %w", lineNum, err)
 		}

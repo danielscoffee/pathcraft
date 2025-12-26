@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	. "github.com/danielscoffee/pathcraft/internal/adapters/osm"
-	"github.com/danielscoffee/pathcraft/internal/domain/geo"
+	"github.com/danielscoffee/pathcraft/internal/geo"
+	"github.com/danielscoffee/pathcraft/internal/osm"
 )
 
 const testOSMXML = `<?xml version="1.0" encoding="UTF-8"?>
@@ -37,7 +37,7 @@ const testOSMXML = `<?xml version="1.0" encoding="UTF-8"?>
 </osm>`
 
 func TestParseXML(t *testing.T) {
-	data, err := ParseXML(strings.NewReader(testOSMXML))
+	data, err := osm.ParseXML(strings.NewReader(testOSMXML))
 	if err != nil {
 		t.Fatalf("ParseXML() error = %v", err)
 	}
@@ -65,7 +65,7 @@ func TestParseXML(t *testing.T) {
 		t.Errorf("expected 3 ways, got %d", len(data.Ways))
 	}
 
-	var footway *Way
+	var footway *osm.Way
 	for _, w := range data.Ways {
 		if w.ID == 100 {
 			footway = w
@@ -85,8 +85,7 @@ func TestParseXML(t *testing.T) {
 }
 
 func TestFilterIsWalkable(t *testing.T) {
-	filter := DefaultFilter()
-
+	filter := osm.DefaultFilter()
 	tests := []struct {
 		name     string
 		tags     map[string]string
@@ -103,7 +102,7 @@ func TestFilterIsWalkable(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			w := &Way{Tags: tt.tags}
+			w := &osm.Way{Tags: tt.tags}
 			got := filter.IsWalkable(w)
 			if got != tt.expected {
 				t.Errorf("IsWalkable(%v) = %v, want %v", tt.tags, got, tt.expected)
@@ -113,12 +112,12 @@ func TestFilterIsWalkable(t *testing.T) {
 }
 
 func TestFilterWays(t *testing.T) {
-	data, err := ParseXML(strings.NewReader(testOSMXML))
+	data, err := osm.ParseXML(strings.NewReader(testOSMXML))
 	if err != nil {
 		t.Fatalf("ParseXML() error = %v", err)
 	}
 
-	filter := DefaultFilter()
+	filter := osm.DefaultFilter()
 	walkable := data.FilterWays(filter)
 
 	// Only way 100 (footway) should be walkable
@@ -134,12 +133,12 @@ func TestFilterWays(t *testing.T) {
 }
 
 func TestBuildGraph(t *testing.T) {
-	data, err := ParseXML(strings.NewReader(testOSMXML))
+	data, err := osm.ParseXML(strings.NewReader(testOSMXML))
 	if err != nil {
 		t.Fatalf("ParseXML() error = %v", err)
 	}
 
-	g := BuildGraph(data, nil)
+	g := osm.BuildGraph(data, nil)
 
 	// Should have nodes 1, 2, 3 from the walkable footway
 	if !g.HasNode(1) || !g.HasNode(2) || !g.HasNode(3) {

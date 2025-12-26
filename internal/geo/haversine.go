@@ -3,7 +3,7 @@ package geo
 import (
 	"math"
 
-	"github.com/danielscoffee/pathcraft/internal/domain/graph"
+	"github.com/danielscoffee/pathcraft/internal/graph"
 )
 
 type Heuristic func(from, to graph.Node) float64

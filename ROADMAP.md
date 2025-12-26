@@ -4,7 +4,6 @@
 
 ## Phase 0 – Foundation
 
-- [ ] Conclude migration from modules to explicit hexagonal approach
 - [ ] Fix lint errors(staticcheck and errcheck)
 - [x] OSM parsing
 - [x] Graph construction

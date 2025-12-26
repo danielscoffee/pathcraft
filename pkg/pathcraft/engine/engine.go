@@ -1,7 +1,7 @@
 package engine
 
 import (
-	"github.com/danielscoffee/pathcraft/internal/domain/graph"
+	"github.com/danielscoffee/pathcraft/internal/graph"
 )
 
 // Start implementing the pathcraft engine
