@@ -6,20 +6,20 @@ import (
 	"github.com/qoppatech/exp-pathcraft/internal/domain/graph"
 )
 
+type Feature struct {
+	Type       string         `json:"type"`
+	Geometry   map[string]any `json:"geometry"`
+	Properties map[string]any `json:"properties,omitempty"`
+}
+type FeatureCollection struct {
+	Type     string    `json:"type"`
+	Features []Feature `json:"features"`
+}
+
 // TODO: IMPLEMENT DYNAMICS CONVERSION - STUDY HOW TO DO THIS
 // PERFOMATICALLY
 
 func GraphToGeoJSON(g *graph.Graph) []byte {
-	type Feature struct {
-		Type       string         `json:"type"`
-		Geometry   map[string]any `json:"geometry"`
-		Properties map[string]any `json:"properties,omitempty"`
-	}
-	type FeatureCollection struct {
-		Type     string    `json:"type"`
-		Features []Feature `json:"features"`
-	}
-
 	var features []Feature
 	for from, edges := range g.Edges {
 		fromNode := g.Nodes[from]
@@ -45,16 +45,6 @@ func GraphToGeoJSON(g *graph.Graph) []byte {
 }
 
 func PathToGeoJSON(g *graph.Graph, path []graph.NodeID) []byte {
-	type Feature struct {
-		Type       string         `json:"type"`
-		Geometry   map[string]any `json:"geometry"`
-		Properties map[string]any `json:"properties,omitempty"`
-	}
-	type FeatureCollection struct {
-		Type     string    `json:"type"`
-		Features []Feature `json:"features"`
-	}
-
 	var coords [][]float64
 	for _, id := range path {
 		n := g.Nodes[id]
