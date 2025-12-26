@@ -6,13 +6,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/qoppatech/exp-pathcraft/internal/adapters/http"
+	"github.com/qoppatech/exp-pathcraft/internal/adapters/osm"
+	"github.com/qoppatech/exp-pathcraft/internal/domain/geo"
+	"github.com/qoppatech/exp-pathcraft/internal/domain/graph"
 	m "github.com/qoppatech/exp-pathcraft/internal/domain/mobility"
+	astar "github.com/qoppatech/exp-pathcraft/internal/domain/routing/astar"
 	t "github.com/qoppatech/exp-pathcraft/internal/domain/time"
-	"github.com/qoppatech/exp-pathcraft/internal/geo"
-	"github.com/qoppatech/exp-pathcraft/internal/graph"
-	"github.com/qoppatech/exp-pathcraft/internal/http"
-	"github.com/qoppatech/exp-pathcraft/internal/osm"
-	astar "github.com/qoppatech/exp-pathcraft/internal/routing/astar"
 )
 
 func main() {
