@@ -65,7 +65,6 @@ flowchart TB
 ### `/internal`
 Private core logic (not exported).
 
-### `/domain`
 - `graph/`
     - Adjacency list representation
     - Nodes, edges, costs, distances
@@ -78,8 +77,6 @@ Private core logic (not exported).
     - Time implement time handling but support > 24:00:00 needed by GTFS
 - mobility
     - Mobility is the domain of transit entities
-
-### `adapters`
 - `osm/`
     - OSM parsing → graph adapter
 - `gtfs/`
