@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	geo "github.com/qoppatech/exp-pathcraft/internal/geo"
-	"github.com/qoppatech/exp-pathcraft/internal/graph"
+	geo "github.com/qoppatech/exp-pathcraft/internal/domain/geo"
+	"github.com/qoppatech/exp-pathcraft/internal/domain/graph"
 )
 
 type Node struct {

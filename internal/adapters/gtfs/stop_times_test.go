@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	. "github.com/qoppatech/exp-pathcraft/internal/adapters/gtfs"
 	"github.com/qoppatech/exp-pathcraft/internal/domain/time"
-	. "github.com/qoppatech/exp-pathcraft/internal/gtfs"
 )
 
 // TODO: Separate test files in StopTimes package and dedicate the time specifics to time package tests

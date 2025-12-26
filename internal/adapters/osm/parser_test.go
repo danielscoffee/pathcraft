@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qoppatech/exp-pathcraft/internal/geo"
-	. "github.com/qoppatech/exp-pathcraft/internal/osm"
+	. "github.com/qoppatech/exp-pathcraft/internal/adapters/osm"
+	"github.com/qoppatech/exp-pathcraft/internal/domain/geo"
 )
 
 const testOSMXML = `<?xml version="1.0" encoding="UTF-8"?>
