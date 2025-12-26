@@ -1,6 +1,6 @@
 package graph
 
-import t "github.com/qoppatech/exp-pathcraft/internal/domain/time"
+import t "github.com/danielscoffee/pathcraft/internal/domain/time"
 
 type NodeID int64
 

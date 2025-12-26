@@ -4,8 +4,8 @@ import (
 	"container/heap"
 	"errors"
 
-	. "github.com/qoppatech/exp-pathcraft/internal/domain/geo"
-	"github.com/qoppatech/exp-pathcraft/internal/domain/graph"
+	. "github.com/danielscoffee/pathcraft/internal/domain/geo"
+	"github.com/danielscoffee/pathcraft/internal/domain/graph"
 )
 
 var ErrNoPath = errors.New("no path found")

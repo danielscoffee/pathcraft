@@ -3,7 +3,7 @@ package geojson
 import (
 	"encoding/json"
 
-	"github.com/qoppatech/exp-pathcraft/internal/domain/graph"
+	"github.com/danielscoffee/pathcraft/internal/domain/graph"
 )
 
 type Feature struct {
