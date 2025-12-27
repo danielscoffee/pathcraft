@@ -1,12 +1,12 @@
 package graph
 
-import t "github.com/danielscoffee/pathcraft/internal/time"
+import "github.com/danielscoffee/pathcraft/internal/time"
 
 type NodeID int64
 
 type Edge struct {
 	To        NodeID
-	Cost      t.Seconds
+	Cost      time.Seconds
 	DistanceM float64
 }
 

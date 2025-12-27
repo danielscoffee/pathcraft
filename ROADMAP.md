@@ -4,7 +4,7 @@
 
 ## Phase 0 – Foundation
 
-- [ ] Fix lint errors(staticcheck and errcheck)
+- [x] Fix lint errors(staticcheck and errcheck)
 - [x] OSM parsing
 - [x] Graph construction
 - [x] A* routing (walking)

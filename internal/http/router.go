@@ -31,7 +31,11 @@ func (s *Server) SetupRoutes() {
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ok"}`))
+	_, err := w.Write([]byte(`{"status":"health"}`))
+	if err != nil {
+		http.Error(w, `{"status": "not health"}`, http.StatusInternalServerError)
+		return
+	}
 }
 
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
@@ -45,12 +49,17 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 		nodes = append(nodes, NodeInfo{ID: n.ID, Lat: n.Lat, Lon: n.Lon})
 	}
 
-	resp := map[string]interface{}{
+	resp := map[string]any{
 		"nodes_count": len(s.Graph.Nodes),
 		"edges_count": len(s.Graph.Edges),
 		"nodes":       nodes,
 	}
-	json.NewEncoder(w).Encode(resp)
+
+	err := json.NewEncoder(w).Encode(resp)
+	if err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (s *Server) handleRoute(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +90,11 @@ func (s *Server) handleRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(path)
+	err = json.NewEncoder(w).Encode(path)
+	if err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func RunServer(g *graph.Graph, addr string) {

@@ -45,13 +45,13 @@ type TripStopTime struct {
 	DepartureTime time.Time
 }
 
+// TODO: This code is not GTFS-complete - GTFS normally tends to break some pattern stop time
+// Implement patterns
+
 type StopTimeIndex struct {
-	StopRoutes map[StopID][]RouteID
-
-	RoutePatterns map[RouteID]*RoutePattern
-
-	RouteStopTrips map[string][]TripStopTime
-
+	StopRoutes          map[StopID][]RouteID
+	RoutePatterns       map[RouteID]*RoutePattern
+	RouteStopTrips      map[string][]TripStopTime
 	StopPositionInRoute map[string]int
 }
 
@@ -185,7 +185,9 @@ func ParseStopTimesFile(path string) ([]StopTime, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	return ParseStopTimes(f)
 }
