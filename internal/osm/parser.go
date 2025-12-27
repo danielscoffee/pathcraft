@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	geo "github.com/danielscoffee/pathcraft/internal/geo"
+	"github.com/danielscoffee/pathcraft/internal/geo"
 	"github.com/danielscoffee/pathcraft/internal/graph"
 )
 
@@ -112,7 +112,9 @@ func ParseFile(path string) (*Data, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	var reader io.Reader = f
 
@@ -121,7 +123,9 @@ func ParseFile(path string) (*Data, error) {
 		if err != nil {
 			return nil, fmt.Errorf("opening gzip: %w", err)
 		}
-		defer gzReader.Close()
+		defer func() {
+			_ = gzReader.Close()
+		}()
 		reader = gzReader
 	}
 

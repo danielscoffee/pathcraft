@@ -8,8 +8,6 @@ import (
 	"github.com/danielscoffee/pathcraft/internal/time"
 )
 
-// TODO: Separate test files in StopTimes package and dedicate the time specifics to time package tests
-
 func TestParseStopTimes(t *testing.T) {
 	csvData := `trip_id,arrival_time,departure_time,stop_id,stop_sequence
 trip1,08:00:00,08:00:00,stopA,1
