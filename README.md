@@ -10,6 +10,11 @@ Experimental / Research project
 - OpenStreetMap (OSM) parsing for walkable paths
 - Deterministic, testable core algorithms
 
+## Documentation
+- [Full Documentation](docs/README.md)
+- [Architecture Overview](docs/architecture/overview.md)
+- [Roadmap](docs/ROADMAP.md)
+
 ### WIP:
 - GTFS stop_times parsing (RAPTOR-ready)
 

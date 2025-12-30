@@ -73,9 +73,9 @@ Private core logic (not exported).
     - Heuristics for routing
 - `routing/`
     - Algorithms (A*, future RAPTOR, Dijkstra)
-- time
+- `time/`
     - Time implement time handling but support > 24:00:00 needed by GTFS
-- mobility
+- `mobility/`
     - Mobility is the domain of transit entities
 - `osm/`
     - OSM parsing → graph adapter
