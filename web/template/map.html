@@ -1,27 +1,92 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8"/>
-  <title>Pathcraft Map</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-  <style>#map { height: 100vh; }</style>
+	<meta charset="utf-8" />
+	<title>Pathcraft Map</title>
+
+	<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+	<style>
+		#map {
+			height: 100vh;
+		}
+	</style>
 </head>
+
 <body>
-<div id="map"></div>
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script>
-const map = L.map('map').setView([-8.0545, -34.8805], 17);
-// TODO: IMPLEMENT THIS DYNAMICALLY at ./app
+	<div id="map"></div>
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+	<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-fetch('streets.json').then(r => r.json()).then(data => {
-  L.geoJSON(data, { style: { color: '#999', weight: 2 }}).addTo(map);
-});
+	<script>
+		// =====================
+		// Map bootstrap
+		// =====================
+		const map = L.map('map').setView(
+			[{{ .CenterLat }}, {{ .CenterLon }}],
+			{{ .Zoom }}
+		);
 
-fetch('route.json').then(r => r.json()).then(data => {
-  L.geoJSON(data, { style: { color: 'red', weight: 4 }}).addTo(map);
-});
-</script>
+		/// TODO: Enable route creation on click(approx and real nodes)
+		//let from = null;
+		//map.on('click', e => {
+		//if (!from) {
+		//	from = e.latlng;
+		//	L.marker(from).addTo(map);
+		//} else {
+		//	const to = e.latlng;
+		//	window.location = `/route?from=${from.lng},${from.lat}&to=${to.lng},${to.lat}`;
+		//}
+		//});
+
+		L.tileLayer('{{ .TileURL }}').addTo(map);
+
+		// =====================
+		// Layers (stateful)
+		// =====================
+		let streetsLayer = null;
+		let routeLayer = null;
+
+		// =====================
+		// Load graph (streets)
+		// =====================
+		fetch('{{ .StreetsURL }}')
+			.then(r => r.json())
+			.then(data => {
+				streetsLayer = L.geoJSON(data, {
+					style: {
+						color: '{{ .StreetsColor }}',
+						weight: {{ .StreetsWeight }}
+					}
+				}).addTo(map);
+			});
+
+		// =====================
+		// Load route (explicit)
+		// =====================
+		function loadRoute(from, to) {
+			fetch(`{{ .RouteURL }}?from=${from}&to=${to}`)
+				.then(r => r.json())
+				.then(data => {
+					if (routeLayer) {
+						map.removeLayer(routeLayer);
+					}
+
+					routeLayer = L.geoJSON(data, {
+						style: {
+							color: '{{ .RouteColor }}',
+							weight: {{ .RouteWeight }}
+						}
+					}).addTo(map);
+
+					map.fitBounds(routeLayer.getBounds());
+				});
+		}
+
+		// =====================
+		// DEBUG (remove depois)
+		// =====================
+		// loadRoute(1, 6);
+	</script>
 </body>
 </html>
