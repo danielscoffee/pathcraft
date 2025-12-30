@@ -10,7 +10,7 @@
 - [x] A* routing (walking)
 - [x] CLI interface
 - [x] GeoJSON export
-- [ ] Basic map visualization
+- [x] Basic map visualization
 
 ---
 
