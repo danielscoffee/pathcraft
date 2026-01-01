@@ -19,9 +19,9 @@ Experimental / Research project
 - GTFS stop_times parsing (RAPTOR-ready)
 
 ## How to use:
-First create a .osm file an example is disposable on ./examples/example.osm
+First create a .osm file an example is available in ./examples/example.osm
 
 ```bash
 make build
-./bin/patchcraft --help # To get help on how to run
+./bin/pathcraft --help # To get help on how to run
 ```

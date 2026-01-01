@@ -11,8 +11,10 @@ Private core logic.
 - `graph/`: Graph data structures (Adjacency lists, Nodes, Edges).
 - `geo/`: Geometric calculations (Haversine, etc.).
 - `routing/`: Routing algorithms (A*, Dijkstra, etc.).
+- `time/`: Time handling with GTFS >24:00:00 support.
+- `mobility/`: Mobility profiles and transit domain entities.
 - `osm/`: OpenStreetMap data parsing and conversion.
-- `gtfs/`: GTFS data parsing (Transit).
+- `gtfs/`: GTFS data parsing (Transit, RAPTOR-ready).
 - `geojson/`: GeoJSON export adapters.
 - `http/`: HTTP server handlers.
 
