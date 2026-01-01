@@ -18,7 +18,7 @@
 
 Goal: Make Pathcraft usable as a library.
 
-- [ ] Finalize `engine` public API
+- [x] Finalize `engine` public API
 - [ ] Config struct (speed, mode, penalties)
 - [ ] Route → GeoJSON pipeline
 - [ ] Deterministic tests
