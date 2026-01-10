@@ -25,6 +25,8 @@ func run() error {
 		return cli.CmdParse(os.Args[2:])
 	case "route":
 		return cli.CmdRoute(os.Args[2:])
+	case "transit":
+		return cli.CmdTransit(os.Args[2:])
 	case "server":
 		return cli.CmdServer(os.Args[2:])
 	case "help":
