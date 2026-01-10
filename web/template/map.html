@@ -19,37 +19,45 @@
 	<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 	<script>
-		// =====================
-		// Map bootstrap
-		// =====================
 		const map = L.map('map').setView(
 			[{{ .CenterLat }}, {{ .CenterLon }}],
 			{{ .Zoom }}
 		);
 
-		/// TODO: Enable route creation on click(approx and real nodes)
-		//let from = null;
-		//map.on('click', e => {
-		//if (!from) {
-		//	from = e.latlng;
-		//	L.marker(from).addTo(map);
-		//} else {
-		//	const to = e.latlng;
-		//	window.location = `/route?from=${from.lng},${from.lat}&to=${to.lng},${to.lat}`;
-		//}
-		//});
-
 		L.tileLayer('{{ .TileURL }}').addTo(map);
 
-		// =====================
-		// Layers (stateful)
-		// =====================
+		let fromNode = null;
+		let toNode = null;
+		let markers = [];
+
+		map.on('click', e => {
+			fetch(`/nearest?lat=${e.latlng.lat}&lon=${e.latlng.lng}`)
+				.then(r => r.json())
+				.then(data => {
+					if (!fromNode) {
+						fromNode = data.id;
+						const m = L.marker(e.latlng).addTo(map).bindPopup(`From: ${data.id}`).openPopup();
+						markers.push(m);
+					} else if (!toNode) {
+						toNode = data.id;
+						const m = L.marker(e.latlng).addTo(map).bindPopup(`To: ${data.id}`).openPopup();
+						markers.push(m);
+						loadRoute(fromNode, toNode);
+					} else {
+						fromNode = data.id;
+						toNode = null;
+						markers.forEach(m => map.removeLayer(m));
+						if (routeLayer) map.removeLayer(routeLayer);
+						
+						const m = L.marker(e.latlng).addTo(map).bindPopup(`From: ${data.id}`).openPopup();
+						markers = [m];
+					}
+				});
+		});
+
 		let streetsLayer = null;
 		let routeLayer = null;
 
-		// =====================
-		// Load graph (streets)
-		// =====================
 		fetch('{{ .StreetsURL }}')
 			.then(r => r.json())
 			.then(data => {
@@ -60,10 +68,7 @@
 					}
 				}).addTo(map);
 			});
-
-		// =====================
-		// Load route (explicit)
-		// =====================
+		// TODO: USE CURSOR CLICK TO SETUP ROUTES
 		function loadRoute(from, to) {
 			fetch(`{{ .RouteURL }}?from=${from}&to=${to}`)
 				.then(r => r.json())

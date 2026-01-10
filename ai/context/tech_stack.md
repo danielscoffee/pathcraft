@@ -8,8 +8,8 @@
 ## Libraries & Tools
 - **Routing**: Custom A* implementation
 - **Data Parsing**: 
-    - OpenStreetMap (OSM) PBF parsing
-    - GTFS (planned)
+    - OpenStreetMap (OSM) XML parsing
+    - GTFS stop_times parsing (RAPTOR-ready)
 - **Geo**: Custom Haversine and geometry utils
 - **CLI**: Standard library `flag` (implied, or simple wrapper)
 - **Testing**: Standard `testing` package
