@@ -3,14 +3,9 @@
 package gtfs
 
 import (
-	"encoding/csv"
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"sort"
-	"strconv"
-	"strings"
 
 	"github.com/danielscoffee/pathcraft/internal/time"
 )
@@ -45,14 +40,13 @@ type TripStopTime struct {
 	DepartureTime time.Time
 }
 
-// TODO: This code is not GTFS-complete - GTFS normally tends to break some pattern stop time
-// Implement patterns
-
 type StopTimeIndex struct {
 	StopRoutes          map[StopID][]RouteID
 	RoutePatterns       map[RouteID]*RoutePattern
 	RouteStopTrips      map[string][]TripStopTime
 	StopPositionInRoute map[string]int
+	// RouteTrips[routeID][tripIndex][stopIndex]
+	RouteTrips map[RouteID][][]TripStopTime
 }
 
 func NewStopTimeIndex() *StopTimeIndex {
@@ -61,6 +55,7 @@ func NewStopTimeIndex() *StopTimeIndex {
 		RoutePatterns:       make(map[RouteID]*RoutePattern),
 		RouteStopTrips:      make(map[string][]TripStopTime),
 		StopPositionInRoute: make(map[string]int),
+		RouteTrips:          make(map[RouteID][][]TripStopTime),
 	}
 }
 
@@ -106,91 +101,27 @@ func (idx *StopTimeIndex) EarliestTrip(routeID RouteID, stopSequence int, minDep
 	return nil
 }
 
+func (idx *StopTimeIndex) EarliestTripIndex(routeID RouteID, stopIndex int, minDepartureTime time.Time) int {
+	trips := idx.RouteTrips[routeID]
+	if len(trips) == 0 {
+		return -1
+	}
+
+	i := sort.Search(len(trips), func(i int) bool {
+		return trips[i][stopIndex].DepartureTime >= minDepartureTime
+	})
+
+	if i < len(trips) {
+		return i
+	}
+	return -1
+}
+
 // WARN: dedicate error packages?
 var (
 	ErrMissingColumn = errors.New("missing required column")
 	ErrInvalidData   = errors.New("invalid data")
 )
-
-/// TODO: IF NEEDED SEPARATE PARSING LOGIC TO ANOTHER FILE AND SEPARATE OTHERS FIELDS TO THEIR OWN FILES
-
-func ParseStopTimes(r io.Reader) ([]StopTime, error) {
-	csvReader := csv.NewReader(r)
-
-	header, err := csvReader.Read()
-	if err != nil {
-		return nil, fmt.Errorf("reading header: %w", err)
-	}
-
-	colIndex := make(map[string]int)
-	for i, col := range header {
-		colIndex[strings.TrimSpace(col)] = i
-	}
-
-	requiredCols := []string{"trip_id", "stop_id", "arrival_time", "departure_time", "stop_sequence"}
-	for _, col := range requiredCols {
-		if _, ok := colIndex[col]; !ok {
-			return nil, fmt.Errorf("%w: %s", ErrMissingColumn, col)
-		}
-	}
-
-	tripIdx := colIndex["trip_id"]
-	stopIdx := colIndex["stop_id"]
-	arrivalIdx := colIndex["arrival_time"]
-	departureIdx := colIndex["departure_time"]
-	seqIdx := colIndex["stop_sequence"]
-
-	var stopTimes []StopTime
-
-	lineNum := 1
-	for {
-		lineNum++
-		record, err := csvReader.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("line %d: %w", lineNum, err)
-		}
-
-		arrivalTime, err := time.ParseTime(record[arrivalIdx])
-		if err != nil {
-			return nil, fmt.Errorf("line %d: invalid arrival_time: %w", lineNum, err)
-		}
-
-		departureTime, err := time.ParseTime(record[departureIdx])
-		if err != nil {
-			return nil, fmt.Errorf("line %d: invalid departure_time: %w", lineNum, err)
-		}
-
-		stopSequence, err := strconv.Atoi(strings.TrimSpace(record[seqIdx]))
-		if err != nil {
-			return nil, fmt.Errorf("line %d: invalid stop_sequence: %w", lineNum, err)
-		}
-
-		stopTimes = append(stopTimes, StopTime{
-			TripID:        TripID(strings.TrimSpace(record[tripIdx])),
-			StopID:        StopID(strings.TrimSpace(record[stopIdx])),
-			ArrivalTime:   arrivalTime,
-			DepartureTime: departureTime,
-			StopSequence:  stopSequence,
-		})
-	}
-
-	return stopTimes, nil
-}
-
-func ParseStopTimesFile(path string) ([]StopTime, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		_ = f.Close()
-	}()
-
-	return ParseStopTimes(f)
-}
 
 type TripToRoute map[TripID]RouteID
 
@@ -268,6 +199,44 @@ func BuildIndex(stopTimes []StopTime, tripRoutes TripToRoute) *StopTimeIndex {
 			return trips[i].DepartureTime < trips[j].DepartureTime
 		})
 		idx.RouteStopTrips[key] = trips
+	}
+
+	for routeID, pattern := range idx.RoutePatterns {
+		firstStopSeq := pattern.Stops[0].Sequence
+		firstStopTrips := idx.TripsAtRouteStop(routeID, firstStopSeq)
+
+		routeTrips := make([][]TripStopTime, 0, len(firstStopTrips))
+		for _, firstStopTrip := range firstStopTrips {
+			tripID := firstStopTrip.TripID
+			tripData := make([]TripStopTime, len(pattern.Stops))
+
+			validTrip := true
+			for j, rs := range pattern.Stops {
+				allTripsAtStop := idx.TripsAtRouteStop(routeID, rs.Sequence)
+				found := false
+				for _, t := range allTripsAtStop {
+					if t.TripID == tripID {
+						tripData[j] = t
+						found = true
+						break
+					}
+				}
+				if !found {
+					validTrip = false
+					break
+				}
+			}
+
+			if validTrip {
+				routeTrips = append(routeTrips, tripData)
+			}
+		}
+
+		sort.Slice(routeTrips, func(i, j int) bool {
+			return routeTrips[i][0].DepartureTime < routeTrips[j][0].DepartureTime
+		})
+
+		idx.RouteTrips[routeID] = routeTrips
 	}
 
 	return idx

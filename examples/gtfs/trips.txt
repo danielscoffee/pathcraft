@@ -1,0 +1,17 @@
+trip_id,route_id,service_id,trip_headsign
+ML1_T01,METRO_LINHA_1,WD,Recife - Jaboatão
+ML1_T02,METRO_LINHA_1,WD,Recife - Jaboatão
+ML1_T03,METRO_LINHA_1,WD,Recife - Jaboatão
+ML1_T04,METRO_LINHA_1,WD,Recife - Jaboatão
+MC_T01,METRO_CAMARAGIBE,WD,Recife - Camaragibe
+MC_T02,METRO_CAMARAGIBE,WD,Recife - Camaragibe
+MC_T03,METRO_CAMARAGIBE,WD,Recife - Camaragibe
+MS_T01,METRO_SUL,WD,Barro - Cajueiro Seco
+MS_T02,METRO_SUL,WD,Barro - Cajueiro Seco
+MS_T03,METRO_SUL,WD,Barro - Cajueiro Seco
+BRT_NE_T01,BRT_NORTE_SUL,WD,TI Joana Bezerra - TI CDU
+BRT_NE_T02,BRT_NORTE_SUL,WD,TI Joana Bezerra - TI CDU
+BRT_NE_T03,BRT_NORTE_SUL,WD,TI Joana Bezerra - TI CDU
+BRT_LS_T01,BRT_LESTE_SUL,WD,TI Joana Bezerra - Piedade
+BRT_LS_T02,BRT_LESTE_SUL,WD,TI Joana Bezerra - Piedade
+BRT_LS_T03,BRT_LESTE_SUL,WD,TI Joana Bezerra - Piedade

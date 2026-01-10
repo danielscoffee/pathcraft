@@ -6,13 +6,17 @@ import (
 
 	"github.com/danielscoffee/pathcraft/internal/geo"
 	"github.com/danielscoffee/pathcraft/internal/graph"
+	"github.com/danielscoffee/pathcraft/internal/gtfs"
 	"github.com/danielscoffee/pathcraft/internal/mobility"
 	"github.com/danielscoffee/pathcraft/internal/osm"
 	"github.com/danielscoffee/pathcraft/internal/routing/astar"
+	"github.com/danielscoffee/pathcraft/internal/routing/raptor"
+	pcTime "github.com/danielscoffee/pathcraft/internal/time"
 )
 
 type Engine struct {
-	graph *graph.Graph
+	graph     *graph.Graph
+	gtfsIndex *gtfs.StopTimeIndex
 }
 
 func New() *Engine {
@@ -51,6 +55,59 @@ func (e *Engine) LoadOSM(path string) error {
 
 	e.graph = osm.BuildGraph(data, nil)
 	return nil
+}
+
+func (e *Engine) SaveGraph(path string) error {
+	if e.graph == nil {
+		return fmt.Errorf("graph not loaded")
+	}
+	return e.graph.Save(path)
+}
+
+func (e *Engine) LoadGraph(path string) error {
+	g, err := graph.LoadGraph(path)
+	if err != nil {
+		return err
+	}
+	e.graph = g
+	return nil
+}
+
+func (e *Engine) LoadGTFS(stopTimesPath, tripsPath string) error {
+	stopTimes, err := gtfs.ParseStopTimesFile(stopTimesPath)
+	if err != nil {
+		return fmt.Errorf("parsing stop_times: %w", err)
+	}
+
+	tripRoutes, err := gtfs.ParseTripsFile(tripsPath)
+	if err != nil {
+		return fmt.Errorf("parsing trips: %w", err)
+	}
+
+	e.gtfsIndex = gtfs.BuildIndex(stopTimes, tripRoutes)
+	return nil
+}
+
+type TransitRouteRequest struct {
+	FromStop      string
+	ToStop        string
+	DepartureTime string // HH:MM:SS
+}
+
+func (e *Engine) TransitRoute(req TransitRouteRequest) (*raptor.Result, error) {
+	if e.gtfsIndex == nil {
+		return nil, fmt.Errorf("GTFS not loaded")
+	}
+
+	depTime, err := pcTime.ParseTime(req.DepartureTime)
+	if err != nil {
+		return nil, fmt.Errorf("invalid departure time: %w", err)
+	}
+
+	router := raptor.NewRouter(e.gtfsIndex, nil)
+	res := router.Search(gtfs.StopID(req.FromStop), depTime)
+
+	return res, nil
 }
 
 func (e *Engine) Route(req RouteRequest) (*RouteResult, error) {
@@ -125,6 +182,15 @@ func (e *Engine) Stats() GraphStats {
 		Nodes: len(e.graph.Nodes),
 		Edges: edgeCount,
 	}
+}
+
+func (e *Engine) NearestNode(lat, lon float64) (int64, float64, error) {
+	if e.graph == nil {
+		return 0, 0, fmt.Errorf("graph not loaded")
+	}
+
+	id, dist := e.graph.NearestNode(lat, lon, geo.HaversineDistance)
+	return int64(id), dist, nil
 }
 
 // GetGraph returns the underlying graph.

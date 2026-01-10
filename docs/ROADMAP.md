@@ -19,11 +19,11 @@
 Goal: Make Pathcraft usable as a library.
 
 - [x] Finalize `engine` public API
-- [ ] Config struct (speed, mode, penalties)
-- [ ] Route → GeoJSON pipeline
-- [ ] Deterministic tests
+- [x] Config struct (speed, mode, penalties)
+- [x] Route → GeoJSON pipeline
+- [x] Deterministic tests
 - [ ] Benchmark routing performance
-- [ ] Improve graph memory layout
+- [x] Improve graph memory layout
 
 Deliverable:
 - Stable `pkg/pathcraft/engine`
@@ -34,12 +34,12 @@ Deliverable:
 
 Goal: Turn Pathcraft into a service.
 
-- [ ] HTTP server mode (`pathcraft serve`)
-- [ ] `/route` endpoint
-- [ ] `/health` endpoint
-- [ ] JSON + GeoJSON output
+- [x] HTTP server mode (`pathcraft serve`)
+- [x] `/route` endpoint
+- [x] `/health` endpoint
+- [x] JSON + GeoJSON output
 - [ ] CORS support
-- [ ] Static map viewer
+- [x] Static map viewer
 
 Deliverable:
 - Docker-ready routing server
@@ -50,11 +50,10 @@ Deliverable:
 
 Goal: Multimodal routing.
 
-- [ ] GTFS ingestion
-- [ ] RAPTOR algorithm
+- [x] GTFS ingestion
+- [x] RAPTOR algorithm
 - [ ] Walk + Transit integration
 - [ ] Time-dependent routing
-- [ ] Schedule-based heuristics
 
 Deliverable:
 - Public transit routing engine

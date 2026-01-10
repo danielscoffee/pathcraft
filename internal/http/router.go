@@ -1,15 +1,16 @@
 package http
 
 import (
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"strconv"
 
-	"github.com/danielscoffee/pathcraft/internal/geo"
 	"github.com/danielscoffee/pathcraft/internal/geojson"
 	"github.com/danielscoffee/pathcraft/internal/graph"
-	"github.com/danielscoffee/pathcraft/internal/routing/astar"
+	"github.com/danielscoffee/pathcraft/internal/mobility"
+	"github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
 )
 
 type PageData struct {
@@ -33,21 +34,54 @@ type PageData struct {
 }
 
 // WARN: THIS ROUTER IS MORE TO DEBUG AND TEST THE GEOJSON OUTPUTS AND BASIC ROUTING THAN A PRODUCTION FEAT
-// TODO: TEST FILE
 
 type Server struct {
-	Graph *graph.Graph
+	engine *engine.Engine
 }
 
-func NewServer(g *graph.Graph) *Server {
-	return &Server{Graph: g}
+func NewServer(e *engine.Engine) *Server {
+	return &Server{engine: e}
 }
 
-func (s *Server) SetupRoutes() {
-	http.HandleFunc("/route", s.handleRoute)
-	http.HandleFunc("/graph", s.handleGraph)
-	http.HandleFunc("/status", s.handleStatus)
-	http.HandleFunc("/graph-visual", s.handleGraphVisual)
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/route", s.handleRoute)
+	mux.HandleFunc("/nearest", s.handleNearest)
+	mux.HandleFunc("/graph", s.handleGraph)
+	mux.HandleFunc("/status", s.handleStatus)
+	mux.HandleFunc("/graph-visual", s.handleGraphVisual)
+	return mux
+}
+
+func (s *Server) handleNearest(w http.ResponseWriter, r *http.Request) {
+	latStr := r.URL.Query().Get("lat")
+	lonStr := r.URL.Query().Get("lon")
+
+	if latStr == "" || lonStr == "" {
+		http.Error(w, "lat and lon parameters required", http.StatusBadRequest)
+		return
+	}
+
+	lat, err := strconv.ParseFloat(latStr, 64)
+	if err != nil {
+		http.Error(w, "invalid lat parameter", http.StatusBadRequest)
+		return
+	}
+
+	lon, err := strconv.ParseFloat(lonStr, 64)
+	if err != nil {
+		http.Error(w, "invalid lon parameter", http.StatusBadRequest)
+		return
+	}
+
+	id, dist, err := s.engine.NearestNode(lat, lon)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"id": %d, "distance": %f}`, id, dist)
 }
 
 func (s *Server) handleGraphVisual(w http.ResponseWriter, r *http.Request) {
@@ -90,11 +124,17 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
+	g := s.engine.GetGraph()
+	if g == nil {
+		http.Error(w, "graph not loaded", http.StatusServiceUnavailable)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 
-	b := geojson.GraphToGeoJSON(s.Graph)
-
-	w.Write(b)
+	if err := geojson.WriteGraphToGeoJSON(g, w); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }
 
 // WARN: To works need to do fetch on client side with from and to parameters
@@ -118,29 +158,36 @@ func (s *Server) handleRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h := geo.HaversineHeuristic(1.4)
-
-	path, err := astar.AStar(s.Graph, graph.NodeID(fromID), graph.NodeID(toID), h)
+	res, err := s.engine.Route(engine.RouteRequest{
+		From:    fromID,
+		To:      toID,
+		Profile: mobility.NewWalking(1.4),
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
-	// WARN: THIS IS INEFFICIENT, THE IDEAL IS TO RETURN DIRECTLY THE IDS FROM THE ASTAR
-	ids := make([]graph.NodeID, 0, len(path.Nodes))
-	for _, n := range path.Nodes {
-		ids = append(ids, n)
+
+	ids := make([]graph.NodeID, len(res.Nodes))
+	for i, n := range res.Nodes {
+		ids[i] = graph.NodeID(n)
+	}
+
+	g := s.engine.GetGraph()
+	if g == nil {
+		http.Error(w, "graph not loaded", http.StatusServiceUnavailable)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 
-	b := geojson.PathToGeoJSON(s.Graph, ids)
+	b := geojson.PathToGeoJSON(g, ids)
 
 	w.Write(b)
 }
 
-func RunServer(g *graph.Graph, addr string) {
-	s := NewServer(g)
-	s.SetupRoutes()
+func RunServer(e *engine.Engine, addr string) {
+	s := NewServer(e)
 	log.Printf("Server running on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, nil))
+	log.Fatal(http.ListenAndServe(addr, s.Handler()))
 }
