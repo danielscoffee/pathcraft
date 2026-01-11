@@ -1,9 +1,12 @@
 # PathCraft
 
-PathCraft is an walking and transit routing engine.
+High-performance multimodal routing engine for walking + public transit navigation, written in Go.
 
-## Status
-Experimental / Research project
+**Implements A\* and RAPTOR algorithms from scratch** for journey planning across multiple transport modes.
+
+Status: Experimental
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
 - Walking routing using A*
@@ -25,14 +28,6 @@ First create a .osm file an example is available in ./examples/example.osm
 make build
 ./bin/pathcraft --help # To get help on how to run
 ```
-
-# PathCraft
-
-High-performance multimodal routing engine for walking + public transit navigation, written in Go.
-
-**Implements A\* and RAPTOR algorithms from scratch** for journey planning across multiple transport modes.
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Overview
 
