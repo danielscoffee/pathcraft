@@ -1,0 +1,252 @@
+?   	github.com/danielscoffee/pathcraft/cmd/pathcraft	[no test files]
+?   	github.com/danielscoffee/pathcraft/internal/cli	[no test files]
+?   	github.com/danielscoffee/pathcraft/internal/geo	[no test files]
+?   	github.com/danielscoffee/pathcraft/internal/geojson	[no test files]
+PASS
+ok  	github.com/danielscoffee/pathcraft/internal/graph	0.004s
+goos: linux
+goarch: amd64
+pkg: github.com/danielscoffee/pathcraft/internal/gtfs
+cpu: 11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz
+BenchmarkParseStopTimes_ExampleGTFS-8   	   78141	     45118 ns/op	  91.56 MB/s	   43576 B/op	     435 allocs/op
+BenchmarkParseStopTimes_ExampleGTFS-8   	   80230	     45661 ns/op	  90.47 MB/s	   43576 B/op	     435 allocs/op
+BenchmarkParseStopTimes_ExampleGTFS-8   	   80762	     45878 ns/op	  90.04 MB/s	   43576 B/op	     435 allocs/op
+BenchmarkParseStopTimes_ExampleGTFS-8   	   79896	     45113 ns/op	  91.57 MB/s	   43576 B/op	     435 allocs/op
+BenchmarkParseStopTimes_ExampleGTFS-8   	   80389	     45434 ns/op	  90.92 MB/s	   43576 B/op	     435 allocs/op
+BenchmarkParseStopTimes_ExampleGTFS-8   	   80761	     45708 ns/op	  90.38 MB/s	   43576 B/op	     435 allocs/op
+BenchmarkParseStopTimes_ExampleGTFS-8   	   73473	     46401 ns/op	  89.03 MB/s	   43576 B/op	     435 allocs/op
+BenchmarkParseStopTimes_ExampleGTFS-8   	   74580	     45716 ns/op	  90.36 MB/s	   43576 B/op	     435 allocs/op
+BenchmarkParseStopTimes_ExampleGTFS-8   	   76540	     45846 ns/op	  90.11 MB/s	   43576 B/op	     435 allocs/op
+BenchmarkParseStopTimes_ExampleGTFS-8   	   79768	     46668 ns/op	  88.52 MB/s	   43576 B/op	     435 allocs/op
+BenchmarkBuildIndex_ExampleGTFS-8       	   34040	    101216 ns/op	   70350 B/op	    1176 allocs/op
+BenchmarkBuildIndex_ExampleGTFS-8       	   35425	    101806 ns/op	   70350 B/op	    1176 allocs/op
+BenchmarkBuildIndex_ExampleGTFS-8       	   35875	    101196 ns/op	   70350 B/op	    1176 allocs/op
+BenchmarkBuildIndex_ExampleGTFS-8       	   35380	    112613 ns/op	   70350 B/op	    1176 allocs/op
+BenchmarkBuildIndex_ExampleGTFS-8       	   31017	    138816 ns/op	   70350 B/op	    1176 allocs/op
+BenchmarkBuildIndex_ExampleGTFS-8       	   28592	    122365 ns/op	   70351 B/op	    1176 allocs/op
+BenchmarkBuildIndex_ExampleGTFS-8       	   25711	    154655 ns/op	   70351 B/op	    1176 allocs/op
+BenchmarkBuildIndex_ExampleGTFS-8       	   27776	    118430 ns/op	   70350 B/op	    1176 allocs/op
+BenchmarkBuildIndex_ExampleGTFS-8       	   28827	    127659 ns/op	   70351 B/op	    1176 allocs/op
+BenchmarkBuildIndex_ExampleGTFS-8       	   28674	    119927 ns/op	   70350 B/op	    1176 allocs/op
+PASS
+ok  	github.com/danielscoffee/pathcraft/internal/gtfs	95.404s
+PASS
+ok  	github.com/danielscoffee/pathcraft/internal/http	0.011s
+?   	github.com/danielscoffee/pathcraft/internal/mobility	[no test files]
+goos: linux
+goarch: amd64
+pkg: github.com/danielscoffee/pathcraft/internal/osm
+cpu: 11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz
+BenchmarkParseFile_ExampleOSM-8    	   56211	     63629 ns/op	  28.76 MB/s	   25144 B/op	     546 allocs/op
+BenchmarkParseFile_ExampleOSM-8    	   56235	     70040 ns/op	  26.13 MB/s	   25144 B/op	     546 allocs/op
+BenchmarkParseFile_ExampleOSM-8    	   54758	     63003 ns/op	  29.05 MB/s	   25144 B/op	     546 allocs/op
+BenchmarkParseFile_ExampleOSM-8    	   57196	     62850 ns/op	  29.12 MB/s	   25144 B/op	     546 allocs/op
+BenchmarkParseFile_ExampleOSM-8    	   57610	     62843 ns/op	  29.12 MB/s	   25144 B/op	     546 allocs/op
+BenchmarkParseFile_ExampleOSM-8    	   57549	     64554 ns/op	  28.35 MB/s	   25144 B/op	     546 allocs/op
+BenchmarkParseFile_ExampleOSM-8    	   57098	     62665 ns/op	  29.20 MB/s	   25144 B/op	     546 allocs/op
+BenchmarkParseFile_ExampleOSM-8    	   51896	     63055 ns/op	  29.02 MB/s	   25144 B/op	     546 allocs/op
+BenchmarkParseFile_ExampleOSM-8    	   40245	    119268 ns/op	  15.34 MB/s	   25144 B/op	     546 allocs/op
+BenchmarkParseFile_ExampleOSM-8    	   30001	    149665 ns/op	  12.23 MB/s	   25144 B/op	     546 allocs/op
+BenchmarkBuildGraph_ExampleOSM-8   	  730344	      5638 ns/op	    1768 B/op	      26 allocs/op
+BenchmarkBuildGraph_ExampleOSM-8   	  673519	      5203 ns/op	    1768 B/op	      26 allocs/op
+BenchmarkBuildGraph_ExampleOSM-8   	  628386	      6312 ns/op	    1768 B/op	      26 allocs/op
+BenchmarkBuildGraph_ExampleOSM-8   	  892826	      3946 ns/op	    1768 B/op	      26 allocs/op
+BenchmarkBuildGraph_ExampleOSM-8   	  946630	      4486 ns/op	    1768 B/op	      26 allocs/op
+BenchmarkBuildGraph_ExampleOSM-8   	  845913	      5625 ns/op	    1768 B/op	      26 allocs/op
+BenchmarkBuildGraph_ExampleOSM-8   	  534434	      6590 ns/op	    1768 B/op	      26 allocs/op
+BenchmarkBuildGraph_ExampleOSM-8   	  603280	      5551 ns/op	    1768 B/op	      26 allocs/op
+BenchmarkBuildGraph_ExampleOSM-8   	 1000000	      3892 ns/op	    1768 B/op	      26 allocs/op
+BenchmarkBuildGraph_ExampleOSM-8   	 1000000	      3160 ns/op	    1768 B/op	      26 allocs/op
+PASS
+ok  	github.com/danielscoffee/pathcraft/internal/osm	95.398s
+goos: linux
+goarch: amd64
+pkg: github.com/danielscoffee/pathcraft/internal/routing/astar
+cpu: 11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz
+BenchmarkAStar_Grid/N=10_nodes=100-8  	   58550	     56703 ns/op	   13007 B/op	     134 allocs/op
+BenchmarkAStar_Grid/N=10_nodes=100-8  	   62486	     48386 ns/op	   13007 B/op	     134 allocs/op
+BenchmarkAStar_Grid/N=10_nodes=100-8  	   80281	     45921 ns/op	   13007 B/op	     134 allocs/op
+BenchmarkAStar_Grid/N=10_nodes=100-8  	   79245	     45088 ns/op	   13008 B/op	     134 allocs/op
+BenchmarkAStar_Grid/N=10_nodes=100-8  	   75877	     44467 ns/op	   13008 B/op	     134 allocs/op
+BenchmarkAStar_Grid/N=10_nodes=100-8  	   83103	     44650 ns/op	   13007 B/op	     134 allocs/op
+BenchmarkAStar_Grid/N=10_nodes=100-8  	   82587	     47617 ns/op	   13007 B/op	     134 allocs/op
+BenchmarkAStar_Grid/N=10_nodes=100-8  	   80331	     45117 ns/op	   13008 B/op	     134 allocs/op
+BenchmarkAStar_Grid/N=10_nodes=100-8  	   81787	     44720 ns/op	   13008 B/op	     134 allocs/op
+BenchmarkAStar_Grid/N=10_nodes=100-8  	   68421	     56780 ns/op	   13007 B/op	     134 allocs/op
+BenchmarkAStar_Grid/N=50_nodes=2500-8 	    2643	   1401019 ns/op	  364992 B/op	    2584 allocs/op
+BenchmarkAStar_Grid/N=50_nodes=2500-8 	    2570	   1435849 ns/op	  364992 B/op	    2584 allocs/op
+BenchmarkAStar_Grid/N=50_nodes=2500-8 	    2548	   1691726 ns/op	  364992 B/op	    2584 allocs/op
+BenchmarkAStar_Grid/N=50_nodes=2500-8 	    1716	   1975206 ns/op	  364992 B/op	    2584 allocs/op
+BenchmarkAStar_Grid/N=50_nodes=2500-8 	    1758	   2093581 ns/op	  364993 B/op	    2584 allocs/op
+BenchmarkAStar_Grid/N=50_nodes=2500-8 	    1791	   2487358 ns/op	  364993 B/op	    2584 allocs/op
+BenchmarkAStar_Grid/N=50_nodes=2500-8 	    2671	   1589292 ns/op	  364992 B/op	    2584 allocs/op
+BenchmarkAStar_Grid/N=50_nodes=2500-8 	    2030	   1662108 ns/op	  364992 B/op	    2584 allocs/op
+BenchmarkAStar_Grid/N=50_nodes=2500-8 	    2440	   1677534 ns/op	  364992 B/op	    2584 allocs/op
+BenchmarkAStar_Grid/N=50_nodes=2500-8 	    2202	   1618164 ns/op	  364992 B/op	    2584 allocs/op
+BenchmarkAStar_Grid/N=100_nodes=10000-8         	     495	   8608217 ns/op	 1438596 B/op	   10187 allocs/op
+BenchmarkAStar_Grid/N=100_nodes=10000-8         	     434	   7880584 ns/op	 1438595 B/op	   10187 allocs/op
+BenchmarkAStar_Grid/N=100_nodes=10000-8         	     519	   7720854 ns/op	 1438594 B/op	   10187 allocs/op
+BenchmarkAStar_Grid/N=100_nodes=10000-8         	     476	   8193767 ns/op	 1438594 B/op	   10187 allocs/op
+BenchmarkAStar_Grid/N=100_nodes=10000-8         	     495	   9251562 ns/op	 1438595 B/op	   10187 allocs/op
+BenchmarkAStar_Grid/N=100_nodes=10000-8         	     433	  11100012 ns/op	 1438595 B/op	   10187 allocs/op
+BenchmarkAStar_Grid/N=100_nodes=10000-8         	     370	   9798565 ns/op	 1438596 B/op	   10187 allocs/op
+BenchmarkAStar_Grid/N=100_nodes=10000-8         	     523	   8997049 ns/op	 1438596 B/op	   10187 allocs/op
+BenchmarkAStar_Grid/N=100_nodes=10000-8         	     507	   6827838 ns/op	 1438594 B/op	   10187 allocs/op
+BenchmarkAStar_Grid/N=100_nodes=10000-8         	     418	  10036719 ns/op	 1438597 B/op	   10187 allocs/op
+BenchmarkAStar_Grid/N=200_nodes=40000-8         	     100	  43663228 ns/op	 5721123 B/op	   40579 allocs/op
+BenchmarkAStar_Grid/N=200_nodes=40000-8         	      92	  40443685 ns/op	 5721124 B/op	   40579 allocs/op
+BenchmarkAStar_Grid/N=200_nodes=40000-8         	      84	  44171298 ns/op	 5721126 B/op	   40579 allocs/op
+BenchmarkAStar_Grid/N=200_nodes=40000-8         	      76	  47065670 ns/op	 5721125 B/op	   40579 allocs/op
+BenchmarkAStar_Grid/N=200_nodes=40000-8         	      91	  46473986 ns/op	 5721124 B/op	   40579 allocs/op
+BenchmarkAStar_Grid/N=200_nodes=40000-8         	      72	  48352320 ns/op	 5721124 B/op	   40579 allocs/op
+BenchmarkAStar_Grid/N=200_nodes=40000-8         	      79	  48549914 ns/op	 5721126 B/op	   40579 allocs/op
+BenchmarkAStar_Grid/N=200_nodes=40000-8         	      51	  61806885 ns/op	 5721126 B/op	   40579 allocs/op
+BenchmarkAStar_Grid/N=200_nodes=40000-8         	      91	  42657120 ns/op	 5721123 B/op	   40579 allocs/op
+BenchmarkAStar_Grid/N=200_nodes=40000-8         	      96	  39585585 ns/op	 5721126 B/op	   40579 allocs/op
+BenchmarkAStar_Grid/N=500_nodes=250000-8        	       8	 392248655 ns/op	43867668 B/op	  254171 allocs/op
+BenchmarkAStar_Grid/N=500_nodes=250000-8        	       5	 715982379 ns/op	43854728 B/op	  254169 allocs/op
+BenchmarkAStar_Grid/N=500_nodes=250000-8        	      12	 324788374 ns/op	43870729 B/op	  254171 allocs/op
+BenchmarkAStar_Grid/N=500_nodes=250000-8        	      12	 274656890 ns/op	43846112 B/op	  254168 allocs/op
+BenchmarkAStar_Grid/N=500_nodes=250000-8        	      12	 303016028 ns/op	43864586 B/op	  254170 allocs/op
+BenchmarkAStar_Grid/N=500_nodes=250000-8        	      13	 266599533 ns/op	43879723 B/op	  254172 allocs/op
+BenchmarkAStar_Grid/N=500_nodes=250000-8        	      13	 281208425 ns/op	43876885 B/op	  254172 allocs/op
+BenchmarkAStar_Grid/N=500_nodes=250000-8        	      10	 416706718 ns/op	43839956 B/op	  254168 allocs/op
+BenchmarkAStar_Grid/N=500_nodes=250000-8        	       7	 582083041 ns/op	43861059 B/op	  254170 allocs/op
+BenchmarkAStar_Grid/N=500_nodes=250000-8        	      10	 390559192 ns/op	43839955 B/op	  254168 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=50_nodes=2500-8         	    3356	   1317762 ns/op	  363840 B/op	    2583 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=50_nodes=2500-8         	    2198	   3737558 ns/op	  363850 B/op	    2583 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=50_nodes=2500-8         	    1029	   3721243 ns/op	  363849 B/op	    2583 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=50_nodes=2500-8         	     898	   3774521 ns/op	  363852 B/op	    2583 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=50_nodes=2500-8         	     894	   3719897 ns/op	  363850 B/op	    2583 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=50_nodes=2500-8         	     903	   3538881 ns/op	  363848 B/op	    2583 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=50_nodes=2500-8         	    1074	   2994234 ns/op	  363847 B/op	    2583 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=50_nodes=2500-8         	    3114	   1355017 ns/op	  363841 B/op	    2583 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=50_nodes=2500-8         	    3622	   1487006 ns/op	  363840 B/op	    2583 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=50_nodes=2500-8         	    2953	   1166656 ns/op	  363841 B/op	    2583 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=100_nodes=10000-8       	     758	   6054934 ns/op	 1438596 B/op	   10187 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=100_nodes=10000-8       	     716	   6678676 ns/op	 1438595 B/op	   10187 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=100_nodes=10000-8       	     661	   6571150 ns/op	 1438596 B/op	   10187 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=100_nodes=10000-8       	     696	   5319919 ns/op	 1438594 B/op	   10187 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=100_nodes=10000-8       	     742	   4740592 ns/op	 1438594 B/op	   10187 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=100_nodes=10000-8       	     681	   6333021 ns/op	 1438595 B/op	   10187 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=100_nodes=10000-8       	     747	   5623034 ns/op	 1438595 B/op	   10187 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=100_nodes=10000-8       	     580	   6818460 ns/op	 1438597 B/op	   10187 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=100_nodes=10000-8       	     530	   9604277 ns/op	 1438605 B/op	   10187 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=100_nodes=10000-8       	     592	   6015169 ns/op	 1438595 B/op	   10187 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=200_nodes=40000-8       	     144	  25078228 ns/op	 5721127 B/op	   40579 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=200_nodes=40000-8       	     100	  31320123 ns/op	 5721127 B/op	   40579 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=200_nodes=40000-8       	     129	  25795435 ns/op	 5721126 B/op	   40579 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=200_nodes=40000-8       	     120	  36593386 ns/op	 5721126 B/op	   40579 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=200_nodes=40000-8       	     100	  30016211 ns/op	 5721125 B/op	   40579 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=200_nodes=40000-8       	     100	  34236973 ns/op	 5721127 B/op	   40579 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=200_nodes=40000-8       	     100	  49610531 ns/op	 5721125 B/op	   40579 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=200_nodes=40000-8       	     151	  26646113 ns/op	 5721124 B/op	   40579 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=200_nodes=40000-8       	     100	  30425853 ns/op	 5721124 B/op	   40579 allocs/op
+BenchmarkAStar_Grid_ZeroHeuristic/N=200_nodes=40000-8       	     100	  34366459 ns/op	 5721128 B/op	   40579 allocs/op
+PASS
+ok  	github.com/danielscoffee/pathcraft/internal/routing/astar	422.388s
+goos: linux
+goarch: amd64
+pkg: github.com/danielscoffee/pathcraft/internal/routing/raptor
+cpu: 11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz
+BenchmarkRAPTOR_Search/routes=5_stopsPerRoute=10_trips=10-8         	  370437	     10548 ns/op	    6954 B/op	      83 allocs/op
+BenchmarkRAPTOR_Search/routes=5_stopsPerRoute=10_trips=10-8         	  363178	      9736 ns/op	    6954 B/op	      83 allocs/op
+BenchmarkRAPTOR_Search/routes=5_stopsPerRoute=10_trips=10-8         	  374496	      9786 ns/op	    6954 B/op	      83 allocs/op
+BenchmarkRAPTOR_Search/routes=5_stopsPerRoute=10_trips=10-8         	  394994	      9610 ns/op	    6954 B/op	      83 allocs/op
+BenchmarkRAPTOR_Search/routes=5_stopsPerRoute=10_trips=10-8         	  358284	      9614 ns/op	    6954 B/op	      83 allocs/op
+BenchmarkRAPTOR_Search/routes=5_stopsPerRoute=10_trips=10-8         	  351447	      9672 ns/op	    6954 B/op	      83 allocs/op
+BenchmarkRAPTOR_Search/routes=5_stopsPerRoute=10_trips=10-8         	  378997	      9630 ns/op	    6954 B/op	      83 allocs/op
+BenchmarkRAPTOR_Search/routes=5_stopsPerRoute=10_trips=10-8         	  395960	     10390 ns/op	    6954 B/op	      83 allocs/op
+BenchmarkRAPTOR_Search/routes=5_stopsPerRoute=10_trips=10-8         	  387778	      9686 ns/op	    6954 B/op	      83 allocs/op
+BenchmarkRAPTOR_Search/routes=5_stopsPerRoute=10_trips=10-8         	  364468	      9556 ns/op	    6954 B/op	      83 allocs/op
+BenchmarkRAPTOR_Search/routes=20_stopsPerRoute=20_trips=30-8        	  175106	     20592 ns/op	   14049 B/op	     123 allocs/op
+BenchmarkRAPTOR_Search/routes=20_stopsPerRoute=20_trips=30-8        	  180568	     20257 ns/op	   14049 B/op	     123 allocs/op
+BenchmarkRAPTOR_Search/routes=20_stopsPerRoute=20_trips=30-8        	  167938	     21201 ns/op	   14049 B/op	     123 allocs/op
+BenchmarkRAPTOR_Search/routes=20_stopsPerRoute=20_trips=30-8        	  183876	     26404 ns/op	   14048 B/op	     123 allocs/op
+BenchmarkRAPTOR_Search/routes=20_stopsPerRoute=20_trips=30-8        	  145770	     23262 ns/op	   14049 B/op	     123 allocs/op
+BenchmarkRAPTOR_Search/routes=20_stopsPerRoute=20_trips=30-8        	  179186	     21107 ns/op	   14049 B/op	     123 allocs/op
+BenchmarkRAPTOR_Search/routes=20_stopsPerRoute=20_trips=30-8        	  175899	     26242 ns/op	   14049 B/op	     123 allocs/op
+BenchmarkRAPTOR_Search/routes=20_stopsPerRoute=20_trips=30-8        	  119806	     34974 ns/op	   14049 B/op	     123 allocs/op
+BenchmarkRAPTOR_Search/routes=20_stopsPerRoute=20_trips=30-8        	   90756	     42737 ns/op	   14049 B/op	     123 allocs/op
+BenchmarkRAPTOR_Search/routes=20_stopsPerRoute=20_trips=30-8        	   86137	     40670 ns/op	   14048 B/op	     123 allocs/op
+BenchmarkRAPTOR_Search/routes=50_stopsPerRoute=30_trips=60-8        	   21313	    152587 ns/op	   55725 B/op	     285 allocs/op
+BenchmarkRAPTOR_Search/routes=50_stopsPerRoute=30_trips=60-8        	   38092	     81863 ns/op	   55724 B/op	     285 allocs/op
+BenchmarkRAPTOR_Search/routes=50_stopsPerRoute=30_trips=60-8        	   41343	     81552 ns/op	   55724 B/op	     285 allocs/op
+BenchmarkRAPTOR_Search/routes=50_stopsPerRoute=30_trips=60-8        	   49705	     76745 ns/op	   55724 B/op	     285 allocs/op
+BenchmarkRAPTOR_Search/routes=50_stopsPerRoute=30_trips=60-8        	   50030	     76397 ns/op	   55724 B/op	     285 allocs/op
+BenchmarkRAPTOR_Search/routes=50_stopsPerRoute=30_trips=60-8        	   50047	     92106 ns/op	   55724 B/op	     285 allocs/op
+BenchmarkRAPTOR_Search/routes=50_stopsPerRoute=30_trips=60-8        	   32930	    115498 ns/op	   55725 B/op	     285 allocs/op
+BenchmarkRAPTOR_Search/routes=50_stopsPerRoute=30_trips=60-8        	   31477	    100881 ns/op	   55724 B/op	     285 allocs/op
+BenchmarkRAPTOR_Search/routes=50_stopsPerRoute=30_trips=60-8        	   35878	     87367 ns/op	   55724 B/op	     285 allocs/op
+BenchmarkRAPTOR_Search/routes=50_stopsPerRoute=30_trips=60-8        	   46069	     74776 ns/op	   55724 B/op	     285 allocs/op
+BenchmarkRAPTOR_Search/routes=100_stopsPerRoute=40_trips=100-8      	   44282	     80686 ns/op	   56994 B/op	     345 allocs/op
+BenchmarkRAPTOR_Search/routes=100_stopsPerRoute=40_trips=100-8      	   47043	     75362 ns/op	   56994 B/op	     345 allocs/op
+BenchmarkRAPTOR_Search/routes=100_stopsPerRoute=40_trips=100-8      	   49318	     95760 ns/op	   56994 B/op	     345 allocs/op
+BenchmarkRAPTOR_Search/routes=100_stopsPerRoute=40_trips=100-8      	   46172	     80720 ns/op	   56994 B/op	     345 allocs/op
+BenchmarkRAPTOR_Search/routes=100_stopsPerRoute=40_trips=100-8      	   48162	     93477 ns/op	   56994 B/op	     345 allocs/op
+BenchmarkRAPTOR_Search/routes=100_stopsPerRoute=40_trips=100-8      	   42409	     88227 ns/op	   56994 B/op	     345 allocs/op
+BenchmarkRAPTOR_Search/routes=100_stopsPerRoute=40_trips=100-8      	   39962	     79012 ns/op	   56994 B/op	     345 allocs/op
+BenchmarkRAPTOR_Search/routes=100_stopsPerRoute=40_trips=100-8      	   40522	    118141 ns/op	   56994 B/op	     345 allocs/op
+BenchmarkRAPTOR_Search/routes=100_stopsPerRoute=40_trips=100-8      	   36574	     84822 ns/op	   56994 B/op	     345 allocs/op
+BenchmarkRAPTOR_Search/routes=100_stopsPerRoute=40_trips=100-8      	   45384	     77549 ns/op	   56994 B/op	     345 allocs/op
+BenchmarkRAPTOR_SearchAndReconstruct-8                              	   58707	     65422 ns/op	   56090 B/op	     285 allocs/op
+BenchmarkRAPTOR_SearchAndReconstruct-8                              	   58333	     63503 ns/op	   56091 B/op	     285 allocs/op
+BenchmarkRAPTOR_SearchAndReconstruct-8                              	   61911	     59804 ns/op	   56090 B/op	     285 allocs/op
+BenchmarkRAPTOR_SearchAndReconstruct-8                              	   59589	     60428 ns/op	   56091 B/op	     285 allocs/op
+BenchmarkRAPTOR_SearchAndReconstruct-8                              	   52123	     66909 ns/op	   56091 B/op	     285 allocs/op
+BenchmarkRAPTOR_SearchAndReconstruct-8                              	   51698	     81956 ns/op	   56091 B/op	     285 allocs/op
+BenchmarkRAPTOR_SearchAndReconstruct-8                              	   54088	     64988 ns/op	   56090 B/op	     285 allocs/op
+BenchmarkRAPTOR_SearchAndReconstruct-8                              	   59031	     64203 ns/op	   56090 B/op	     285 allocs/op
+BenchmarkRAPTOR_SearchAndReconstruct-8                              	   53634	     65485 ns/op	   56090 B/op	     285 allocs/op
+BenchmarkRAPTOR_SearchAndReconstruct-8                              	   51777	     69107 ns/op	   56091 B/op	     285 allocs/op
+BenchmarkRAPTOR_ToyExistingFixture-8                                	  520731	      7021 ns/op	    3317 B/op	      49 allocs/op
+BenchmarkRAPTOR_ToyExistingFixture-8                                	  587154	      5823 ns/op	    3317 B/op	      49 allocs/op
+BenchmarkRAPTOR_ToyExistingFixture-8                                	  848654	      4847 ns/op	    3317 B/op	      49 allocs/op
+BenchmarkRAPTOR_ToyExistingFixture-8                                	  860000	      4364 ns/op	    3317 B/op	      49 allocs/op
+BenchmarkRAPTOR_ToyExistingFixture-8                                	  819177	      4287 ns/op	    3317 B/op	      49 allocs/op
+BenchmarkRAPTOR_ToyExistingFixture-8                                	  795535	      4832 ns/op	    3317 B/op	      49 allocs/op
+BenchmarkRAPTOR_ToyExistingFixture-8                                	  840240	      4517 ns/op	    3317 B/op	      49 allocs/op
+BenchmarkRAPTOR_ToyExistingFixture-8                                	  810972	      4339 ns/op	    3317 B/op	      49 allocs/op
+BenchmarkRAPTOR_ToyExistingFixture-8                                	  865236	      5745 ns/op	    3317 B/op	      49 allocs/op
+BenchmarkRAPTOR_ToyExistingFixture-8                                	  842742	      4467 ns/op	    3317 B/op	      49 allocs/op
+PASS
+ok  	github.com/danielscoffee/pathcraft/internal/routing/raptor	309.034s
+PASS
+ok  	github.com/danielscoffee/pathcraft/internal/time	0.002s
+goos: linux
+goarch: amd64
+pkg: github.com/danielscoffee/pathcraft/pkg/pathcraft/engine
+cpu: 11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz
+BenchmarkEngine_Route_ExampleOSM-8                	 1891450	      2037 ns/op	     448 B/op	      16 allocs/op
+BenchmarkEngine_Route_ExampleOSM-8                	 1768221	      2242 ns/op	     448 B/op	      16 allocs/op
+BenchmarkEngine_Route_ExampleOSM-8                	 1879286	      1751 ns/op	     448 B/op	      16 allocs/op
+BenchmarkEngine_Route_ExampleOSM-8                	 1867359	      1823 ns/op	     448 B/op	      16 allocs/op
+BenchmarkEngine_Route_ExampleOSM-8                	 1876371	      1805 ns/op	     448 B/op	      16 allocs/op
+BenchmarkEngine_Route_ExampleOSM-8                	 2041639	      1777 ns/op	     448 B/op	      16 allocs/op
+BenchmarkEngine_Route_ExampleOSM-8                	 2028224	      1743 ns/op	     448 B/op	      16 allocs/op
+BenchmarkEngine_Route_ExampleOSM-8                	 1822476	      2271 ns/op	     448 B/op	      16 allocs/op
+BenchmarkEngine_Route_ExampleOSM-8                	 1739102	      2047 ns/op	     448 B/op	      16 allocs/op
+BenchmarkEngine_Route_ExampleOSM-8                	 2041339	      1893 ns/op	     448 B/op	      16 allocs/op
+BenchmarkEngine_RouteByCoordinates_ExampleOSM-8   	 1094095	      3308 ns/op	     640 B/op	      19 allocs/op
+BenchmarkEngine_RouteByCoordinates_ExampleOSM-8   	  869182	      3618 ns/op	     640 B/op	      19 allocs/op
+BenchmarkEngine_RouteByCoordinates_ExampleOSM-8   	  940699	      3642 ns/op	     640 B/op	      19 allocs/op
+BenchmarkEngine_RouteByCoordinates_ExampleOSM-8   	  845726	      4141 ns/op	     640 B/op	      19 allocs/op
+BenchmarkEngine_RouteByCoordinates_ExampleOSM-8   	  870933	      3968 ns/op	     640 B/op	      19 allocs/op
+BenchmarkEngine_RouteByCoordinates_ExampleOSM-8   	  905584	      4236 ns/op	     640 B/op	      19 allocs/op
+BenchmarkEngine_RouteByCoordinates_ExampleOSM-8   	  751140	      4248 ns/op	     640 B/op	      19 allocs/op
+BenchmarkEngine_RouteByCoordinates_ExampleOSM-8   	  925436	      4489 ns/op	     640 B/op	      19 allocs/op
+BenchmarkEngine_RouteByCoordinates_ExampleOSM-8   	  951699	      4432 ns/op	     640 B/op	      19 allocs/op
+BenchmarkEngine_RouteByCoordinates_ExampleOSM-8   	  861430	      4236 ns/op	     640 B/op	      19 allocs/op
+BenchmarkEngine_TransitRoute_ExampleGTFS-8        	  106928	     41478 ns/op	   15606 B/op	     166 allocs/op
+BenchmarkEngine_TransitRoute_ExampleGTFS-8        	  103407	     43077 ns/op	   15606 B/op	     166 allocs/op
+BenchmarkEngine_TransitRoute_ExampleGTFS-8        	  130951	     31926 ns/op	   15606 B/op	     166 allocs/op
+BenchmarkEngine_TransitRoute_ExampleGTFS-8        	  127564	     27950 ns/op	   15606 B/op	     166 allocs/op
+BenchmarkEngine_TransitRoute_ExampleGTFS-8        	  130162	     29214 ns/op	   15606 B/op	     166 allocs/op
+BenchmarkEngine_TransitRoute_ExampleGTFS-8        	  152092	     26970 ns/op	   15606 B/op	     166 allocs/op
+BenchmarkEngine_TransitRoute_ExampleGTFS-8        	   94555	     38208 ns/op	   15606 B/op	     166 allocs/op
+BenchmarkEngine_TransitRoute_ExampleGTFS-8        	  126974	     36583 ns/op	   15606 B/op	     166 allocs/op
+BenchmarkEngine_TransitRoute_ExampleGTFS-8        	  104265	     47501 ns/op	   15606 B/op	     166 allocs/op
+BenchmarkEngine_TransitRoute_ExampleGTFS-8        	   86372	     38158 ns/op	   15606 B/op	     166 allocs/op
+PASS
+ok  	github.com/danielscoffee/pathcraft/pkg/pathcraft/engine	150.572s
+?   	github.com/danielscoffee/pathcraft/pkg/plugins	[no test files]

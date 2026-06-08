@@ -1,235 +1,215 @@
 # PathCraft
 
-PathCraft is an walking and transit routing engine.
+**PathCraft is an extensible Go routing engine for maps, transit, simulations, and custom graphs.**
 
-## Status
-Experimental / Research project
+It ships working routing today: OSM walking routes via A*, GTFS transit routes via RAPTOR, initial walk+transit journeys, GeoJSON export, a CLI, an HTTP debug/demo server, and a compile-time plugin registry for custom loaders, algorithms, exporters, and cost models.
 
 ## Features
-- Walking routing using A*
-- OpenStreetMap (OSM) parsing for walkable paths
-- Deterministic, testable core algorithms
 
-## Documentation
-- [Full Documentation](docs/README.md)
-- [Architecture Overview](docs/architecture/overview.md)
-- [Roadmap](docs/ROADMAP.md)
+- **Walking routing**: parse OSM XML / `.osm.gz`, build a walkable graph, and route by node ID or coordinates.
+- **Transit routing**: ingest GTFS `stop_times.txt`, `trips.txt`, optional `transfers.txt`, and optional `stops.txt`; query earliest arrivals with RAPTOR.
+- **Initial multimodal journeys**: compare direct walking against walk → transit → walk using nearest GTFS stop candidates.
+- **Plugin registry**: `core.Algorithm`, `core.GraphLoader`, `core.Exporter`, and `core.CostModel` extension points.
+- **Multiple surfaces**: Go library, `pathcraft` CLI, HTTP endpoints, and a Leaflet routing demo.
+- **GeoJSON output**: route and graph visualization through FeatureCollections.
+- **Tests and benchmarks**: coverage for graph, OSM, GTFS, A*, RAPTOR, HTTP, engine, registry, and plugin pipeline behavior.
 
-### WIP:
-- GTFS stop_times parsing (RAPTOR-ready)
+## Prerequisites
 
-## How to use:
-First create a .osm file an example is available in ./examples/example.osm
+- Go `1.25.5` (see `go.mod`)
+- `make`
+- `curl` only if you use `make fetch-osm`
+
+PathCraft currently has no third-party Go module dependencies.
+
+## Install / Build
 
 ```bash
 make build
-./bin/pathcraft --help # To get help on how to run
+./bin/pathcraft help
 ```
 
-# PathCraft
+## CLI Quickstart
 
-High-performance multimodal routing engine for walking + public transit navigation, written in Go.
-
-**Implements A\* and RAPTOR algorithms from scratch** for journey planning across multiple transport modes.
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-## Overview
-
-PathCraft combines walking routes and public transit schedules to find optimal multimodal journeys. Built for performance and accuracy, it parses real-world OpenStreetMap data and GTFS transit feeds.
-
-### Key Features
-
-- **A\* Pathfinding**: Efficient walking route calculation using haversine distance heuristic
-- **RAPTOR Algorithm**: Round-Based Public Transit Optimized Router for transit connections
-- **OSM Parser**: Processes OpenStreetMap data for walkable street networks
-- **GTFS Support**: Reads General Transit Feed Specification data (stops, routes, schedules)
-- **Multi-modal Routing**: Seamlessly combines walking and transit modes
-- **HTTP API**: RESTful interface for route queries
-- **CLI Tool**: Command-line interface for testing and demos
-- **GeoJSON Output**: Visualize routes on maps
-
-## Architecture
-
-```
-┌─────────────┐    ┌──────────────┐
-│  OSM Data   │    │  GTFS Data   │
-│  (Walking)  │    │  (Transit)   │
-└──────┬──────┘    └──────┬───────┘
-       │                  │
-       ▼                  ▼
-┌─────────────┐    ┌──────────────┐
-│ Graph Build │    │ RAPTOR Parse │
-│   (A* prep) │    │              │
-└──────┬──────┘    └──────┬───────┘
-       │                  │
-       └────────┬─────────┘
-                ▼
-       ┌────────────────┐
-       │  Route Engine  │
-       │ (Multi-modal)  │
-       └────────┬───────┘
-                ▼
-       ┌────────────────┐
-       │  HTTP API/CLI  │
-       └────────────────┘
-```
-
-## Quick Start
-
-### Installation
+### List built-in plugins
 
 ```bash
-# Clone repository
-git clone https://github.com/danielscoffee/pathcraft.git
-cd pathcraft
-
-# Build
-make build
-
-
-# Run with example data
-./bin/pathcraft route \
-  --from 1 \
-  --to 6 \ #number of nodes
-  --osm examples/example.osm \
-  --gtfs examples/gtfs/
+./bin/pathcraft plugins list
 ```
 
-### Example Output
+Built-ins currently include:
 
-```json
-{
-  "duration_minutes": 25,
-  "distance_km": 4.2,
-  "legs": [
-    {
-      "mode": "walk",
-      "duration_minutes": 8,
-      "distance_km": 0.6,
-      "path": [...]
-    },
-    {
-      "mode": "transit",
-      "route": "Bus 42",
-      "stops": 5,
-      "duration_minutes": 12
-    },
-    {
-      "mode": "walk",
-      "duration_minutes": 5,
-      "distance_km": 0.4,
-      "path": [...]
+| Name      | Kind      | Wraps / source                    |
+|-----------|-----------|-----------------------------------|
+| `osm`     | loader    | OSM XML / `.osm.gz` parser        |
+| `gtfs`    | loader    | GTFS directory                    |
+| `astar`   | algorithm | internal A* walking router        |
+| `raptor`  | algorithm | internal RAPTOR transit router    |
+| `geojson` | exporter  | GeoJSON `FeatureCollection`       |
+
+### Run the plugin pipeline
+
+Walking A* on OSM, exported as GeoJSON:
+
+```bash
+./bin/pathcraft pipeline \
+  --loader osm --graph examples/example.osm \
+  --algorithm astar --from 1 --to 6 \
+  --export geojson
+```
+
+Transit RAPTOR on GTFS:
+
+```bash
+./bin/pathcraft pipeline \
+  --loader gtfs --graph examples/mini_gtfs \
+  --algorithm raptor --from START_STOP --to END_STOP \
+  --opt departure_time=05:00:00
+```
+
+### Classic commands
+
+```bash
+./bin/pathcraft parse --file examples/example.osm
+./bin/pathcraft route --file examples/example.osm --from 1 --to 6 --coords
+./bin/pathcraft route --file examples/example.osm \
+  --from-lat -8.05428 --from-lon -34.88130 \
+  --to-lat -8.05480 --to-lon -34.88030 --coords
+./bin/pathcraft transit --gtfs examples/gtfs --from RECIFE --to CAMARAGIBE --time 05:00:00
+./bin/pathcraft journey --file examples/example.osm --gtfs examples/mini_gtfs \
+  --from-lat -8.05428 --from-lon -34.88130 \
+  --to-lat -8.05480 --to-lon -34.88030 --time 05:00:00
+./bin/pathcraft serve --file examples/example.osm --gtfs examples/mini_gtfs --addr :8080
+```
+
+## Go Library Quickstart
+
+Use `pkg/pathcraft/engine` for the public orchestration API. The registry-backed pipeline lets callers choose which plugins to activate with blank imports.
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+
+    "github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
+    pcengine "github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
+
+    _ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/astar"
+    _ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/geojson"
+    _ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/osm"
+)
+
+func main() {
+    res, err := pcengine.Run(context.Background(), pcengine.PipelineRequest{
+        LoaderName:    "osm",
+        Source:        "examples/example.osm",
+        AlgorithmName: "astar",
+        ExporterName:  "geojson",
+        Route:         core.RouteRequest{From: "1", To: "6"},
+    })
+    if err != nil {
+        panic(err)
     }
-  ]
+    fmt.Printf("path nodes: %d, cost: %.1f\n", len(res.Result.Path), res.Result.Cost)
+    fmt.Println(string(res.Output))
 }
 ```
 
-## Algorithm Implementation
+The older `engine.Engine` facade is also still available for direct OSM/GTFS loading, coordinate routing, transit routing, and multimodal journey search.
 
-### A\* Pathfinding (Walking)
+## Interactive Demo
 
-- Implements classic A\* with haversine distance heuristic
-- Builds graph from OSM way/node data
-- Optimizes for pedestrian-accessible paths
-- Average routing time: <100ms for city-scale networks
-
-### RAPTOR (Public Transit)
-
-Implements the Round-Based Public Transit Optimized Router algorithm:
-- Processes GTFS schedules and stop times
-- Handles transfers between routes
-- Finds earliest arrival times
-- Supports time-dependent queries
-
-**Reference**: *"Round-Based Public Transit Routing"* by Delling et al. (2015)
-
-## Performance
-
-Tested on Recife, Brazil transit network (~500 stops, 50 routes):
-
-| Metric | Value |
-|--------|-------|
-| OSM Parse Time | ~2s for 50MB file |
-| GTFS Parse Time | ~500ms |
-| Walking Route (5km) | ~80ms |
-| Transit Route (10 stops) | ~120ms |
-| Memory Usage | ~200MB loaded |
-
-## API Usage
-
-### HTTP Server
+Run the Leaflet demo, then click two points on the map. The server snaps each click to the nearest OSM node, runs A*, and draws the route.
 
 ```bash
-# Start server
-./bin/pathcraft serve --port 8080
-
-# Query route
-curl -X POST http://localhost:8080/route \
-  -H "Content-Type: application/json" \
-  -d '{
-    "from": {"lat": -8.05, "lng": -34.9},
-    "to": {"lat": -8.10, "lng": -34.88},
-    "departure_time": "2024-01-15T08:00:00Z"
-  }'
+make demo
+# open http://localhost:8080/graph-visual
 ```
 
-### Go Package
+Use a real OSM extract for a richer map:
 
-```go
-import "github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
-
-// Initialize engine
-eng := engine.New()
-eng.LoadOSM("data.osm")
-eng.LoadGTFS("gtfs/")
-
-// Calculate route
-route, err := eng.Route(fromCoord, toCoord, departureTime)
+```bash
+make fetch-osm BBOX="40.7480,-74.0050,40.7620,-73.9700" OUT=examples/manhattan.osm
+make demo OSM_FILE=examples/manhattan.osm
 ```
 
-## Project Structure
+Full guide: [docs/tutorials/demo.md](docs/tutorials/demo.md).
 
+## HTTP Endpoints
+
+The HTTP server is a debug/demo interface, not a stable production API.
+
+- `GET /health`, `GET /status`
+- `GET /graph` — loaded walking graph as GeoJSON lines
+- `GET /nodes?bbox=minLon,minLat,maxLon,maxLat&limit=200&min_degree=3` — graph nodes as GeoJSON points
+- `GET /nearest?lat=...&lon=...` — nearest graph node and snap distance
+- `GET /route?from=<id>&to=<id>` — node-id walking route as GeoJSON
+- `GET /route?from_lat=...&from_lon=...&to_lat=...&to_lon=...` — coordinate walking route as GeoJSON
+- `GET /journey?from_lat=...&from_lon=...&to_lat=...&to_lon=...&time=HH:MM:SS` — initial walk+transit journey JSON
+- `GET /transit/stops`, `GET /transit/trips`, `GET /transit/trip?trip_id=...`
+- `GET /graph-visual` — Leaflet viewer
+
+## Architecture
+
+```text
+cmd/pathcraft             CLI entrypoint
+pkg/pathcraft/core        public plugin interfaces and value types
+pkg/pathcraft/registry    compile-time plugin registry
+pkg/pathcraft/engine      public engine facade and pipeline runner
+pkg/pathcraft/plugins     built-in plugin adapters
+pkg/plugins               nearest-node spatial index plugin surface
+internal/graph            private graph model and cache format
+internal/osm              OSM parser and graph builder
+internal/gtfs             GTFS parsers and RAPTOR-ready indexes
+internal/routing          A* and RAPTOR implementations
+internal/http             HTTP demo/debug adapter
+web/template              Leaflet demo
+examples                  small OSM and GTFS fixtures
 ```
-pathcraft/
-├── cmd/pathcraft/        # CLI application
-├── internal/
-│   ├── routing/
-│   │   ├── astar/        # A* implementation
-│   │   └── raptor/       # RAPTOR implementation
-│   ├── osm/              # OpenStreetMap parser
-│   ├── gtfs/             # GTFS parser
-│   ├── graph/            # Graph data structures
-│   ├── geo/              # Geospatial utilities
-│   └── http/             # HTTP API
-├── pkg/pathcraft/engine/ # Public API
-├── docs/                 # Documentation
-├── examples/             # Sample data
-└── web/                  # Web visualization
+
+See also:
+
+- [Documentation index](docs/README.md)
+- [Architecture overview](docs/architecture/overview.md)
+- [Current system audit](docs/architecture/current-system.md)
+- [Plugin system](docs/architecture/plugin-system.md)
+- [Roadmap](docs/ROADMAP.md)
+
+## Configuration
+
+- CLI flags configure OSM file paths, GTFS directories, node/coordinate endpoints, departure time, walking speed, output path, and server address.
+- `Makefile` variables:
+  - `OSM_FILE` (default `examples/recife_demo.osm`)
+  - `GTFS_DIR` (default `examples/mini_gtfs`)
+  - `ADDR` (default `:8080`)
+  - `BBOX` / `OUT` for `make fetch-osm`
+- Parsed graph caches are written as `<osm-file>.cache`; `*.cache` is ignored by git.
+
+## Development
+
+```bash
+make test      # go test ./... -v -cover
+make build     # build ./bin/pathcraft
+make clean     # remove ./bin/pathcraft
+go test ./...  # faster local test run without verbose coverage
 ```
 
-## Use Cases
+Benchmarks live next to their packages and can be run with standard Go tooling, for example:
 
-- **Transit Apps**: Journey planning with walking + bus/metro
-- **Logistics**: First/last-mile delivery optimization
-- **Urban Planning**: Accessibility analysis
-- **Research**: Algorithm benchmarking and development
+```bash
+go test ./internal/routing/astar -bench=. -benchmem
+```
 
-## Technical Details
+## Project Status
 
-**Stack**: Go 1.25+, no external dependencies for core algorithms
-
-**Data Formats**:
-- OpenStreetMap XML (.osm)
-- GTFS (stops.txt, routes.txt, stop_times.txt, etc.)
-- GeoJSON output
-
-**Testing**: Unit tests for all algorithm implementations
+PathCraft is a prototype routing engine. The core walking, transit, plugin, CLI, and demo flows work, but production hardening is still pending. Known next steps include richer multimodal modeling, better stop discovery, CORS/API polish, deployment packaging, preprocessing, caching, and scale-oriented performance work.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Keep changes deterministic, formatted, tested, and aligned with the internal/public package boundaries.
 
 ## License
 
-[MIT License](LICENSE)
+[MIT](LICENSE)

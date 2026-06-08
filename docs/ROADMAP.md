@@ -19,7 +19,7 @@
 Goal: Make Pathcraft usable as a library.
 
 - [x] Finalize `engine` public API
-- [x] Config struct (speed, mode, penalties)
+- [ ] Config struct (speed, mode, penalties)
 - [x] Route → GeoJSON pipeline
 - [x] Deterministic tests
 - [ ] Benchmark routing performance
@@ -34,7 +34,7 @@ Deliverable:
 
 Goal: Turn Pathcraft into a service.
 
-- [x] HTTP server mode (`pathcraft serve`)
+- [x] HTTP server mode (`pathcraft server`, alias: `pathcraft serve`)
 - [x] `/route` endpoint
 - [x] `/health` endpoint
 - [x] JSON + GeoJSON output
@@ -42,7 +42,7 @@ Goal: Turn Pathcraft into a service.
 - [x] Static map viewer
 
 Deliverable:
-- Docker-ready routing server
+- Runnable routing server prototype
 
 ---
 
@@ -52,11 +52,11 @@ Goal: Multimodal routing.
 
 - [x] GTFS ingestion
 - [x] RAPTOR algorithm
-- [ ] Walk + Transit integration
-- [ ] Time-dependent routing
+- [x] Walk + Transit integration (initial coordinate + nearest-stop version)
+- [ ] Time-dependent multimodal routing
 
 Deliverable:
-- Public transit routing engine
+- Public transit and multimodal routing prototype
 
 ---
 

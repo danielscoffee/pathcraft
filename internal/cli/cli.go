@@ -23,23 +23,30 @@ func PrintUsage() {
 
 	Commands:
 	parse    Parse OSM file and show statistics
-	route    Find route between two points (walking)
+	route    Find route between two points (walking, node IDs or coordinates)
 	transit  Find transit route using RAPTOR algorithm
-	server   Start HTTP server with routing endpoints
+	journey  Find a walk + transit journey from coordinates
+	serve    Start HTTP server with routing endpoints
+	server   Alias for serve
+	plugins  List registered plugins (algorithms, loaders, exporters)
+	pipeline Run loader → algorithm → exporter via plugin registry
 	help     Show this help message
 
 	Examples:
 	pathcraft parse --file map.osm
 	pathcraft route --file map.osm --from 1 --to 100
 	pathcraft route --file map.osm --from 1 --to 100 --coords
-	pathcraft transit --gtfs ./gtfs --from MAIN_ST --to HARBOR --time 08:00:00
-	pathcraft server --file map.osm --addr :8080
+	pathcraft route --file map.osm --from-lat -8.05428 --from-lon -34.88130 --to-lat -8.05480 --to-lon -34.88030 --coords
+	pathcraft transit --gtfs ./examples/gtfs --from RECIFE --to CAMARAGIBE --time 05:00:00
+	pathcraft journey --file examples/example.osm --gtfs examples/mini_gtfs --from-lat -8.05428 --from-lon -34.88130 --to-lat -8.05480 --to-lon -34.88030 --time 05:00:00
+	pathcraft serve --file map.osm --addr :8080
 	`)
 }
 
 func CmdServer(args []string) error {
 	fs := flag.NewFlagSet("server", flag.ExitOnError)
 	file := fs.String("file", "", "OSM file to parse (.osm or .osm.gz)")
+	gtfsDir := fs.String("gtfs", "", "Directory containing GTFS files for transit and multimodal endpoints")
 	addr := fs.String("addr", ":8080", "HTTP server address")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -52,6 +59,11 @@ func CmdServer(args []string) error {
 	e, err := loadEngine(*file)
 	if err != nil {
 		return err
+	}
+	if *gtfsDir != "" {
+		if err := e.LoadGTFSDir(*gtfsDir); err != nil {
+			return err
+		}
 	}
 
 	fmt.Printf("Starting HTTP server on %s...\n", *addr)
@@ -122,6 +134,10 @@ func CmdRoute(args []string) error {
 	file := fs.String("file", "", "OSM file to parse (.osm or .osm.gz)")
 	from := fs.Int64("from", 0, "Source node ID")
 	to := fs.Int64("to", 0, "Target node ID")
+	fromLat := fs.Float64("from-lat", 0, "Source latitude")
+	fromLon := fs.Float64("from-lon", 0, "Source longitude")
+	toLat := fs.Float64("to-lat", 0, "Target latitude")
+	toLon := fs.Float64("to-lon", 0, "Target longitude")
 	speed := fs.Float64("speed", mobility.DefaultWalkingSpeedMPS, "Walking speed in m/s (default: 1.4 = 5 km/h)")
 	coords := fs.Bool("coords", false, "Include coordinates in output")
 	if err := fs.Parse(args); err != nil {
@@ -131,29 +147,50 @@ func CmdRoute(args []string) error {
 	if *file == "" {
 		return fmt.Errorf("--file is required")
 	}
-	if *from == 0 || *to == 0 {
-		return fmt.Errorf("--from and --to are required")
-	}
 
 	e, err := loadEngine(*file)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Finding route from %d to %d...\n", *from, *to)
 	start := time.Now()
 
 	profile := mobility.NewWalking(*speed)
-	req := engine.RouteRequest{
-		From:               *from,
-		To:                 *to,
-		Profile:            profile,
-		IncludeCoordinates: *coords,
-	}
+	usingCoords := *fromLat != 0 || *fromLon != 0 || *toLat != 0 || *toLon != 0
 
-	res, err := e.Route(req)
-	if err != nil {
-		return fmt.Errorf("routing: %w", err)
+	var res *engine.RouteResult
+	var coordRes *engine.CoordinateRouteResult
+	if usingCoords {
+		if *fromLat == 0 || *fromLon == 0 || *toLat == 0 || *toLon == 0 {
+			return fmt.Errorf("--from-lat, --from-lon, --to-lat, and --to-lon are required for coordinate routing")
+		}
+		fmt.Printf("Finding route from (%.6f, %.6f) to (%.6f, %.6f)...\n", *fromLat, *fromLon, *toLat, *toLon)
+		coordRes, err = e.RouteByCoordinates(engine.CoordinateRouteRequest{
+			FromLat:            *fromLat,
+			FromLon:            *fromLon,
+			ToLat:              *toLat,
+			ToLon:              *toLon,
+			Profile:            profile,
+			IncludeCoordinates: *coords,
+		})
+		if err != nil {
+			return fmt.Errorf("routing: %w", err)
+		}
+		res = &coordRes.RouteResult
+	} else {
+		if *from == 0 || *to == 0 {
+			return fmt.Errorf("either --from/--to or full coordinate pairs are required")
+		}
+		fmt.Printf("Finding route from %d to %d...\n", *from, *to)
+		res, err = e.Route(engine.RouteRequest{
+			From:               *from,
+			To:                 *to,
+			Profile:            profile,
+			IncludeCoordinates: *coords,
+		})
+		if err != nil {
+			return fmt.Errorf("routing: %w", err)
+		}
 	}
 
 	routeTime := time.Since(start)
@@ -163,6 +200,10 @@ func CmdRoute(args []string) error {
 	fmt.Printf("  Nodes:    %d\n", len(res.Nodes))
 	fmt.Printf("  Distance: %.0f m\n", res.Distance)
 	fmt.Printf("  Walk time: %.1f min (at %.1f m/s)\n", res.Duration.Minutes(), *speed)
+	if coordRes != nil {
+		fmt.Printf("  Snap from: node %d (%.1f m)\n", coordRes.FromNodeID, coordRes.FromSnapDistanceM)
+		fmt.Printf("  Snap to:   node %d (%.1f m)\n", coordRes.ToNodeID, coordRes.ToSnapDistanceM)
+	}
 
 	fmt.Println()
 	fmt.Println("=== Timing ===")
@@ -187,6 +228,78 @@ func CmdRoute(args []string) error {
 				fmt.Printf("  %d. Node %d\n", len(res.Nodes), res.Nodes[len(res.Nodes)-1])
 			}
 			break
+		}
+	}
+
+	return nil
+}
+
+func CmdJourney(args []string) error {
+	fs := flag.NewFlagSet("journey", flag.ExitOnError)
+	file := fs.String("file", "", "OSM file to parse (.osm or .osm.gz)")
+	gtfsDir := fs.String("gtfs", "", "Directory containing GTFS files including stops.txt")
+	fromLat := fs.Float64("from-lat", 0, "Source latitude")
+	fromLon := fs.Float64("from-lon", 0, "Source longitude")
+	toLat := fs.Float64("to-lat", 0, "Target latitude")
+	toLon := fs.Float64("to-lon", 0, "Target longitude")
+	depTime := fs.String("time", "08:00:00", "Departure time (HH:MM:SS)")
+	speed := fs.Float64("speed", mobility.DefaultWalkingSpeedMPS, "Walking speed in m/s")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	if *file == "" || *gtfsDir == "" {
+		return fmt.Errorf("--file and --gtfs are required")
+	}
+	if *fromLat == 0 || *fromLon == 0 || *toLat == 0 || *toLon == 0 {
+		return fmt.Errorf("--from-lat, --from-lon, --to-lat, and --to-lon are required")
+	}
+
+	e, err := loadEngine(*file)
+	if err != nil {
+		return err
+	}
+	if err := e.LoadGTFSDir(*gtfsDir); err != nil {
+		return err
+	}
+
+	fmt.Printf("Searching multimodal journey from (%.6f, %.6f) to (%.6f, %.6f) at %s...\n", *fromLat, *fromLon, *toLat, *toLon, *depTime)
+	start := time.Now()
+	res, err := e.MultimodalRoute(engine.MultimodalRouteRequest{
+		FromLat:        *fromLat,
+		FromLon:        *fromLon,
+		ToLat:          *toLat,
+		ToLon:          *toLon,
+		DepartureTime:  *depTime,
+		WalkingProfile: mobility.NewWalking(*speed),
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Println("=== Journey Found ===")
+	fmt.Printf("  Mode:      %s\n", res.Mode)
+	fmt.Printf("  Departure: %s\n", res.DepartureTime)
+	fmt.Printf("  Arrival:   %s\n", res.ArrivalTime)
+	fmt.Printf("  Duration:  %.1f min\n", res.TotalDuration.Minutes())
+	fmt.Printf("  Walking:   %.0f m\n", res.WalkingDistanceM)
+	fmt.Printf("  Search:    %v\n", time.Since(start))
+
+	if res.OriginStopID != "" || res.DestinationStopID != "" {
+		fmt.Printf("  Transit:   %s -> %s\n", res.OriginStopID, res.DestinationStopID)
+	}
+
+	fmt.Println()
+	fmt.Println("=== Legs ===")
+	for i, leg := range res.Legs {
+		switch leg.Mode {
+		case "walk":
+			fmt.Printf("  %d. Walk: %s -> %s (%.0f m, %.1f min)\n", i+1, leg.FromName, leg.ToName, leg.DistanceM, leg.Duration.Minutes())
+		case "transfer":
+			fmt.Printf("  %d. Transfer: %s -> %s\n", i+1, leg.FromName, leg.ToName)
+		default:
+			fmt.Printf("  %d. Transit %s: %s -> %s\n", i+1, leg.TripID, leg.FromName, leg.ToName)
 		}
 	}
 

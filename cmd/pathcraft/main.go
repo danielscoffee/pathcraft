@@ -5,6 +5,14 @@ import (
 	"os"
 
 	"github.com/danielscoffee/pathcraft/internal/cli"
+
+	// Register built-in plugins so they are visible to the registry-backed
+	// pipeline command and `pathcraft plugins list`.
+	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/astar"
+	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/geojson"
+	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/gtfs"
+	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/osm"
+	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/raptor"
 )
 
 func main() {
@@ -27,8 +35,16 @@ func run() error {
 		return cli.CmdRoute(os.Args[2:])
 	case "transit":
 		return cli.CmdTransit(os.Args[2:])
+	case "journey":
+		return cli.CmdJourney(os.Args[2:])
+	case "serve":
+		return cli.CmdServer(os.Args[2:])
 	case "server":
 		return cli.CmdServer(os.Args[2:])
+	case "plugins":
+		return cli.CmdPlugins(os.Args[2:])
+	case "pipeline":
+		return cli.CmdPipeline(os.Args[2:])
 	case "help":
 		cli.PrintUsage()
 		return nil

@@ -23,12 +23,20 @@ func GraphToGeoJSON(g *graph.Graph) []byte {
 		fromNode := g.Nodes[from]
 		for _, e := range edges {
 			toNode := g.Nodes[e.To]
+			props := map[string]any{}
+			if e.Highway != "" {
+				props["highway"] = e.Highway
+			}
+			if e.Name != "" {
+				props["name"] = e.Name
+			}
 			features = append(features, Feature{
 				Type: "Feature",
 				Geometry: map[string]any{
 					"type":        "LineString",
 					"coordinates": [][]float64{{fromNode.Lon, fromNode.Lat}, {toNode.Lon, toNode.Lat}},
 				},
+				Properties: props,
 			})
 		}
 	}
@@ -59,12 +67,20 @@ func WriteGraphToGeoJSON(g *graph.Graph, w io.Writer) error {
 			first = false
 
 			toNode := g.Nodes[e.To]
+			props := map[string]any{}
+			if e.Highway != "" {
+				props["highway"] = e.Highway
+			}
+			if e.Name != "" {
+				props["name"] = e.Name
+			}
 			feature := Feature{
 				Type: "Feature",
 				Geometry: map[string]any{
 					"type":        "LineString",
 					"coordinates": [][]float64{{fromNode.Lon, fromNode.Lat}, {toNode.Lon, toNode.Lat}},
 				},
+				Properties: props,
 			}
 			b, err := json.Marshal(feature)
 			if err != nil {

@@ -226,7 +226,9 @@ func BuildGraph(data *Data, filter *Filter) *graph.Graph {
 
 			distance := geo.HaversineDistance(fromNode.Lat, fromNode.Lon, toNode.Lat, toNode.Lon)
 
-			g.AddBidirectionalEdge(graph.NodeID(fromID), graph.NodeID(toID), distance)
+			highway := w.Tags["highway"]
+			name := w.Tags["name"]
+			g.AddBidirectionalEdgeWithMeta(graph.NodeID(fromID), graph.NodeID(toID), distance, highway, name)
 		}
 	}
 

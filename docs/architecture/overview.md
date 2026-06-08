@@ -5,7 +5,7 @@ It is designed to work as:
 
 - a reusable **Go library (SDK)**
 - a **CLI application**
-- an **HTTP server (ready-to-run)**
+- a **small HTTP server for debugging and demos**
 - an **embedded engine** inside other systems
 
 The architecture follows **Modular Monolith** 

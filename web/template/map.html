@@ -2,13 +2,117 @@
 <html>
 <head>
 	<meta charset="utf-8" />
-	<title>Pathcraft Map</title>
+	<title>PathCraft — Routing Demo</title>
 
 	<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 
 	<style>
-		#map {
-			height: 100vh;
+		:root {
+			--bg: #0f172a;
+			--panel: rgba(15, 23, 42, 0.92);
+			--accent: #38bdf8;
+			--accent-strong: #0ea5e9;
+			--muted: #94a3b8;
+			--text: #e2e8f0;
+			--ok: #4ade80;
+			--err: #f87171;
+		}
+
+		html, body { margin: 0; height: 100%; font-family: -apple-system, system-ui, sans-serif; }
+		#map { height: 100vh; }
+
+		.panel {
+			position: absolute;
+			top: 14px;
+			left: 14px;
+			z-index: 1000;
+			width: 320px;
+			padding: 16px 18px;
+			background: var(--panel);
+			color: var(--text);
+			border-radius: 12px;
+			box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+			backdrop-filter: blur(6px);
+		}
+
+		.panel h1 { margin: 0 0 4px; font-size: 18px; letter-spacing: 0.3px; }
+		.panel h1 .accent { color: var(--accent); }
+		.panel p.lede { margin: 0 0 12px; font-size: 12px; color: var(--muted); }
+
+		.legend {
+			display: grid;
+			grid-template-columns: auto 1fr auto;
+			gap: 8px 10px;
+			align-items: center;
+			margin: 10px 0 12px;
+			font-size: 13px;
+		}
+		.legend .dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; }
+		.legend .from { background: #4ade80; }
+		.legend .to   { background: #f87171; }
+		.legend .val  { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+		.stats {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 6px 12px;
+			margin: 8px 0 12px;
+			font-size: 13px;
+		}
+		.stats .k { color: var(--muted); }
+		.stats .v { color: var(--text); font-variant-numeric: tabular-nums; }
+
+		.btn {
+			display: inline-block;
+			width: 100%;
+			padding: 9px 12px;
+			border: 0;
+			border-radius: 8px;
+			background: var(--accent-strong);
+			color: #fff;
+			font-size: 13px;
+			cursor: pointer;
+		}
+		.btn:hover { background: var(--accent); }
+		.btn.secondary {
+			background: transparent;
+			color: var(--muted);
+			border: 1px solid #334155;
+		}
+		.btn.secondary:hover { color: var(--text); border-color: var(--accent); }
+
+		.status { margin-top: 8px; font-size: 12px; }
+		.status.ok  { color: var(--ok); }
+		.status.err { color: var(--err); }
+
+		.toggles {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 6px;
+			margin-top: 10px;
+		}
+		.toggles label {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			font-size: 12px;
+			color: var(--muted);
+			cursor: pointer;
+		}
+		.toggles input { accent-color: var(--accent-strong); }
+
+		details { margin-top: 12px; font-size: 12px; }
+		details summary { cursor: pointer; color: var(--muted); }
+		details select, details button { width: 100%; margin-top: 6px; padding: 6px; }
+
+		.leaflet-popup-content-wrapper { border-radius: 8px; }
+
+		.legend-row { display: contents; }
+		.legend-row .bar {
+			display: inline-block;
+			width: 22px;
+			border-radius: 1px;
+			align-self: center;
 		}
 	</style>
 </head>
@@ -16,82 +120,365 @@
 <body>
 	<div id="map"></div>
 
-	<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+	<div class="panel">
+		<h1>Path<span class="accent">Craft</span> Demo</h1>
+		<p class="lede">OSRM-style: click two points on the map. PathCraft snaps each to the nearest road, runs A* on demand, and draws the optimal route — no pre-rendered overlay.</p>
 
+		<div class="legend">
+			<span class="dot from"></span><span>A — origin</span><span class="val" id="from-coord">—</span>
+			<span class="dot to"></span><span>B — destination</span><span class="val" id="to-coord">—</span>
+		</div>
+
+		<div class="stats">
+			<span class="k">Distance</span><span class="v" id="stat-dist">—</span>
+			<span class="k">Walk time</span><span class="v" id="stat-time">—</span>
+			<span class="k">Nodes</span><span class="v" id="stat-nodes">—</span>
+			<span class="k">Solve</span><span class="v" id="stat-solve">—</span>
+		</div>
+
+		<button class="btn secondary" id="reset" type="button">Reset (R)</button>
+
+		<div class="status" id="status">Ready. Click A.</div>
+
+		<div class="toggles">
+			<label><input type="checkbox" id="t-graph"> Debug: street graph</label>
+			<label><input type="checkbox" id="t-nodes"> Debug: test nodes</label>
+		</div>
+
+		<details id="legend-wrap" hidden>
+			<summary>Street types</summary>
+			<div id="legend-body" style="margin-top:6px; display:grid; grid-template-columns:auto 1fr; gap:4px 8px; font-size:11px; color:var(--muted);"></div>
+		</details>
+
+		<details>
+			<summary>GTFS trip overlay (optional)</summary>
+			<select id="trip-select"><option value="">Select a trip</option></select>
+			<button id="load-trip" type="button">Render Trip</button>
+		</details>
+	</div>
+
+	<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 	<script>
 		const map = L.map('map').setView(
 			[{{ .CenterLat }}, {{ .CenterLon }}],
 			{{ .Zoom }}
 		);
+		L.tileLayer('{{ .TileURL }}', {
+			attribution: '&copy; OpenStreetMap contributors',
+			maxZoom: 19
+		}).addTo(map);
 
-		L.tileLayer('{{ .TileURL }}').addTo(map);
-
-		let fromNode = null;
-		let toNode = null;
-		let markers = [];
-
-		map.on('click', e => {
-			fetch(`/nearest?lat=${e.latlng.lat}&lon=${e.latlng.lng}`)
-				.then(r => r.json())
-				.then(data => {
-					if (!fromNode) {
-						fromNode = data.id;
-						const m = L.marker(e.latlng).addTo(map).bindPopup(`From: ${data.id}`).openPopup();
-						markers.push(m);
-					} else if (!toNode) {
-						toNode = data.id;
-						const m = L.marker(e.latlng).addTo(map).bindPopup(`To: ${data.id}`).openPopup();
-						markers.push(m);
-						loadRoute(fromNode, toNode);
-					} else {
-						fromNode = data.id;
-						toNode = null;
-						markers.forEach(m => map.removeLayer(m));
-						if (routeLayer) map.removeLayer(routeLayer);
-						
-						const m = L.marker(e.latlng).addTo(map).bindPopup(`From: ${data.id}`).openPopup();
-						markers = [m];
-					}
-				});
+		const fromIcon = L.divIcon({
+			className: 'pc-marker',
+			html: '<div style="background:#4ade80;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);"></div>',
+			iconSize: [18, 18], iconAnchor: [9, 9]
+		});
+		const toIcon = L.divIcon({
+			className: 'pc-marker',
+			html: '<div style="background:#f87171;width:18px;height:18px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);"></div>',
+			iconSize: [18, 18], iconAnchor: [9, 9]
 		});
 
-		let streetsLayer = null;
+		let fromLatLng = null, toLatLng = null;
+		let fromMarker = null, toMarker = null;
 		let routeLayer = null;
 
-		fetch('{{ .StreetsURL }}')
-			.then(r => r.json())
-			.then(data => {
-				streetsLayer = L.geoJSON(data, {
-					style: {
-						color: '{{ .StreetsColor }}',
-						weight: {{ .StreetsWeight }}
-					}
-				}).addTo(map);
-			});
-		// TODO: USE CURSOR CLICK TO SETUP ROUTES
-		function loadRoute(from, to) {
-			fetch(`{{ .RouteURL }}?from=${from}&to=${to}`)
-				.then(r => r.json())
-				.then(data => {
-					if (routeLayer) {
-						map.removeLayer(routeLayer);
-					}
+		const $ = id => document.getElementById(id);
+		const fmt = n => n.toLocaleString(undefined, { maximumFractionDigits: 1 });
+		const setStatus = (msg, cls = '') => {
+			const el = $('status');
+			el.className = 'status ' + cls;
+			el.textContent = msg;
+		};
 
-					routeLayer = L.geoJSON(data, {
-						style: {
-							color: '{{ .RouteColor }}',
-							weight: {{ .RouteWeight }}
-						}
+		// === click → snap to nearest road → solve on B ===
+		map.on('click', e => {
+			if (!fromLatLng) {
+				snapAndPlace(e.latlng, 'from');
+			} else if (!toLatLng) {
+				snapAndPlace(e.latlng, 'to');
+			} else {
+				reset(false);
+				snapAndPlace(e.latlng, 'from');
+			}
+		});
+
+		function snapAndPlace(latlng, role) {
+			setStatus(role === 'from' ? 'Snapping A…' : 'Snapping B…');
+			fetch(`/nearest?lat=${latlng.lat}&lon=${latlng.lng}`)
+				.then(r => r.json())
+				.then(snap => {
+					const ll = L.latLng(latlng.lat, latlng.lng); // request point
+					// Server gives us snap distance; for marker we use clicked point.
+					// To show the *snapped* node visually, we'd need its lat/lon — currently
+					// /nearest returns id+distance only. Marker stays at click; route starts
+					// from the snapped node.
+					if (role === 'from') {
+						fromLatLng = ll;
+						fromMarker = L.marker(ll, { icon: fromIcon })
+							.bindPopup(`A — node ${snap.id} (${fmt(snap.distance)} m off road)`)
+							.addTo(map);
+						$('from-coord').textContent = `${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}`;
+						setStatus('Click B.');
+					} else {
+						toLatLng = ll;
+						toMarker = L.marker(ll, { icon: toIcon })
+							.bindPopup(`B — node ${snap.id} (${fmt(snap.distance)} m off road)`)
+							.addTo(map);
+						$('to-coord').textContent = `${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}`;
+						solve();
+					}
+				})
+				.catch(err => setStatus('Snap failed: ' + err.message, 'err'));
+		}
+
+		function reset(setMsg = true) {
+			[fromMarker, toMarker, routeLayer].forEach(l => l && map.removeLayer(l));
+			fromMarker = toMarker = routeLayer = null;
+			fromLatLng = toLatLng = null;
+			$('from-coord').textContent = '—';
+			$('to-coord').textContent = '—';
+			$('stat-dist').textContent = '—';
+			$('stat-time').textContent = '—';
+			$('stat-nodes').textContent = '—';
+			$('stat-solve').textContent = '—';
+			if (setMsg) setStatus('Ready. Click A.');
+		}
+
+		$('reset').addEventListener('click', () => reset());
+		document.addEventListener('keydown', e => { if (e.key === 'r' || e.key === 'R') reset(); });
+
+		// === solve: render route on demand ===
+		function solve() {
+			setStatus('Solving…');
+			const t0 = performance.now();
+			const url = `{{ .RouteURL }}?from_lat=${fromLatLng.lat}&from_lon=${fromLatLng.lng}` +
+			            `&to_lat=${toLatLng.lat}&to_lon=${toLatLng.lng}`;
+			fetch(url)
+				.then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(new Error(t || r.statusText))))
+				.then(geojson => {
+					const t1 = performance.now();
+					if (routeLayer) map.removeLayer(routeLayer);
+					routeLayer = L.geoJSON(geojson, {
+						style: { color: '{{ .RouteColor }}', weight: {{ .RouteWeight }}, opacity: 0.95 }
 					}).addTo(map);
 
-					map.fitBounds(routeLayer.getBounds());
+					const coords = (geojson.features && geojson.features[0] && geojson.features[0].geometry && geojson.features[0].geometry.coordinates) || [];
+					const dist = approxLengthMeters(coords);
+					const speed = 1.4;
+					$('stat-dist').textContent  = fmt(dist) + ' m';
+					$('stat-time').textContent  = fmt(dist / speed / 60) + ' min';
+					$('stat-nodes').textContent = String(coords.length);
+					$('stat-solve').textContent = fmt(t1 - t0) + ' ms';
+					try { map.fitBounds(routeLayer.getBounds().pad(0.15)); } catch (_) {}
+					setStatus('Optimal route found.', 'ok');
+				})
+				.catch(err => setStatus('No path: ' + err.message, 'err'));
+		}
+
+		function approxLengthMeters(coords) {
+			let total = 0;
+			for (let i = 1; i < coords.length; i++) {
+				total += haversine(coords[i-1][1], coords[i-1][0], coords[i][1], coords[i][0]);
+			}
+			return total;
+		}
+		function haversine(lat1, lon1, lat2, lon2) {
+			const R = 6371000;
+			const toRad = d => d * Math.PI / 180;
+			const dLat = toRad(lat2 - lat1);
+			const dLon = toRad(lon2 - lon1);
+			const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+			return 2 * R * Math.asin(Math.sqrt(a));
+		}
+
+		// === debug overlays (opt-in via checkboxes) ===
+		const HIGHWAY_STYLE = {
+			motorway:{color:'#e11d48',weight:5}, trunk:{color:'#f97316',weight:4.5},
+			primary:{color:'#f59e0b',weight:4}, secondary:{color:'#fbbf24',weight:3.5},
+			tertiary:{color:'#fde047',weight:3}, residential:{color:'#94a3b8',weight:2},
+			service:{color:'#64748b',weight:1.5}, unclassified:{color:'#94a3b8',weight:2},
+			living_street:{color:'#a3a3a3',weight:2}, pedestrian:{color:'#22d3ee',weight:2},
+			footway:{color:'#22d3ee',weight:1.5}, path:{color:'#22d3ee',weight:1.5},
+			cycleway:{color:'#34d399',weight:2}, steps:{color:'#a78bfa',weight:1.5},
+		};
+		const DEFAULT_HW_STYLE = { color: '#475569', weight: 1.2 };
+		const styleForHighway = hw => HIGHWAY_STYLE[hw] || DEFAULT_HW_STYLE;
+
+		let streetsLayer = null, streetsCache = null;
+		$('t-graph').addEventListener('change', e => {
+			if (e.target.checked) {
+				setStatus('Loading street graph…');
+				const ensure = streetsCache
+					? Promise.resolve(streetsCache)
+					: fetch('{{ .StreetsURL }}').then(r => r.json()).then(d => { streetsCache = d; return d; });
+				ensure.then(data => {
+					streetsLayer = L.geoJSON(data, {
+						style: f => {
+							const s = styleForHighway(f.properties && f.properties.highway);
+							return { color: s.color, weight: s.weight, opacity: 0.7 };
+						},
+						onEachFeature: (f, layer) => {
+							const hw = (f.properties && f.properties.highway) || 'unknown';
+							const name = (f.properties && f.properties.name) || '(unnamed)';
+							const tip = document.createElement('span');
+							tip.textContent = `${name} — ${hw}`;
+							layer.bindTooltip(tip, { sticky: true, direction: 'top' });
+						}
+					}).addTo(map);
+					buildLegend(data.features || []);
+					$('legend-wrap').hidden = false;
+					$('legend-wrap').open = true;
+					setStatus(`Street graph: ${(data.features || []).length} edges shown.`);
+				}).catch(err => setStatus('Graph load failed: ' + err.message, 'err'));
+			} else {
+				if (streetsLayer) { map.removeLayer(streetsLayer); streetsLayer = null; }
+				$('legend-wrap').hidden = true;
+			}
+		});
+
+		function buildLegend(features) {
+			const seen = new Set();
+			features.forEach(f => { if (f.properties && f.properties.highway) seen.add(f.properties.highway); });
+			const order = ['motorway','trunk','primary','secondary','tertiary','residential','service','unclassified','living_street','pedestrian','footway','path','cycleway','steps'];
+			const list = order.filter(k => seen.has(k));
+			seen.forEach(k => { if (!order.includes(k)) list.push(k); });
+			const target = $('legend-body');
+			while (target.firstChild) target.removeChild(target.firstChild);
+			list.forEach(k => {
+				const s = styleForHighway(k);
+				const bar = document.createElement('span');
+				bar.className = 'bar';
+				bar.style.background = s.color;
+				bar.style.height = Math.max(2, s.weight) + 'px';
+				const label = document.createElement('span');
+				label.textContent = k;
+				const row = document.createElement('div');
+				row.className = 'legend-row';
+				row.appendChild(bar); row.appendChild(label);
+				target.appendChild(row);
+			});
+		}
+
+		// === viewport-driven OSM node markers (OSRM-style) ===
+		// Only fetch nodes inside the current map bounds. Refetches on pan/zoom
+		// (debounced). Skips render below MIN_ZOOM_NODES to avoid flooding.
+		let nodesLayer = null;
+		let nodesEnabled = false;
+		let nodesAbort = null;
+		let nodesDebounceTimer = null;
+		const MIN_ZOOM_NODES = 16;       // below this, too many nodes to draw
+		const NODES_MAX = 200;           // hard cap per fetch
+		const NODES_MIN_DEGREE = 3;      // intersections only (degree >= 3)
+
+		$('t-nodes').addEventListener('change', e => {
+			nodesEnabled = e.target.checked;
+			if (nodesEnabled) {
+				refreshNodes();
+			} else if (nodesLayer) {
+				map.removeLayer(nodesLayer);
+				nodesLayer = null;
+			}
+		});
+
+		map.on('moveend zoomend', () => {
+			if (!nodesEnabled) return;
+			if (nodesDebounceTimer) clearTimeout(nodesDebounceTimer);
+			nodesDebounceTimer = setTimeout(refreshNodes, 200);
+		});
+
+		function refreshNodes() {
+			if (!nodesEnabled) return;
+			const z = map.getZoom();
+			if (z < MIN_ZOOM_NODES) {
+				if (nodesLayer) { map.removeLayer(nodesLayer); nodesLayer = null; }
+				setStatus(`Zoom in (≥ ${MIN_ZOOM_NODES}) to render nodes.`);
+				return;
+			}
+			const b = map.getBounds();
+			const bbox = [
+				b.getWest().toFixed(6),
+				b.getSouth().toFixed(6),
+				b.getEast().toFixed(6),
+				b.getNorth().toFixed(6),
+			].join(',');
+			const url = `/nodes?bbox=${bbox}&limit=${NODES_MAX}&min_degree=${NODES_MIN_DEGREE}`;
+
+			if (nodesAbort) nodesAbort.abort();
+			nodesAbort = new AbortController();
+
+			fetch(url, { signal: nodesAbort.signal })
+				.then(r => r.json())
+				.then(fc => {
+					if (nodesLayer) map.removeLayer(nodesLayer);
+					nodesLayer = L.geoJSON(fc, {
+						pointToLayer: (feat, latlng) => {
+							const id = feat.properties.id;
+							const deg = feat.properties.degree;
+							const m = L.circleMarker(latlng, {
+								radius: Math.min(10, 4 + deg),
+								color: '#0ea5e9', weight: 2,
+								fillColor: '#38bdf8', fillOpacity: 0.9
+							});
+							const tip = document.createElement('span');
+							tip.textContent = `${id} (deg ${deg})`;
+							m.bindTooltip(tip, { direction: 'top', offset: [0, -8] });
+							m.on('click', () => {
+								// Use node center as A or B
+								if (!fromLatLng) {
+									snapAndPlace(latlng, 'from');
+								} else if (!toLatLng) {
+									snapAndPlace(latlng, 'to');
+								}
+							});
+							return m;
+						}
+					}).addTo(map);
+					const n = (fc.features || []).length;
+					setStatus(`${n} node${n === 1 ? '' : 's'} in view${n === NODES_MAX ? ' (capped)' : ''}.`);
+				})
+				.catch(err => {
+					if (err.name !== 'AbortError') setStatus('Nodes fetch failed: ' + err.message, 'err');
 				});
 		}
 
-		// =====================
-		// DEBUG (example of debug for now)
-		// =====================
-		// loadRoute(1, 6);
+		// === GTFS overlay (unchanged behavior) ===
+		let tripPathLayer = null, tripStopsLayer = null;
+		fetch('/transit/trips')
+			.then(r => r.ok ? r.json() : null)
+			.then(data => {
+				if (!data || !data.trip_ids) return;
+				const select = $('trip-select');
+				data.trip_ids.forEach(tripID => {
+					const opt = document.createElement('option');
+					opt.value = tripID; opt.textContent = tripID;
+					select.appendChild(opt);
+				});
+			});
+		$('load-trip').addEventListener('click', () => {
+			const tripID = $('trip-select').value;
+			if (!tripID) return;
+			fetch(`/transit/trip?trip_id=${encodeURIComponent(tripID)}`)
+				.then(r => r.ok ? r.json() : Promise.reject(new Error('failed')))
+				.then(data => {
+					if (tripPathLayer) map.removeLayer(tripPathLayer);
+					if (tripStopsLayer) map.removeLayer(tripStopsLayer);
+					tripPathLayer = L.geoJSON(data.path_geojson, {
+						style: { color: '#1d4ed8', weight: 4, opacity: 0.9 }
+					}).addTo(map);
+					tripStopsLayer = L.layerGroup(
+						data.stop_times.map(st => L.circleMarker([st.lat, st.lon], {
+							radius: 6, color: '#1e3a8a', weight: 2,
+							fillColor: '#60a5fa', fillOpacity: 0.95
+						}).bindPopup(
+							`<strong>${st.stop_name}</strong><br>Stop: ${st.stop_id}<br>` +
+							`Seq: ${st.stop_sequence}<br>Arr: ${st.arrival_time}<br>Dep: ${st.departure_time}`
+						))
+					).addTo(map);
+					const b = tripPathLayer.getBounds();
+					if (b.isValid()) map.fitBounds(b.pad(0.2));
+				}).catch(console.error);
+		});
 	</script>
 </body>
 </html>

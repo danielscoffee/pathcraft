@@ -92,6 +92,30 @@ func TestBuildIndex(t *testing.T) {
 	}
 }
 
+func TestParseStops(t *testing.T) {
+	csvData := `stop_id,stop_name,stop_lat,stop_lon
+stopA,Stop A,-8.05428,-34.88130
+stopB,Stop B,-8.05480,-34.88030
+`
+
+	stops, err := gtfs.ParseStops(strings.NewReader(csvData))
+	if err != nil {
+		t.Fatalf("ParseStops() error = %v", err)
+	}
+
+	if len(stops) != 2 {
+		t.Fatalf("expected 2 stops, got %d", len(stops))
+	}
+
+	stopA := stops["stopA"]
+	if stopA.Name != "Stop A" {
+		t.Errorf("stopA.Name = %q, want %q", stopA.Name, "Stop A")
+	}
+	if stopA.Lat != -8.05428 || stopA.Lon != -34.88130 {
+		t.Errorf("stopA coords = (%v, %v), want (-8.05428, -34.88130)", stopA.Lat, stopA.Lon)
+	}
+}
+
 func TestEarliestTrip(t *testing.T) {
 	stopTimes := []gtfs.StopTime{
 		{TripID: "trip1", StopID: "stopA", ArrivalTime: 8 * 3600, DepartureTime: 8 * 3600, StopSequence: 1},
