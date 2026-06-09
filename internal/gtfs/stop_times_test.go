@@ -92,6 +92,55 @@ func TestBuildIndex(t *testing.T) {
 	}
 }
 
+func TestParseTripInfos(t *testing.T) {
+	csvData := `route_id,service_id,trip_id,trip_headsign,direction_id,shape_id
+010,WD,T1,Principal,0,S1
+020,WD,T2,Principal,1,S2
+`
+
+	infos, err := gtfs.ParseTripInfos(strings.NewReader(csvData))
+	if err != nil {
+		t.Fatalf("ParseTripInfos() error = %v", err)
+	}
+	if infos["T1"].RouteID != "010" || infos["T1"].ShapeID != "S1" {
+		t.Fatalf("unexpected T1 info: %+v", infos["T1"])
+	}
+}
+
+func TestParseShapes(t *testing.T) {
+	csvData := `shape_id,shape_pt_lat,shape_pt_lon,shape_pt_sequence
+S1,-8.0,-34.0,2
+S1,-8.1,-34.1,1
+S2,-9.0,-35.0,1
+`
+
+	shapes, err := gtfs.ParseShapes(strings.NewReader(csvData))
+	if err != nil {
+		t.Fatalf("ParseShapes() error = %v", err)
+	}
+	if len(shapes["S1"]) != 2 {
+		t.Fatalf("expected 2 S1 points, got %d", len(shapes["S1"]))
+	}
+	if shapes["S1"][0].Sequence != 1 || shapes["S1"][0].Lat != -8.1 {
+		t.Fatalf("expected S1 sorted by sequence, got %+v", shapes["S1"])
+	}
+}
+
+func TestParseRoutes(t *testing.T) {
+	csvData := `route_id,agency_id,route_short_name,route_long_name,route_type
+001,CTC,001,Ponte Dos Carvalhos / Prazeres,3
+010,BOA,010,Abdo Cabus,3
+`
+
+	routes, err := gtfs.ParseRoutes(strings.NewReader(csvData))
+	if err != nil {
+		t.Fatalf("ParseRoutes() error = %v", err)
+	}
+	if routes["001"].ShortName != "001" || routes["001"].LongName != "Ponte Dos Carvalhos / Prazeres" {
+		t.Fatalf("unexpected route 001 metadata: %+v", routes["001"])
+	}
+}
+
 func TestParseStops(t *testing.T) {
 	csvData := `stop_id,stop_name,stop_lat,stop_lon
 stopA,Stop A,-8.05428,-34.88130

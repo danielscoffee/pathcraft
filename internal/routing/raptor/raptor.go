@@ -10,6 +10,7 @@ type JourneyStep struct {
 	ToStop     gtfs.StopID
 	TripID     gtfs.TripID // Empty if transfer
 	IsTransfer bool
+	Duration   time.Time
 }
 
 type Result struct {
@@ -139,6 +140,7 @@ func (r *Router) Search(source gtfs.StopID, departureTime time.Time) *Result {
 						FromStop:   stopID,
 						ToStop:     tr.To,
 						IsTransfer: true,
+						Duration:   tr.Duration,
 					}
 				}
 			}

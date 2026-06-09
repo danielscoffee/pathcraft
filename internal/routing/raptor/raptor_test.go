@@ -1,9 +1,33 @@
 package raptor
 
 import (
-	"github.com/danielscoffee/pathcraft/internal/gtfs"
 	"testing"
+
+	"github.com/danielscoffee/pathcraft/internal/gtfs"
 )
+
+func TestRAPTORHandlesOppositeDirectionsOnSameRoute(t *testing.T) {
+	stopTimes := []gtfs.StopTime{
+		{TripID: "OUT", StopID: "A", ArrivalTime: 8 * 3600, DepartureTime: 8 * 3600, StopSequence: 1},
+		{TripID: "OUT", StopID: "B", ArrivalTime: 8*3600 + 300, DepartureTime: 8*3600 + 300, StopSequence: 2},
+		{TripID: "OUT", StopID: "C", ArrivalTime: 8*3600 + 600, DepartureTime: 8*3600 + 600, StopSequence: 3},
+		{TripID: "BACK", StopID: "C", ArrivalTime: 9 * 3600, DepartureTime: 9 * 3600, StopSequence: 1},
+		{TripID: "BACK", StopID: "B", ArrivalTime: 9*3600 + 300, DepartureTime: 9*3600 + 300, StopSequence: 2},
+		{TripID: "BACK", StopID: "A", ArrivalTime: 9*3600 + 600, DepartureTime: 9*3600 + 600, StopSequence: 3},
+	}
+	idx := gtfs.BuildIndex(stopTimes, gtfs.TripToRoute{"OUT": "R", "BACK": "R"})
+	router := NewRouter(idx, nil)
+
+	out := router.Search("A", 7*3600)
+	if got, ok := out.EarliestArrival["C"]; !ok || got != 8*3600+600 {
+		t.Fatalf("A -> C arrival = %v, %v; want %v, true", got, ok, 8*3600+600)
+	}
+
+	back := router.Search("C", 8*3600+1800)
+	if got, ok := back.EarliestArrival["A"]; !ok || got != 9*3600+600 {
+		t.Fatalf("C -> A arrival = %v, %v; want %v, true", got, ok, 9*3600+600)
+	}
+}
 
 func TestRAPTOR(t *testing.T) {
 	// Setup a simple network
