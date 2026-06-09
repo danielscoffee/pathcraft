@@ -1,7 +1,9 @@
 package graph
 
 import (
+	"encoding/gob"
 	"math"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -20,6 +22,30 @@ func TestNearestNodeUsesSpatialIndex(t *testing.T) {
 	}
 	if dist <= 0 {
 		t.Fatalf("distance = %f, want > 0", dist)
+	}
+}
+
+func TestLoadGraphRejectsUnversionedCache(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "old.gob")
+
+	old := &Graph{
+		Nodes: map[NodeID]Node{1: {ID: 1, Lat: 0, Lon: 0}},
+		Edges: map[NodeID][]Edge{},
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if err := gob.NewEncoder(f).Encode(old); err != nil {
+		t.Fatalf("Encode() error = %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	if _, err := LoadGraph(path); err == nil {
+		t.Fatal("expected unversioned graph cache to be rejected")
 	}
 }
 

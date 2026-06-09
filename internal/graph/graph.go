@@ -2,6 +2,7 @@ package graph
 
 import (
 	"encoding/gob"
+	"fmt"
 	"os"
 
 	"github.com/danielscoffee/pathcraft/internal/time"
@@ -10,12 +11,20 @@ import (
 
 type NodeID int64
 
+type RestrictedMode string
+
+const (
+	RestrictedDriving RestrictedMode = "driving"
+	RestrictedWalking RestrictedMode = "walking"
+)
+
 type Edge struct {
-	To        NodeID
-	Cost      time.Seconds
-	DistanceM float64
-	Highway   string
-	Name      string
+	To              NodeID
+	Cost            time.Seconds
+	DistanceM       float64
+	Highway         string
+	Name            string
+	RestrictedModes []RestrictedMode
 }
 
 type Node struct {
@@ -24,15 +33,19 @@ type Node struct {
 	Lon float64
 }
 
+const CacheVersion = 3
+
 type Graph struct {
-	Nodes map[NodeID]Node
-	Edges map[NodeID][]Edge
+	CacheVersion int
+	Nodes        map[NodeID]Node
+	Edges        map[NodeID][]Edge
 
 	nearestNodeIndex plugins.NearestNodeIndex
 }
 
 func NewGraph() *Graph {
 	return &Graph{
+		CacheVersion:     CacheVersion,
 		Nodes:            make(map[NodeID]Node),
 		Edges:            make(map[NodeID][]Edge),
 		nearestNodeIndex: plugins.NewGridNearestNodeIndex(),
@@ -56,11 +69,16 @@ func (g *Graph) AddBidirectionalEdge(a, b NodeID, distanceM float64) {
 }
 
 func (g *Graph) AddEdgeWithMeta(from, to NodeID, distanceM float64, highway, name string) {
+	g.AddRestrictedEdgeWithMeta(from, to, distanceM, highway, name)
+}
+
+func (g *Graph) AddRestrictedEdgeWithMeta(from, to NodeID, distanceM float64, highway, name string, restrictedModes ...RestrictedMode) {
 	g.Edges[from] = append(g.Edges[from], Edge{
-		To:        to,
-		DistanceM: distanceM,
-		Highway:   highway,
-		Name:      name,
+		To:              to,
+		DistanceM:       distanceM,
+		Highway:         highway,
+		Name:            name,
+		RestrictedModes: append([]RestrictedMode(nil), restrictedModes...),
 	})
 }
 
@@ -128,6 +146,9 @@ func LoadGraph(path string) (*Graph, error) {
 	var g Graph
 	if err := gob.NewDecoder(f).Decode(&g); err != nil {
 		return nil, err
+	}
+	if g.CacheVersion != CacheVersion {
+		return nil, fmt.Errorf("unsupported graph cache version %d, want %d", g.CacheVersion, CacheVersion)
 	}
 	g.rebuildNearestNodeIndex()
 	return &g, nil

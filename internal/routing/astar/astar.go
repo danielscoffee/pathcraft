@@ -6,6 +6,7 @@ import (
 
 	"github.com/danielscoffee/pathcraft/internal/geo"
 	"github.com/danielscoffee/pathcraft/internal/graph"
+	"github.com/danielscoffee/pathcraft/internal/mobility"
 )
 
 var ErrNoPath = errors.New("no path found")
@@ -19,6 +20,10 @@ type Path struct {
 }
 
 func AStar(g *graph.Graph, source, target graph.NodeID, h geo.Heuristic) (Path, error) {
+	return AStarWithProfile(g, source, target, h, nil)
+}
+
+func AStarWithProfile(g *graph.Graph, source, target graph.NodeID, h geo.Heuristic, profile mobility.Profile) (Path, error) {
 	if !g.HasNode(source) || !g.HasNode(target) {
 		return Path{}, ErrNodeNotFound
 	}
@@ -59,6 +64,9 @@ func AStar(g *graph.Graph, source, target graph.NodeID, h geo.Heuristic) (Path, 
 		delete(inOpenSet, currentID)
 
 		for _, edge := range g.Neighbors(currentID) {
+			if edgeRestrictedForProfile(edge, profile) {
+				continue
+			}
 			tentativeG := gScore[currentID] + edge.DistanceM
 			existingG, visited := gScore[edge.To]
 			if !visited || tentativeG < existingG {
@@ -79,6 +87,18 @@ func AStar(g *graph.Graph, source, target graph.NodeID, h geo.Heuristic) (Path, 
 	}
 
 	return Path{}, ErrNoPath
+}
+
+func edgeRestrictedForProfile(edge graph.Edge, profile mobility.Profile) bool {
+	if profile == nil {
+		return false
+	}
+	for _, mode := range edge.RestrictedModes {
+		if string(mode) == profile.Name() {
+			return true
+		}
+	}
+	return false
 }
 
 func reconstructPath(cameFrom map[graph.NodeID]graph.NodeID, target graph.NodeID, totalCost float64) Path {

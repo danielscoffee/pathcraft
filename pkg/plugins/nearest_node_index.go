@@ -17,12 +17,14 @@ type NearestNodeIndex interface {
 func NewGridNearestNodeIndex() NearestNodeIndex {
 	return &gridNearestNodeIndex{
 		cells: make(map[cellKey][]int64),
+		nodes: make(map[int64]IndexedNode),
 		empty: true,
 	}
 }
 
 type gridNearestNodeIndex struct {
 	cells map[cellKey][]int64
+	nodes map[int64]IndexedNode
 	minX  int
 	maxX  int
 	minY  int
@@ -40,6 +42,7 @@ const cellSizeDegrees = 0.002
 func (s *gridNearestNodeIndex) Insert(node IndexedNode) {
 	key := cellFor(node.Lat, node.Lon)
 	s.cells[key] = append(s.cells[key], node.ID)
+	s.nodes[node.ID] = node
 
 	if s.empty {
 		s.minX, s.maxX = key.x, key.x
@@ -64,6 +67,7 @@ func (s *gridNearestNodeIndex) Insert(node IndexedNode) {
 
 func (s *gridNearestNodeIndex) Rebuild(nodes []IndexedNode) {
 	s.cells = make(map[cellKey][]int64)
+	s.nodes = make(map[int64]IndexedNode)
 	s.empty = true
 
 	for _, node := range nodes {
@@ -83,47 +87,35 @@ func (s *gridNearestNodeIndex) NearestCandidates(lat, lon float64) []int64 {
 	)
 
 	candidates := make([]int64, 0)
+	bestDistanceSquared := math.Inf(1)
 	for radius := 0; radius <= maxRadius; radius++ {
-		if radius == 0 {
-			if ids := s.cells[origin]; len(ids) > 0 {
-				return append(candidates, ids...)
-			}
-			continue
-		}
-
 		xMin := origin.x - radius
 		xMax := origin.x + radius
 		yMin := origin.y - radius
 		yMax := origin.y + radius
 
 		for x := xMin; x <= xMax; x++ {
-			if ids := s.cells[cellKey{x: x, y: yMin}]; len(ids) > 0 {
-				candidates = append(candidates, ids...)
-			}
-			if yMax != yMin {
-				if ids := s.cells[cellKey{x: x, y: yMax}]; len(ids) > 0 {
-					candidates = append(candidates, ids...)
+			for y := yMin; y <= yMax; y++ {
+				if radius > 0 && x > xMin && x < xMax && y > yMin && y < yMax {
+					continue
+				}
+				for _, id := range s.cells[cellKey{x: x, y: y}] {
+					candidates = append(candidates, id)
+					if node, ok := s.nodes[id]; ok {
+						if d := squaredDegrees(lat, lon, node.Lat, node.Lon); d < bestDistanceSquared {
+							bestDistanceSquared = d
+						}
+					}
 				}
 			}
 		}
 
-		for y := yMin + 1; y < yMax; y++ {
-			if ids := s.cells[cellKey{x: xMin, y: y}]; len(ids) > 0 {
-				candidates = append(candidates, ids...)
-			}
-			if xMax != xMin {
-				if ids := s.cells[cellKey{x: xMax, y: y}]; len(ids) > 0 {
-					candidates = append(candidates, ids...)
-				}
-			}
-		}
-
-		if len(candidates) > 0 {
+		if len(candidates) > 0 && minDistanceToOutsideRadiusSquared(lat, lon, origin, radius) >= bestDistanceSquared {
 			return candidates
 		}
 	}
 
-	return nil
+	return candidates
 }
 
 func cellFor(lat, lon float64) cellKey {
@@ -131,6 +123,27 @@ func cellFor(lat, lon float64) cellKey {
 		x: int(math.Floor(lat / cellSizeDegrees)),
 		y: int(math.Floor(lon / cellSizeDegrees)),
 	}
+}
+
+func squaredDegrees(lat1, lon1, lat2, lon2 float64) float64 {
+	dLat := lat2 - lat1
+	dLon := lon2 - lon1
+	return dLat*dLat + dLon*dLon
+}
+
+func minDistanceToOutsideRadiusSquared(lat, lon float64, origin cellKey, radius int) float64 {
+	minLat := float64(origin.x-radius) * cellSizeDegrees
+	maxLat := float64(origin.x+radius+1) * cellSizeDegrees
+	minLon := float64(origin.y-radius) * cellSizeDegrees
+	maxLon := float64(origin.y+radius+1) * cellSizeDegrees
+
+	latGap := math.Min(math.Abs(lat-minLat), math.Abs(maxLat-lat))
+	lonGap := math.Min(math.Abs(lon-minLon), math.Abs(maxLon-lon))
+	gap := math.Min(latGap, lonGap)
+	if gap < 0 {
+		return 0
+	}
+	return gap * gap
 }
 
 func absInt(v int) int {

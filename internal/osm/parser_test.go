@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/danielscoffee/pathcraft/internal/geo"
+	"github.com/danielscoffee/pathcraft/internal/graph"
 	"github.com/danielscoffee/pathcraft/internal/osm"
 )
 
@@ -94,9 +95,16 @@ func TestFilterIsWalkable(t *testing.T) {
 		{"footway", map[string]string{"highway": "footway"}, true},
 		{"path", map[string]string{"highway": "path"}, true},
 		{"residential", map[string]string{"highway": "residential"}, true},
-		{"motorway", map[string]string{"highway": "motorway"}, false},
-		{"no foot", map[string]string{"highway": "footway", "foot": "no"}, false},
+		{"motorway", map[string]string{"highway": "motorway"}, true},
+		{"no foot footway", map[string]string{"highway": "footway", "foot": "no"}, false},
+		{"no foot residential still routable for car", map[string]string{"highway": "residential", "foot": "no"}, true},
 		{"private access", map[string]string{"highway": "path", "access": "private"}, false},
+		{"no access", map[string]string{"highway": "residential", "access": "no"}, false},
+		{"customers access", map[string]string{"highway": "service", "access": "customers"}, false},
+		{"permit motor vehicle", map[string]string{"highway": "service", "motor_vehicle": "permit"}, false},
+		{"parking aisle", map[string]string{"highway": "service", "service": "parking_aisle"}, false},
+		{"driveway", map[string]string{"highway": "service", "service": "driveway"}, false},
+		{"driveway with explicit foot access", map[string]string{"highway": "service", "service": "driveway", "foot": "yes"}, true},
 		{"no highway tag", map[string]string{"name": "test"}, false},
 	}
 
@@ -120,15 +128,10 @@ func TestFilterWays(t *testing.T) {
 	filter := osm.DefaultFilter()
 	walkable := data.FilterWays(filter)
 
-	// Only way 100 (footway) should be walkable
-	// way 101 is motorway (not walkable)
-	// way 102 is residential but has foot=no
-	if len(walkable) != 1 {
-		t.Errorf("expected 1 walkable way, got %d", len(walkable))
-	}
-
-	if len(walkable) > 0 && walkable[0].ID != 100 {
-		t.Errorf("expected way 100, got way %d", walkable[0].ID)
+	// The default graph is a public routable union graph, not walking-only.
+	// It includes walkable ways plus public car-only ways with walking restrictions.
+	if len(walkable) != 3 {
+		t.Errorf("expected 3 routable ways, got %d", len(walkable))
 	}
 }
 
@@ -145,9 +148,9 @@ func TestBuildGraph(t *testing.T) {
 		t.Error("graph should have nodes 1, 2, 3")
 	}
 
-	// Node 4 should NOT be in graph (only used by non-walkable ways)
-	if g.HasNode(4) {
-		t.Error("graph should not have node 4")
+	// Node 4 is included because the graph is a mode-restricted union graph.
+	if !g.HasNode(4) {
+		t.Error("graph should have node 4")
 	}
 
 	// Check edges exist
@@ -157,8 +160,115 @@ func TestBuildGraph(t *testing.T) {
 	}
 
 	neighbors2 := g.Neighbors(2)
-	if len(neighbors2) != 2 {
-		t.Errorf("node 2 should have 2 neighbors (1 and 3), got %d", len(neighbors2))
+	if len(neighbors2) != 3 {
+		t.Errorf("node 2 should have 3 neighbors (1, 3, and 4), got %d", len(neighbors2))
+	}
+}
+
+func TestBuildGraphRestrictsWalkingOnCarOnlyHighways(t *testing.T) {
+	data, err := osm.ParseXML(strings.NewReader(`<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6">
+  <node id="1" lat="0" lon="0"/>
+  <node id="2" lat="0" lon="0.001"/>
+  <way id="10">
+    <nd ref="1"/>
+    <nd ref="2"/>
+    <tag k="highway" v="motorway"/>
+  </way>
+</osm>`))
+	if err != nil {
+		t.Fatalf("ParseXML() error = %v", err)
+	}
+
+	g := osm.BuildGraph(data, nil)
+	edges := g.Neighbors(1)
+	if len(edges) != 1 || edges[0].To != 2 {
+		t.Fatalf("expected motorway edge in graph, got %+v", edges)
+	}
+	if len(edges[0].RestrictedModes) != 1 || edges[0].RestrictedModes[0] != graph.RestrictedWalking {
+		t.Fatalf("expected motorway to restrict walking, got %+v", edges[0].RestrictedModes)
+	}
+}
+
+func TestBuildGraphRestrictsDrivingOnNonCarHighways(t *testing.T) {
+	data, err := osm.ParseXML(strings.NewReader(`<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6">
+  <node id="1" lat="0" lon="0"/>
+  <node id="2" lat="0" lon="0.001"/>
+  <way id="10">
+    <nd ref="1"/>
+    <nd ref="2"/>
+    <tag k="highway" v="footway"/>
+  </way>
+</osm>`))
+	if err != nil {
+		t.Fatalf("ParseXML() error = %v", err)
+	}
+
+	g := osm.BuildGraph(data, nil)
+
+	assertEdgeDirection(t, g.Neighbors(1), 2, true, true)
+	assertEdgeDirection(t, g.Neighbors(2), 1, true, true)
+}
+
+func TestBuildGraphHonorsOnewayDirection(t *testing.T) {
+	tests := []struct {
+		name              string
+		tags              string
+		forwardOpen       bool
+		reverseOpen       bool
+		forwardRestricted bool
+		reverseRestricted bool
+	}{
+		{name: "oneway yes", tags: `<tag k="oneway" v="yes"/>`, forwardOpen: true, reverseOpen: true, reverseRestricted: true},
+		{name: "oneway true", tags: `<tag k="oneway" v="true"/>`, forwardOpen: true, reverseOpen: true, reverseRestricted: true},
+		{name: "oneway 1", tags: `<tag k="oneway" v="1"/>`, forwardOpen: true, reverseOpen: true, reverseRestricted: true},
+		{name: "oneway reverse", tags: `<tag k="oneway" v="-1"/>`, forwardOpen: true, reverseOpen: true, forwardRestricted: true},
+		{name: "oneway reverse word", tags: `<tag k="oneway" v="reverse"/>`, forwardOpen: true, reverseOpen: true, forwardRestricted: true},
+		{name: "roundabout implied", tags: `<tag k="junction" v="roundabout"/>`, forwardOpen: true, reverseOpen: true, reverseRestricted: true},
+		{name: "explicit not oneway", tags: `<tag k="oneway" v="no"/>`, forwardOpen: true, reverseOpen: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := osm.ParseXML(strings.NewReader(`<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6">
+  <node id="1" lat="0" lon="0"/>
+  <node id="2" lat="0" lon="0.001"/>
+  <way id="10">
+    <nd ref="1"/>
+    <nd ref="2"/>
+    <tag k="highway" v="residential"/>` + tt.tags + `
+  </way>
+</osm>`))
+			if err != nil {
+				t.Fatalf("ParseXML() error = %v", err)
+			}
+
+			g := osm.BuildGraph(data, nil)
+			assertEdgeDirection(t, g.Neighbors(1), 2, tt.forwardOpen, tt.forwardRestricted)
+			assertEdgeDirection(t, g.Neighbors(2), 1, tt.reverseOpen, tt.reverseRestricted)
+		})
+	}
+}
+
+func assertEdgeDirection(t *testing.T, edges []graph.Edge, to graph.NodeID, wantOpen, wantRestricted bool) {
+	t.Helper()
+	for _, edge := range edges {
+		if edge.To != to {
+			continue
+		}
+		if !wantOpen {
+			t.Fatalf("unexpected edge to %d in %+v", to, edges)
+		}
+		gotRestricted := len(edge.RestrictedModes) == 1 && edge.RestrictedModes[0] == graph.RestrictedDriving
+		if gotRestricted != wantRestricted {
+			t.Fatalf("edge restriction to %d = %v, want %v", to, edge.RestrictedModes, wantRestricted)
+		}
+		return
+	}
+	if wantOpen {
+		t.Fatalf("missing edge to %d in %+v", to, edges)
 	}
 }
 

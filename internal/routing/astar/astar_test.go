@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/danielscoffee/pathcraft/internal/graph"
+	"github.com/danielscoffee/pathcraft/internal/mobility"
 	"github.com/danielscoffee/pathcraft/internal/routing/astar"
 )
 
@@ -64,6 +65,35 @@ func TestAStar_SimplePathExists(t *testing.T) {
 	}
 	if path.Nodes[len(path.Nodes)-1] != 9 {
 		t.Errorf("expected path to end at 9, got %d", path.Nodes[len(path.Nodes)-1])
+	}
+}
+
+func TestAStarWithProfileBlocksDrivingOnNonCarEdges(t *testing.T) {
+	g := graph.NewGraph()
+	g.AddNode(1, 0, 0)
+	g.AddNode(2, 0, 0.001)
+	g.AddRestrictedEdgeWithMeta(1, 2, 10, "footway", "walk only", graph.RestrictedDriving)
+
+	if _, err := astar.AStarWithProfile(g, 1, 2, zeroHeuristic, mobility.NewWalking(1.4)); err != nil {
+		t.Fatalf("walking on footway should be allowed, got %v", err)
+	}
+	if _, err := astar.AStarWithProfile(g, 1, 2, zeroHeuristic, mobility.NewDriving(8.3)); err == nil {
+		t.Fatal("driving on footway should be blocked")
+	}
+}
+
+func TestAStarWithProfileHonorsDrivingOnewayRestrictions(t *testing.T) {
+	g := graph.NewGraph()
+	g.AddNode(1, 0, 0)
+	g.AddNode(2, 0, 0.001)
+	g.AddEdgeWithMeta(1, 2, 10, "residential", "oneway")
+	g.AddRestrictedEdgeWithMeta(2, 1, 10, "residential", "oneway", graph.RestrictedDriving)
+
+	if _, err := astar.AStarWithProfile(g, 2, 1, zeroHeuristic, mobility.NewWalking(1.4)); err != nil {
+		t.Fatalf("walking reverse oneway should be allowed, got %v", err)
+	}
+	if _, err := astar.AStarWithProfile(g, 2, 1, zeroHeuristic, mobility.NewDriving(8.3)); err == nil {
+		t.Fatal("driving reverse oneway should be blocked")
 	}
 }
 
