@@ -113,6 +113,14 @@ func TestMultimodalRoutePrefersTransitWhenFaster(t *testing.T) {
 		{TripID: "SHUTTLE_1", StopID: "MID_STOP", ArrivalTime: 5*3600 + 55, DepartureTime: 5*3600 + 55, StopSequence: 2},
 		{TripID: "SHUTTLE_1", StopID: "END_STOP", ArrivalTime: 5*3600 + 65, DepartureTime: 5*3600 + 65, StopSequence: 3},
 	}, gtfs.TripToRoute{"SHUTTLE_1": "SHUTTLE"})
+	e.gtfsTripShapes = map[gtfs.TripID]gtfs.ShapeID{"SHUTTLE_1": "SHAPE_1"}
+	e.gtfsShapes = map[gtfs.ShapeID][]gtfs.ShapePoint{"SHAPE_1": {
+		{ShapeID: "SHAPE_1", Lat: -8.05428, Lon: -34.88080, Sequence: 1},
+		{ShapeID: "SHAPE_1", Lat: -8.05435, Lon: -34.88070, Sequence: 2},
+		{ShapeID: "SHAPE_1", Lat: -8.05450, Lon: -34.88060, Sequence: 3},
+		{ShapeID: "SHAPE_1", Lat: -8.05465, Lon: -34.88070, Sequence: 4},
+		{ShapeID: "SHAPE_1", Lat: -8.05480, Lon: -34.88080, Sequence: 5},
+	}}
 
 	res, err := e.MultimodalRoute(MultimodalRouteRequest{
 		FromLat:        -8.05428,
@@ -133,5 +141,21 @@ func TestMultimodalRoutePrefersTransitWhenFaster(t *testing.T) {
 	}
 	if res.OriginStopID != "START_STOP" || res.DestinationStopID != "END_STOP" {
 		t.Fatalf("unexpected transit stops: %s -> %s", res.OriginStopID, res.DestinationStopID)
+	}
+	var transitLeg *JourneyLeg
+	for i := range res.Legs {
+		if res.Legs[i].Mode == "transit" {
+			transitLeg = &res.Legs[i]
+			break
+		}
+	}
+	if transitLeg == nil {
+		t.Fatal("expected a transit leg")
+	}
+	if len(transitLeg.Coordinates) != 5 {
+		t.Fatalf("transit leg coordinates = %v, want GTFS shape polyline", transitLeg.Coordinates)
+	}
+	if transitLeg.Coordinates[2].Lat != -8.05450 || transitLeg.Coordinates[2].Lon != -34.88060 {
+		t.Fatalf("expected shape coordinate in transit geometry, got %+v", transitLeg.Coordinates[2])
 	}
 }
