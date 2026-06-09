@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/danielscoffee/pathcraft/internal/cli"
+	"github.com/danielscoffee/pathcraft/internal/logging"
 
 	// Register built-in plugins so they are visible to the registry-backed
 	// pipeline command and `pathcraft plugins list`.
@@ -13,9 +14,16 @@ import (
 	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/gtfs"
 	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/osm"
 	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/raptor"
+	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/zaplogger"
 )
 
 func main() {
+	if err := logging.InitDevelopment(); err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
+	defer logging.Sync()
+
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
