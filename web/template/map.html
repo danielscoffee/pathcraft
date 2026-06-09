@@ -52,6 +52,29 @@
 		.legend .to   { background: #f87171; }
 		.legend .val  { color: var(--muted); font-variant-numeric: tabular-nums; }
 
+		.controls {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 8px;
+			margin: 8px 0 12px;
+		}
+		.controls label {
+			display: grid;
+			gap: 4px;
+			font-size: 11px;
+			color: var(--muted);
+		}
+		.controls select,
+		.controls input {
+			width: 100%;
+			box-sizing: border-box;
+			padding: 7px 8px;
+			border: 1px solid #334155;
+			border-radius: 8px;
+			background: #020617;
+			color: var(--text);
+		}
+
 		.stats {
 			display: grid;
 			grid-template-columns: 1fr 1fr;
@@ -84,6 +107,30 @@
 		.status { margin-top: 8px; font-size: 12px; }
 		.status.ok  { color: var(--ok); }
 		.status.err { color: var(--err); }
+
+		.itinerary {
+			margin-top: 10px;
+			padding-top: 10px;
+			border-top: 1px solid #334155;
+			font-size: 12px;
+		}
+		.itinerary h2 {
+			margin: 0 0 6px;
+			font-size: 12px;
+			font-weight: 700;
+			color: var(--text);
+		}
+		.itinerary ol {
+			margin: 0;
+			padding-left: 18px;
+			display: grid;
+			gap: 6px;
+		}
+		.itinerary li { color: var(--muted); }
+		.itinerary strong { color: var(--text); }
+		.itinerary .bus-line { color: #93c5fd; }
+		.itinerary .transfer { color: #fbbf24; }
+		.itinerary .walk { color: #fca5a5; }
 
 		.toggles {
 			display: grid;
@@ -122,7 +169,21 @@
 
 	<div class="panel">
 		<h1>Path<span class="accent">Craft</span> Demo</h1>
-		<p class="lede">OSRM-style: click two points on the map. PathCraft snaps each to the nearest road, runs A* on demand, and draws the optimal route — no pre-rendered overlay.</p>
+		<p class="lede">OSRM-style: click two points on the map. PathCraft snaps each to the nearest road, runs the selected mode on demand, and draws the route — no pre-rendered overlay.</p>
+
+		<div class="controls">
+			<label>Mode
+				<select id="mode-select">
+					<option value="walk">Walk</option>
+					<option value="bus">Bus / GTFS</option>
+					<option value="car">Car</option>
+					<option value="bike">Bike</option>
+				</select>
+			</label>
+			<label>Bus time
+				<input id="bus-time" type="time" step="1" value="05:00:00">
+			</label>
+		</div>
 
 		<div class="legend">
 			<span class="dot from"></span><span>A — origin</span><span class="val" id="from-coord">—</span>
@@ -140,9 +201,15 @@
 
 		<div class="status" id="status">Ready. Click A.</div>
 
+		<div class="itinerary" id="itinerary" hidden>
+			<h2>Journey steps</h2>
+			<ol id="itinerary-list"></ol>
+		</div>
+
 		<div class="toggles">
 			<label><input type="checkbox" id="t-graph"> Debug: street graph</label>
 			<label><input type="checkbox" id="t-nodes"> Debug: test nodes</label>
+			<label><input type="checkbox" id="t-stops"> Debug: bus stops</label>
 		</div>
 
 		<details id="legend-wrap" hidden>
@@ -182,6 +249,12 @@
 		let fromLatLng = null, toLatLng = null;
 		let fromMarker = null, toMarker = null;
 		let routeLayer = null;
+		let modes = [
+			{ id: 'walk', label: 'Walk', kind: 'standard', endpoint: '{{ .RouteURL }}' },
+			{ id: 'bus', label: 'Bus / GTFS', kind: 'gtfs', endpoint: '/journey' },
+			{ id: 'car', label: 'Car', kind: 'standard', endpoint: '{{ .RouteURL }}' },
+			{ id: 'bike', label: 'Bike', kind: 'standard', endpoint: '{{ .RouteURL }}' },
+		];
 
 		const $ = id => document.getElementById(id);
 		const fmt = n => n.toLocaleString(undefined, { maximumFractionDigits: 1 });
@@ -190,6 +263,29 @@
 			el.className = 'status ' + cls;
 			el.textContent = msg;
 		};
+		const selectedMode = () => modes.find(m => m.id === $('mode-select').value) || modes[0];
+
+		fetch('/modes')
+			.then(r => r.ok ? r.json() : Promise.reject(new Error(r.statusText)))
+			.then(data => {
+				if (!data || !Array.isArray(data.modes) || data.modes.length === 0) return;
+				modes = data.modes;
+				const select = $('mode-select');
+				const current = select.value;
+				while (select.firstChild) select.removeChild(select.firstChild);
+				modes.forEach(mode => {
+					const opt = document.createElement('option');
+					opt.value = mode.id;
+					opt.textContent = mode.label;
+					select.appendChild(opt);
+				});
+				if (modes.some(m => m.id === current)) select.value = current;
+			})
+			.catch(() => setStatus('Mode catalog unavailable; using built-in modes.'));
+		$('mode-select').addEventListener('change', () => {
+			if (fromLatLng && toLatLng) solve();
+			else setStatus(`Mode: ${selectedMode().label}. Click ${fromLatLng ? 'B' : 'A'}.`);
+		});
 
 		// === click → snap to nearest road → solve on B ===
 		map.on('click', e => {
@@ -208,22 +304,18 @@
 			fetch(`/nearest?lat=${latlng.lat}&lon=${latlng.lng}`)
 				.then(r => r.json())
 				.then(snap => {
-					const ll = L.latLng(latlng.lat, latlng.lng); // request point
-					// Server gives us snap distance; for marker we use clicked point.
-					// To show the *snapped* node visually, we'd need its lat/lon — currently
-					// /nearest returns id+distance only. Marker stays at click; route starts
-					// from the snapped node.
+					const ll = L.latLng(snap.lat, snap.lon); // snapped graph node
 					if (role === 'from') {
 						fromLatLng = ll;
 						fromMarker = L.marker(ll, { icon: fromIcon })
-							.bindPopup(`A — node ${snap.id} (${fmt(snap.distance)} m off road)`)
+							.bindPopup(`A — snapped to node ${snap.id} (${fmt(snap.distance)} m from click)`)
 							.addTo(map);
 						$('from-coord').textContent = `${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}`;
 						setStatus('Click B.');
 					} else {
 						toLatLng = ll;
 						toMarker = L.marker(ll, { icon: toIcon })
-							.bindPopup(`B — node ${snap.id} (${fmt(snap.distance)} m off road)`)
+							.bindPopup(`B — snapped to node ${snap.id} (${fmt(snap.distance)} m from click)`)
 							.addTo(map);
 						$('to-coord').textContent = `${ll.lat.toFixed(5)}, ${ll.lng.toFixed(5)}`;
 						solve();
@@ -242,38 +334,150 @@
 			$('stat-time').textContent = '—';
 			$('stat-nodes').textContent = '—';
 			$('stat-solve').textContent = '—';
+			clearItinerary();
 			if (setMsg) setStatus('Ready. Click A.');
 		}
 
 		$('reset').addEventListener('click', () => reset());
 		document.addEventListener('keydown', e => { if (e.key === 'r' || e.key === 'R') reset(); });
 
-		// === solve: render route on demand ===
+		// === solve: render selected mode on demand ===
 		function solve() {
-			setStatus('Solving…');
+			const mode = selectedMode();
+			setStatus(`Solving ${mode.label}…`);
+			if (mode.id === 'bus') solveBus(mode);
+			else solveStandardMode(mode);
+		}
+
+		function routeQuery(endpoint, modeID = '') {
+			const modeParam = modeID ? `&mode=${encodeURIComponent(modeID)}` : '';
+			return `${endpoint}?from_lat=${fromLatLng.lat}&from_lon=${fromLatLng.lng}` +
+			       `&to_lat=${toLatLng.lat}&to_lon=${toLatLng.lng}${modeParam}`;
+		}
+
+		function solveStandardMode(mode) {
 			const t0 = performance.now();
-			const url = `{{ .RouteURL }}?from_lat=${fromLatLng.lat}&from_lon=${fromLatLng.lng}` +
-			            `&to_lat=${toLatLng.lat}&to_lon=${toLatLng.lng}`;
-			fetch(url)
+			fetch(routeQuery(mode.endpoint || '{{ .RouteURL }}', mode.id))
 				.then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(new Error(t || r.statusText))))
 				.then(geojson => {
 					const t1 = performance.now();
 					if (routeLayer) map.removeLayer(routeLayer);
 					routeLayer = L.geoJSON(geojson, {
-						style: { color: '{{ .RouteColor }}', weight: {{ .RouteWeight }}, opacity: 0.95 }
+						style: { color: modeColor(mode.id), weight: {{ .RouteWeight }}, opacity: 0.95 }
 					}).addTo(map);
 
 					const coords = (geojson.features && geojson.features[0] && geojson.features[0].geometry && geojson.features[0].geometry.coordinates) || [];
 					const dist = approxLengthMeters(coords);
-					const speed = 1.4;
 					$('stat-dist').textContent  = fmt(dist) + ' m';
-					$('stat-time').textContent  = fmt(dist / speed / 60) + ' min';
+					$('stat-time').textContent  = fmt(estimateMinutes(mode.id, dist)) + ' min';
 					$('stat-nodes').textContent = String(coords.length);
 					$('stat-solve').textContent = fmt(t1 - t0) + ' ms';
 					try { map.fitBounds(routeLayer.getBounds().pad(0.15)); } catch (_) {}
-					setStatus('Optimal route found.', 'ok');
+					setStatus(`${mode.label} route found.`, 'ok');
 				})
-				.catch(err => setStatus('No path: ' + err.message, 'err'));
+				.catch(err => {
+					if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+					setStatus(`${mode.label} failed: ${err.message}`, 'err');
+				});
+		}
+
+		function solveBus(mode) {
+			const t0 = performance.now();
+			const time = normalizeBusTime($('bus-time').value || '05:00:00');
+			fetch(routeQuery(mode.endpoint || '/journey') + `&time=${encodeURIComponent(time)}`)
+				.then(r => r.ok ? r.json() : r.text().then(t => Promise.reject(new Error(t || r.statusText))))
+				.then(journey => {
+					const t1 = performance.now();
+					renderItinerary(journey);
+					const geojson = journeyToGeoJSON(journey);
+					if (routeLayer) map.removeLayer(routeLayer);
+					routeLayer = L.geoJSON(geojson, {
+						style: f => ({ color: modeColor((f.properties && f.properties.mode) || 'bus'), weight: 5, opacity: 0.9, dashArray: f.properties && f.properties.mode === 'transit' ? '8 6' : null }),
+						onEachFeature: (f, layer) => {
+							const p = f.properties || {};
+							if (p.mode === 'transit') {
+								const line = [p.route_name || p.route_id || p.trip_id || '', p.route_long_name || ''].filter(Boolean).join(' — ');
+								layer.bindPopup(`<strong>Bus ${line}</strong><br>${p.from || ''} → ${p.to || ''}`);
+							} else if (p.mode === 'transfer') {
+								layer.bindPopup(`<strong>Transfer</strong><br>${p.from || ''} → ${p.to || ''}<br>${fmt(p.distance_meters || 0)} m · ${fmt((p.duration_seconds || 0) / 60)} min`);
+							}
+						}
+					}).addTo(map);
+
+					$('stat-dist').textContent  = journey.walking_distance_meters ? fmt(journey.walking_distance_meters) + ' m walk' : '—';
+					$('stat-time').textContent  = fmt((journey.total_duration_seconds || 0) / 60) + ' min';
+					$('stat-nodes').textContent = String(geojson.features.reduce((n, f) => n + f.geometry.coordinates.length, 0));
+					$('stat-solve').textContent = fmt(t1 - t0) + ' ms';
+					try { map.fitBounds(routeLayer.getBounds().pad(0.15)); } catch (_) {}
+					const label = journey.mode === 'multimodal' ? 'Bus journey found.' : 'No faster bus found; showing direct walk.';
+					setStatus(label, 'ok');
+				})
+				.catch(err => {
+					if (routeLayer) { map.removeLayer(routeLayer); routeLayer = null; }
+					setStatus(`Bus failed: ${err.message}`, 'err');
+				});
+		}
+
+		function normalizeBusTime(value) {
+			return /^\d{2}:\d{2}$/.test(value) ? value + ':00' : value;
+		}
+
+		function clearItinerary() {
+			const list = $('itinerary-list');
+			while (list.firstChild) list.removeChild(list.firstChild);
+			$('itinerary').hidden = true;
+		}
+
+		function renderItinerary(journey) {
+			const list = $('itinerary-list');
+			while (list.firstChild) list.removeChild(list.firstChild);
+			(journey.legs || []).forEach(leg => {
+				const item = document.createElement('li');
+				if (leg.mode === 'transit') {
+					const line = [leg.route_name || leg.route_id || leg.trip_id || '', leg.route_long_name || ''].filter(Boolean).join(' — ');
+					item.innerHTML = `<strong class="bus-line">Bus ${escapeHTML(line)}</strong><br>${escapeHTML(leg.from_name || leg.from_stop_id || '')} → ${escapeHTML(leg.to_name || leg.to_stop_id || '')}`;
+				} else if (leg.mode === 'transfer') {
+					item.innerHTML = `<strong class="transfer">Transfer</strong><br>${escapeHTML(leg.from_name || leg.from_stop_id || '')} → ${escapeHTML(leg.to_name || leg.to_stop_id || '')} · ${fmt(leg.distance_meters || 0)} m · ${fmt((leg.duration_seconds || 0) / 60)} min`;
+				} else if (leg.mode === 'walk') {
+					item.innerHTML = `<strong class="walk">Walk</strong><br>${escapeHTML(leg.from_name || '')} → ${escapeHTML(leg.to_name || '')} · ${fmt(leg.distance_meters || 0)} m · ${fmt((leg.duration_seconds || 0) / 60)} min`;
+				} else {
+					item.textContent = `${leg.mode || 'leg'}: ${leg.from_name || leg.from_stop_id || ''} → ${leg.to_name || leg.to_stop_id || ''}`;
+				}
+				list.appendChild(item);
+			});
+			$('itinerary').hidden = list.children.length === 0;
+		}
+
+		function escapeHTML(value) {
+			return String(value).replace(/[&<>'"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[ch]));
+		}
+
+		function journeyToGeoJSON(journey) {
+			const features = [];
+			(journey.legs || []).forEach((leg, idx) => {
+				const coords = (leg.coordinates || []).map(c => [c.lon, c.lat]);
+				if (coords.length < 2) return;
+				features.push({
+					type: 'Feature',
+					geometry: { type: 'LineString', coordinates: coords },
+					properties: {
+						mode: leg.mode || 'walk', sequence: idx + 1,
+						trip_id: leg.trip_id || '', route_id: leg.route_id || '', route_name: leg.route_name || '', route_long_name: leg.route_long_name || '',
+						from: leg.from_name || leg.from_stop_id || '', to: leg.to_name || leg.to_stop_id || '',
+						distance_meters: leg.distance_meters || 0, duration_seconds: leg.duration_seconds || 0
+					}
+				});
+			});
+			return { type: 'FeatureCollection', features };
+		}
+
+		function modeColor(modeID) {
+			return ({ walk: '#e63946', bus: '#2563eb', transit: '#2563eb', car: '#f97316', bike: '#22c55e' })[modeID] || '{{ .RouteColor }}';
+		}
+
+		function estimateMinutes(modeID, dist) {
+			const speed = ({ walk: 1.4, car: 8.3, bike: 4.5 })[modeID] || 1.4;
+			return dist / speed / 60;
 		}
 
 		function approxLengthMeters(coords) {
@@ -441,6 +645,36 @@
 					if (err.name !== 'AbortError') setStatus('Nodes fetch failed: ' + err.message, 'err');
 				});
 		}
+
+		// === GTFS stop-sign debug overlay ===
+		let gtfsStopsLayer = null, gtfsStopsCache = null;
+		$('t-stops').addEventListener('change', e => {
+			if (e.target.checked) {
+				setStatus('Loading bus stops…');
+				const ensure = gtfsStopsCache
+					? Promise.resolve(gtfsStopsCache)
+					: fetch('/transit/stops').then(r => r.ok ? r.json() : Promise.reject(new Error('GTFS stops unavailable'))).then(d => { gtfsStopsCache = d; return d; });
+				ensure.then(data => {
+					gtfsStopsLayer = L.geoJSON(data, {
+						pointToLayer: (feat, latlng) => L.marker(latlng, {
+							icon: L.divIcon({
+								className: 'pc-stop-marker',
+								html: '<div style="background:#2563eb;color:white;width:18px;height:18px;border-radius:4px;border:2px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);font-size:13px;line-height:18px;text-align:center;font-weight:700;">🚌</div>',
+								iconSize: [18, 18], iconAnchor: [9, 9]
+							})
+						}),
+						onEachFeature: (feat, layer) => {
+							const p = feat.properties || {};
+							layer.bindPopup(`<strong>Bus stop</strong><br>${p.name || ''}<br>ID: ${p.id || ''}`);
+						}
+					}).addTo(map);
+					setStatus(`Bus stops: ${(data.features || []).length} shown.`, 'ok');
+				}).catch(err => setStatus('Bus stops failed: ' + err.message, 'err'));
+			} else if (gtfsStopsLayer) {
+				map.removeLayer(gtfsStopsLayer);
+				gtfsStopsLayer = null;
+			}
+		});
 
 		// === GTFS overlay (unchanged behavior) ===
 		let tripPathLayer = null, tripStopsLayer = null;
