@@ -21,7 +21,7 @@ func TestOSMAstarGeoJSONPipeline(t *testing.T) {
 	if !ok {
 		t.Fatal("osm loader not registered")
 	}
-	g, err := loader.Load(ctx, "../../../examples/example.osm")
+	g, err := loader.Load(ctx, "../../../testdata/example.osm")
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}

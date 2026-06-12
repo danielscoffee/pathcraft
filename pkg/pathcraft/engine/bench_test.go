@@ -14,7 +14,7 @@ import (
 // minus HTTP/GeoJSON overhead.
 func BenchmarkEngine_Route_ExampleOSM(b *testing.B) {
 	e := New()
-	if err := e.LoadOSM("../../../examples/example.osm"); err != nil {
+	if err := e.LoadOSM("../../../testdata/example.osm"); err != nil {
 		b.Fatalf("LoadOSM: %v", err)
 	}
 	profile := mobility.NewWalking(1.4)
@@ -39,7 +39,7 @@ func BenchmarkEngine_Route_ExampleOSM(b *testing.B) {
 // the toy fixture; numbers are a lower bound.
 func BenchmarkEngine_RouteByCoordinates_ExampleOSM(b *testing.B) {
 	e := New()
-	if err := e.LoadOSM("../../../examples/example.osm"); err != nil {
+	if err := e.LoadOSM("../../../testdata/example.osm"); err != nil {
 		b.Fatalf("LoadOSM: %v", err)
 	}
 	profile := mobility.NewWalking(1.4)
@@ -67,7 +67,7 @@ func BenchmarkEngine_RouteByCoordinates_ExampleOSM(b *testing.B) {
 // (~102 stop_times, 16 trips, 6 transfers).
 func BenchmarkEngine_TransitRoute_ExampleGTFS(b *testing.B) {
 	e := New()
-	if err := e.LoadGTFSDir("../../../examples/gtfs"); err != nil {
+	if err := e.LoadGTFSDir("../../../testdata/mini_gtfs"); err != nil {
 		b.Fatalf("LoadGTFSDir: %v", err)
 	}
 	req := TransitRouteRequest{

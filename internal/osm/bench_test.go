@@ -10,7 +10,7 @@ import (
 // city-scale extracts — they only provide a baseline for the parser's
 // per-byte overhead on small inputs.
 func BenchmarkParseFile_ExampleOSM(b *testing.B) {
-	const path = "../../examples/example.osm"
+	const path = "../../testdata/example.osm"
 	data, err := os.ReadFile(path)
 	if err != nil {
 		b.Fatalf("read %s: %v", path, err)
@@ -33,7 +33,7 @@ func BenchmarkParseFile_ExampleOSM(b *testing.B) {
 // BenchmarkBuildGraph_ExampleOSM measures the cost of turning parsed OSM
 // data into a walkable graph, excluding the parse step.
 func BenchmarkBuildGraph_ExampleOSM(b *testing.B) {
-	const path = "../../examples/example.osm"
+	const path = "../../testdata/example.osm"
 	data, err := ParseFile(path)
 	if err != nil {
 		b.Fatalf("ParseFile: %v", err)

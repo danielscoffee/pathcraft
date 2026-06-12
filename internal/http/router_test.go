@@ -13,10 +13,10 @@ import (
 
 func newTestEngine() *engine.Engine {
 	e := engine.New()
-	if err := e.LoadOSM(filepath.Join("..", "..", "examples", "example.osm")); err != nil {
+	if err := e.LoadOSM(filepath.Join("..", "..", "testdata", "example.osm")); err != nil {
 		panic(err)
 	}
-	if err := e.LoadGTFSDir(filepath.Join("..", "..", "examples", "mini_gtfs")); err != nil {
+	if err := e.LoadGTFSDir(filepath.Join("..", "..", "testdata", "mini_gtfs")); err != nil {
 		panic(err)
 	}
 	return e

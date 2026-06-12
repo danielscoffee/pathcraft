@@ -32,3 +32,11 @@ bin/
 web/app/node_modules/
 web/app/dist/*
 !web/app/dist/.gitkeep
+
+# Local data and generated artifacts (test fixtures live in testdata/)
+examples/
+docs/screenshots/
+docs/superpowers/
+
+# Claude Code workspace
+.claude/

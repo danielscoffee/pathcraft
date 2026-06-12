@@ -42,4 +42,13 @@ fetch-osm:
 	@curl -s -o $(OUT) "https://overpass-api.de/api/map?bbox=$(BBOX)"
 	@echo "Saved $(OUT) ($$(wc -c < $(OUT)) bytes)"
 
-.PHONY: test web build release clean demo dev-web fetch-osm
+# Official Grande Recife GTFS feed (~35 MB zip, 3.1M stop_times rows).
+GTFS_URL ?= https://www.granderecife.pe.gov.br/gtfs/gtfs.zip
+fetch-gtfs:
+	@echo "Fetching GTFS $(GTFS_URL) -> $(GTFS_DIR)"
+	@mkdir -p $(GTFS_DIR)
+	@curl -sL -o /tmp/pathcraft_gtfs.zip "$(GTFS_URL)"
+	@unzip -o -q /tmp/pathcraft_gtfs.zip -d $(GTFS_DIR)
+	@echo "Extracted $$(ls $(GTFS_DIR) | wc -l) files"
+
+.PHONY: test web build release clean demo dev-web fetch-osm fetch-gtfs
