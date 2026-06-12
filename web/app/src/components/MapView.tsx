@@ -25,6 +25,20 @@ function ClickHandler({ onClick }: { onClick: (lat: number, lon: number) => void
   return null
 }
 
+/** Paper-styled zoom buttons + metric scale, bottom-right (GMaps placement). */
+function ZoomScaleControls() {
+  const map = useMap()
+  useEffect(() => {
+    const zoom = L.control.zoom({ position: 'bottomright' }).addTo(map)
+    const scale = L.control.scale({ position: 'bottomright', metric: true, imperial: false }).addTo(map)
+    return () => {
+      zoom.remove()
+      scale.remove()
+    }
+  }, [map])
+  return null
+}
+
 /** Fit the viewport to the freshly solved route. */
 function FitRoute({ route }: { route: SolvedRoute | null }) {
   const map = useMap()
@@ -96,6 +110,7 @@ export default function MapView({
         maxZoom={19}
       />
       <ClickHandler onClick={onMapClick} />
+      <ZoomScaleControls />
       <FitRoute route={route} />
 
       {from && <Marker position={[from.lat, from.lon]} icon={FROM_ICON} />}

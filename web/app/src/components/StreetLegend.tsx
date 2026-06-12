@@ -8,7 +8,7 @@ export default function StreetLegend({ types }: { types: string[] }) {
   const ordered = [...known, ...unknown]
 
   return (
-    <details className="mt-3 text-12px" open>
+    <details className="mt-2.5 text-12px" open>
       <summary className="cursor-pointer text-ink-faint hover:text-ink-soft">Street types</summary>
       <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1">
         {ordered.map((type) => {

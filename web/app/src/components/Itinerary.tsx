@@ -27,10 +27,8 @@ export default function Itinerary({ journey }: { journey: Journey }) {
   if (legs.length === 0) return null
 
   return (
-    <section className="mt-3 pt-3 border-t border-paper-edge">
-      <h2 className="text-11px font-600 uppercase tracking-widest text-ink-faint mb-2">
-        Journey · {journey.departure_time} → {journey.arrival_time}
-      </h2>
+    <section className="mt-2.5">
+      <h2 className="text-11px font-600 uppercase tracking-widest text-ink-faint mb-2">Steps</h2>
       <ol className="grid">
         {legs.map((leg, i) => (
           <li key={i} className="relative pl-5 pb-2.5 last:pb-0">

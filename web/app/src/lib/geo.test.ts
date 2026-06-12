@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { estimateMinutes, haversineMeters, lineLengthMeters, normalizeClockTime } from './geo'
+import { estimateMinutes, formatDistance, formatDuration, haversineMeters, lineLengthMeters, normalizeClockTime } from './geo'
 
 describe('haversineMeters', () => {
   it('measures Copenhagen Central → Nørreport at roughly 1.3 km', () => {
@@ -48,5 +48,37 @@ describe('normalizeClockTime', () => {
 
   it('passes HH:MM:SS through unchanged', () => {
     expect(normalizeClockTime('05:00:30')).toBe('05:00:30')
+  })
+})
+
+describe('formatDuration', () => {
+  it('formats sub-hour durations as minutes', () => {
+    expect(formatDuration(720)).toBe('12 min')
+  })
+
+  it('rounds and floors to at least one minute', () => {
+    expect(formatDuration(20)).toBe('1 min')
+  })
+
+  it('formats hour-plus durations with zero-padded minutes', () => {
+    expect(formatDuration(3840)).toBe('1 h 04 min')
+  })
+
+  it('formats exact hours', () => {
+    expect(formatDuration(7200)).toBe('2 h 00 min')
+  })
+})
+
+describe('formatDistance', () => {
+  it('shows meters under one kilometer', () => {
+    expect(formatDistance(850.4)).toBe('850 m')
+  })
+
+  it('shows one decimal under ten kilometers', () => {
+    expect(formatDistance(1328.9)).toBe('1.3 km')
+  })
+
+  it('rounds to whole kilometers from ten up', () => {
+    expect(formatDistance(12480)).toBe('12 km')
   })
 })

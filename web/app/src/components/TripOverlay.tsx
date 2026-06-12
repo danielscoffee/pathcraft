@@ -30,7 +30,7 @@ export default function TripOverlay({ onTrip, onStatus }: TripOverlayProps) {
   }
 
   return (
-    <details className="mt-3 text-12px">
+    <details className="mt-2.5 text-12px">
       <summary className="cursor-pointer text-ink-faint hover:text-ink-soft">
         GTFS trip overlay
       </summary>

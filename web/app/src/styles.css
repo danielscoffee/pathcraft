@@ -146,6 +146,35 @@ body {
   border-top-color: var(--ink);
 }
 
+.leaflet-control-zoom {
+  border: 1px solid var(--paper-edge) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(33, 28, 20, 0.2);
+}
+
+.leaflet-control-zoom a {
+  background: var(--paper);
+  color: var(--ink-soft);
+  border-bottom-color: var(--paper-edge) !important;
+  width: 34px;
+  height: 34px;
+  line-height: 34px;
+  font: 400 18px/34px 'IBM Plex Mono', monospace;
+}
+
+.leaflet-control-zoom a:hover {
+  background: var(--paper-deep);
+  color: var(--accent);
+}
+
+.leaflet-control-scale-line {
+  background: rgba(245, 239, 226, 0.85);
+  border-color: var(--ink-faint);
+  color: var(--ink-soft);
+  font: 500 10px/1.6 'IBM Plex Mono', monospace;
+}
+
 .leaflet-control-attribution {
   background: rgba(245, 239, 226, 0.85);
   color: var(--ink-faint);

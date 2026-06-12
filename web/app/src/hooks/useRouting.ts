@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchJourney, fetchNearest, fetchRoute } from '../api/client'
 import type { Journey, RouteMode, SnapResult } from '../api/types'
-import { estimateMinutes, formatNumber, lineLengthMeters, normalizeClockTime } from '../lib/geo'
+import { estimateMinutes, lineLengthMeters, normalizeClockTime } from '../lib/geo'
 import { journeyToGeoJSON, totalCoordinateCount } from '../lib/journey'
 
 export type StatusTone = 'info' | 'ok' | 'err'
@@ -11,139 +11,186 @@ export interface Status {
   tone: StatusTone
 }
 
-export interface RouteStats {
-  distance: string
-  time: string
-  nodes: string
-  solve: string
+/** Outcome of solving one mode between the current A/B pair. */
+export interface ModeResult {
+  ok: boolean
+  geojson?: GeoJSON.FeatureCollection
+  /** Present for GTFS modes. */
+  journey?: Journey
+  durationSeconds?: number
+  distanceMeters?: number
+  nodeCount?: number
+  solveMs: number
+  error?: string
 }
 
 export interface SolvedRoute {
   geojson: GeoJSON.FeatureCollection
   modeID: string
-  /** Present when the solved mode was a GTFS journey. */
   journey?: Journey
-  /** Monotonic counter so the map can remount layers per solve. */
+  /** Bumps once per solve round so the map can remount/refit. */
   generation: number
 }
 
-const EMPTY_STATS: RouteStats = { distance: '—', time: '—', nodes: '—', solve: '—' }
+async function solveMode(
+  mode: RouteMode,
+  a: SnapResult,
+  b: SnapResult,
+  busTime: string,
+): Promise<ModeResult> {
+  const t0 = performance.now()
+  try {
+    if (mode.kind === 'gtfs') {
+      const time = normalizeClockTime(busTime || '05:00:00')
+      const journey = await fetchJourney(mode.endpoint || '/journey', a, b, time)
+      const geojson = journeyToGeoJSON(journey)
+      return {
+        ok: true,
+        geojson,
+        journey,
+        durationSeconds: journey.total_duration_seconds ?? 0,
+        distanceMeters: journey.walking_distance_meters,
+        nodeCount: totalCoordinateCount(geojson),
+        solveMs: performance.now() - t0,
+      }
+    }
+    const geojson = await fetchRoute(mode.endpoint || '/route', mode.id, a, b)
+    const first = geojson.features?.[0]
+    const coords = first && first.geometry.type === 'LineString' ? first.geometry.coordinates : []
+    const distanceMeters = lineLengthMeters(coords)
+    return {
+      ok: true,
+      geojson,
+      durationSeconds: estimateMinutes(mode.id, distanceMeters) * 60,
+      distanceMeters,
+      nodeCount: coords.length,
+      solveMs: performance.now() - t0,
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      solveMs: performance.now() - t0,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
 
-export function useRouting(mode: RouteMode | undefined, busTime: string) {
+/**
+ * Google-Maps-style directions state: two snapped endpoints, and on every
+ * complete pair ALL modes solve in parallel so mode tabs can show ETAs and
+ * switching tabs is instant (no refetch).
+ */
+export function useRouting(modes: RouteMode[], busTime: string) {
   const [from, setFrom] = useState<SnapResult | null>(null)
   const [to, setTo] = useState<SnapResult | null>(null)
-  const [route, setRoute] = useState<SolvedRoute | null>(null)
-  const [stats, setStats] = useState<RouteStats>(EMPTY_STATS)
-  const [status, setStatus] = useState<Status>({ text: 'Ready. Click point A.', tone: 'info' })
-  const generation = useRef(0)
+  const [results, setResults] = useState<Record<string, ModeResult>>({})
+  const [solving, setSolving] = useState(false)
+  const [generation, setGeneration] = useState(0)
+  const [status, setStatus] = useState<Status>({ text: 'Click the map to set A.', tone: 'info' })
 
-  // Refs mirror the latest endpoint inputs so map-click callbacks never
-  // capture stale mode/time values.
-  const modeRef = useRef(mode)
+  const modesRef = useRef(modes)
   const busTimeRef = useRef(busTime)
   useEffect(() => {
-    modeRef.current = mode
+    modesRef.current = modes
     busTimeRef.current = busTime
-  }, [mode, busTime])
+  }, [modes, busTime])
+
+  // Guards against late results from a superseded solve round.
+  const round = useRef(0)
+
+  const solveAll = useCallback(async (a: SnapResult, b: SnapResult, onlyGTFS = false) => {
+    const activeModes = modesRef.current.filter((m) => !onlyGTFS || m.kind === 'gtfs')
+    if (activeModes.length === 0) return
+    const thisRound = ++round.current
+
+    setSolving(true)
+    setStatus({ text: 'Routing all modes…', tone: 'info' })
+    const settled = await Promise.all(
+      activeModes.map(async (mode) => [mode.id, await solveMode(mode, a, b, busTimeRef.current)] as const),
+    )
+    if (thisRound !== round.current) return // a newer round superseded this one
+
+    setResults((prev) => {
+      const next = onlyGTFS ? { ...prev } : {}
+      for (const [id, result] of settled) next[id] = result
+      return next
+    })
+    setGeneration((g) => g + 1)
+    setSolving(false)
+
+    const okCount = settled.filter(([, r]) => r.ok).length
+    setStatus(
+      okCount === 0
+        ? { text: `No route found: ${settled[0][1].error ?? 'unknown error'}`, tone: 'err' }
+        : { text: `${okCount}/${settled.length} modes solved.`, tone: 'ok' },
+    )
+  }, [])
 
   const reset = useCallback((announce = true) => {
+    round.current++
     setFrom(null)
     setTo(null)
-    setRoute(null)
-    setStats(EMPTY_STATS)
-    if (announce) setStatus({ text: 'Ready. Click point A.', tone: 'info' })
+    setResults({})
+    setSolving(false)
+    if (announce) setStatus({ text: 'Click the map to set A.', tone: 'info' })
   }, [])
 
-  const solve = useCallback(async (a: SnapResult, b: SnapResult) => {
-    const activeMode = modeRef.current
-    if (!activeMode) {
-      setStatus({ text: 'No routing mode available.', tone: 'err' })
-      return
-    }
-    setStatus({ text: `Solving ${activeMode.label}…`, tone: 'info' })
-    const t0 = performance.now()
-    try {
-      if (activeMode.kind === 'gtfs') {
-        const time = normalizeClockTime(busTimeRef.current || '05:00:00')
-        const journey = await fetchJourney(activeMode.endpoint || '/journey', a, b, time)
-        const geojson = journeyToGeoJSON(journey)
-        const elapsed = performance.now() - t0
-        generation.current += 1
-        setRoute({ geojson, modeID: activeMode.id, journey, generation: generation.current })
-        setStats({
-          distance: journey.walking_distance_meters
-            ? `${formatNumber(journey.walking_distance_meters)} m walk`
-            : '—',
-          time: `${formatNumber((journey.total_duration_seconds ?? 0) / 60)} min`,
-          nodes: String(totalCoordinateCount(geojson)),
-          solve: `${formatNumber(elapsed)} ms`,
-        })
-        setStatus({
-          text:
-            journey.mode === 'multimodal'
-              ? 'Bus journey found.'
-              : 'No faster bus found; showing direct walk.',
-          tone: 'ok',
-        })
-      } else {
-        const geojson = await fetchRoute(activeMode.endpoint || '/route', activeMode.id, a, b)
-        const elapsed = performance.now() - t0
-        const first = geojson.features?.[0]
-        const coords = first && first.geometry.type === 'LineString' ? first.geometry.coordinates : []
-        const distance = lineLengthMeters(coords)
-        generation.current += 1
-        setRoute({ geojson, modeID: activeMode.id, generation: generation.current })
-        setStats({
-          distance: `${formatNumber(distance)} m`,
-          time: `${formatNumber(estimateMinutes(activeMode.id, distance))} min`,
-          nodes: String(coords.length),
-          solve: `${formatNumber(elapsed)} ms`,
-        })
-        setStatus({ text: `${activeMode.label} route found.`, tone: 'ok' })
-      }
-    } catch (err) {
-      setRoute(null)
-      setStats(EMPTY_STATS)
-      const message = err instanceof Error ? err.message : String(err)
-      setStatus({ text: `${activeMode.label} failed: ${message}`, tone: 'err' })
-    }
+  const clearPoint = useCallback((role: 'from' | 'to') => {
+    round.current++
+    setResults({})
+    setSolving(false)
+    if (role === 'from') setFrom(null)
+    else setTo(null)
+    setStatus({ text: `Click the map to set ${role === 'from' ? 'A' : 'B'}.`, tone: 'info' })
   }, [])
+
+  const swap = useCallback(() => {
+    setFrom(to)
+    setTo(from)
+    if (from && to) void solveAll(to, from)
+  }, [from, to, solveAll])
 
   const placePoint = useCallback(
     async (lat: number, lon: number) => {
-      // Third click starts a fresh pair, mirroring the OSRM-style UX.
       let role: 'from' | 'to' = 'from'
       if (from && !to) role = 'to'
       if (from && to) reset(false)
 
-      setStatus({ text: role === 'from' ? 'Snapping A…' : 'Snapping B…', tone: 'info' })
+      setStatus({ text: role === 'from' ? 'Snapping A to the road network…' : 'Snapping B…', tone: 'info' })
       try {
         const snap = await fetchNearest(lat, lon)
         if (role === 'from') {
           setFrom(snap)
-          setStatus({ text: 'Click point B.', tone: 'info' })
+          setStatus({ text: 'Now click the destination.', tone: 'info' })
         } else {
           setTo(snap)
-          await solve(from!, snap)
+          await solveAll(from!, snap)
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         setStatus({ text: `Snap failed: ${message}`, tone: 'err' })
       }
     },
-    [from, to, reset, solve],
+    [from, to, reset, solveAll],
   )
 
-  /** Re-solve in place (mode or departure time changed). */
-  const resolve = useCallback(() => {
-    if (from && to) void solve(from, to)
-    else if (modeRef.current) {
-      setStatus({
-        text: `Mode: ${modeRef.current.label}. Click point ${from ? 'B' : 'A'}.`,
-        tone: 'info',
-      })
-    }
-  }, [from, to, solve])
+  /** Re-solve GTFS modes when the departure time changes. */
+  const resolveGTFS = useCallback(() => {
+    if (from && to) void solveAll(from, to, true)
+  }, [from, to, solveAll])
 
-  return { from, to, route, stats, status, setStatus, placePoint, reset, resolve }
+  return {
+    from,
+    to,
+    results,
+    solving,
+    generation,
+    status,
+    setStatus,
+    placePoint,
+    clearPoint,
+    swap,
+    reset,
+    resolveGTFS,
+  }
 }
