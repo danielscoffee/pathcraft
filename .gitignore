@@ -27,3 +27,8 @@ go.work.sum
 .vscode/
 
 bin/
+
+# Frontend (web/app)
+web/app/node_modules/
+web/app/dist/*
+!web/app/dist/.gitkeep

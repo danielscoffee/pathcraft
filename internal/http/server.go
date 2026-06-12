@@ -27,7 +27,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/config", s.handleConfig)
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/status", s.handleStatus)
-	mux.HandleFunc("/graph-visual", s.handleGraphVisual)
+	// Legacy demo URL; the SPA now lives at the root.
+	mux.Handle("/graph-visual", http.RedirectHandler("/", http.StatusMovedPermanently))
+	mux.Handle("/", spaHandler())
 	return mux
 }
 

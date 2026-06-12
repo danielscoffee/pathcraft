@@ -1,0 +1,157 @@
+:root {
+  --paper: #f5efe2;
+  --paper-deep: #ece2cd;
+  --paper-edge: #d8cdb8;
+  --ink: #211c14;
+  --ink-soft: #4d463a;
+  --ink-faint: #80766a;
+  --accent: #c2451e;
+  --ok: #2f7d4f;
+  --err: #b3261e;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: 'Archivo', system-ui, sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* === control panel: warm paper card with grain === */
+.pc-panel {
+  background:
+    /* faint paper grain */
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.035 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
+    linear-gradient(170deg, rgba(255, 252, 244, 0.96), rgba(243, 234, 215, 0.96));
+  border: 1px solid var(--paper-edge);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.7) inset,
+    0 14px 40px rgba(33, 28, 20, 0.22);
+  backdrop-filter: blur(5px);
+}
+
+/* staggered panel entrance */
+.pc-reveal {
+  animation: pc-rise 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes pc-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* === map markers === */
+.pc-marker-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2.5px solid #fffcf4;
+  box-shadow: 0 2px 8px rgba(33, 28, 20, 0.45);
+  display: grid;
+  place-items: center;
+  font: 600 11px/1 'IBM Plex Mono', monospace;
+  color: #fffcf4;
+}
+
+.pc-marker-from {
+  background: var(--ok);
+  animation: pc-pulse-ok 2.4s ease-out infinite;
+}
+
+.pc-marker-to {
+  background: var(--err);
+  animation: pc-pulse-err 2.4s ease-out infinite;
+}
+
+@keyframes pc-pulse-ok {
+  0% {
+    box-shadow:
+      0 2px 8px rgba(33, 28, 20, 0.45),
+      0 0 0 0 rgba(47, 125, 79, 0.45);
+  }
+  70%,
+  100% {
+    box-shadow:
+      0 2px 8px rgba(33, 28, 20, 0.45),
+      0 0 0 14px rgba(47, 125, 79, 0);
+  }
+}
+
+@keyframes pc-pulse-err {
+  0% {
+    box-shadow:
+      0 2px 8px rgba(33, 28, 20, 0.45),
+      0 0 0 0 rgba(179, 38, 30, 0.45);
+  }
+  70%,
+  100% {
+    box-shadow:
+      0 2px 8px rgba(33, 28, 20, 0.45),
+      0 0 0 14px rgba(179, 38, 30, 0);
+  }
+}
+
+.pc-stop-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 2px solid #fffcf4;
+  background: #1d4ed8;
+  box-shadow: 0 1px 5px rgba(33, 28, 20, 0.45);
+  font-size: 12px;
+  line-height: 14px;
+  text-align: center;
+}
+
+/* === leaflet chrome, matched to the paper theme === */
+.leaflet-container {
+  font-family: 'Archivo', system-ui, sans-serif;
+}
+
+.leaflet-popup-content-wrapper {
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--paper-edge);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(33, 28, 20, 0.25);
+}
+
+.leaflet-popup-tip {
+  background: var(--paper);
+  border: 1px solid var(--paper-edge);
+}
+
+.leaflet-tooltip {
+  background: var(--ink);
+  color: var(--paper);
+  border: 0;
+  border-radius: 6px;
+  font: 500 11px/1.3 'IBM Plex Mono', monospace;
+  padding: 4px 7px;
+}
+
+.leaflet-tooltip-top:before {
+  border-top-color: var(--ink);
+}
+
+.leaflet-control-attribution {
+  background: rgba(245, 239, 226, 0.85);
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+
+.leaflet-control-attribution a {
+  color: var(--accent);
+}

@@ -2,26 +2,6 @@ package http
 
 import "github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
 
-type PageData struct {
-	// View
-	CenterLat float64
-	CenterLon float64
-	Zoom      int
-
-	// Tiles
-	TileURL string
-
-	// Data endpoints
-	StreetsURL string
-	RouteURL   string
-
-	// Styles
-	StreetsColor  string
-	StreetsWeight int
-	RouteColor    string
-	RouteWeight   int
-}
-
 // WARN: THIS ROUTER IS MORE TO DEBUG AND TEST THE GEOJSON OUTPUTS AND BASIC ROUTING THAN A PRODUCTION FEAT
 
 type Server struct {
