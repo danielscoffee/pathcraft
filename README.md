@@ -212,4 +212,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Keep changes deterministic, formatted, t
 
 ## License
 
-[MIT](LICENSE)
+[Apache 2.0](LICENSE)
