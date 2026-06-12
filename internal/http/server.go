@@ -24,6 +24,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/nearest", s.handleNearest)
 	mux.HandleFunc("/graph", s.handleGraph)
 	mux.HandleFunc("/nodes", s.handleNodes)
+	mux.HandleFunc("/config", s.handleConfig)
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/status", s.handleStatus)
 	mux.HandleFunc("/graph-visual", s.handleGraphVisual)
