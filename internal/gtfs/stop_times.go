@@ -5,6 +5,7 @@ package gtfs
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -153,12 +154,17 @@ type routePatternGroup struct {
 }
 
 func BuildIndex(stopTimes []StopTime, tripRoutes TripToRoute) *StopTimeIndex {
-	idx := NewStopTimeIndex()
-
 	tripStops := make(map[TripID][]StopTime)
 	for _, st := range stopTimes {
 		tripStops[st.TripID] = append(tripStops[st.TripID], st)
 	}
+	return buildIndexFromTripStops(tripStops, tripRoutes)
+}
+
+// buildIndexFromTripStops is the shared core behind BuildIndex and
+// IndexBuilder.Build: rows already grouped by trip, in any order.
+func buildIndexFromTripStops(tripStops map[TripID][]StopTime, tripRoutes TripToRoute) *StopTimeIndex {
+	idx := NewStopTimeIndex()
 
 	for tripID := range tripStops {
 		sort.Slice(tripStops[tripID], func(i, j int) bool {
@@ -212,7 +218,7 @@ func BuildIndex(stopTimes []StopTime, tripRoutes TripToRoute) *StopTimeIndex {
 			for pos, stopID := range group.stopIDs {
 				seq := pos + 1
 				pattern.Stops[pos] = RouteStop{StopID: stopID, Sequence: seq}
-				if !containsRoute(idx.StopRoutes[stopID], patternID) {
+				if !slices.Contains(idx.StopRoutes[stopID], patternID) {
 					idx.StopRoutes[stopID] = append(idx.StopRoutes[stopID], patternID)
 				}
 				idx.StopPositionInRoute[fmt.Sprintf("%s:%s", stopID, patternID)] = seq
@@ -267,13 +273,4 @@ func orderedStopKey(stops []StopTime) string {
 		b.WriteString(string(st.StopID))
 	}
 	return b.String()
-}
-
-func containsRoute(routes []RouteID, target RouteID) bool {
-	for _, r := range routes {
-		if r == target {
-			return true
-		}
-	}
-	return false
 }

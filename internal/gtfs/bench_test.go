@@ -9,7 +9,7 @@ import (
 // the small Recife example fixture (~102 stop_times, 16 trips). Numbers
 // here are a lower bound — real GTFS feeds have O(10^5-10^6) stop_times.
 func BenchmarkParseStopTimes_ExampleGTFS(b *testing.B) {
-	const path = "../../examples/gtfs/stop_times.txt"
+	const path = "../../testdata/mini_gtfs/stop_times.txt"
 	data, err := os.ReadFile(path)
 	if err != nil {
 		b.Fatalf("read %s: %v", path, err)
@@ -32,11 +32,11 @@ func BenchmarkParseStopTimes_ExampleGTFS(b *testing.B) {
 // BenchmarkBuildIndex_ExampleGTFS measures the RAPTOR index build cost on
 // the example fixture (parse excluded).
 func BenchmarkBuildIndex_ExampleGTFS(b *testing.B) {
-	stopTimes, err := ParseStopTimesFile("../../examples/gtfs/stop_times.txt")
+	stopTimes, err := ParseStopTimesFile("../../testdata/mini_gtfs/stop_times.txt")
 	if err != nil {
 		b.Fatalf("parse stop_times: %v", err)
 	}
-	tripRoutes, err := ParseTripsFile("../../examples/gtfs/trips.txt")
+	tripRoutes, err := ParseTripsFile("../../testdata/mini_gtfs/trips.txt")
 	if err != nil {
 		b.Fatalf("parse trips: %v", err)
 	}

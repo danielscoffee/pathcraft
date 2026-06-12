@@ -6,9 +6,11 @@ import (
 
 	"github.com/danielscoffee/pathcraft/internal/graph"
 	"github.com/danielscoffee/pathcraft/internal/gtfs"
+	"github.com/danielscoffee/pathcraft/internal/logging"
 	"github.com/danielscoffee/pathcraft/internal/osm"
 	"github.com/danielscoffee/pathcraft/internal/routing/raptor"
 	pcTime "github.com/danielscoffee/pathcraft/internal/time"
+	"go.uber.org/zap"
 )
 
 func (e *Engine) LoadOSM(path string) error {
@@ -63,17 +65,22 @@ func (e *Engine) LoadGTFSDir(dir string) error {
 	stopsPath := filepath.Join(dir, "stops.txt")
 	shapesPath := filepath.Join(dir, "shapes.txt")
 
-	stopTimes, err := gtfs.ParseStopTimesFile(stopTimesPath)
+	// City-scale feeds are streamed in chunks: Grande Recife's stop_times
+	// alone is 3.1M rows / 180 MB, too big to double-buffer as one slice.
+	builder, totalRows, err := gtfs.LoadStopTimesChunked(stopTimesPath, gtfs.DefaultChunkSize, func(rows int) {
+		logging.L().Info("loading GTFS stop_times", zap.Int("rows", rows))
+	})
 	if err != nil {
 		return fmt.Errorf("parsing stop_times: %w", err)
 	}
+	logging.L().Info("GTFS stop_times loaded", zap.Int("rows", totalRows))
 
 	tripRoutes, err := gtfs.ParseTripsFile(tripsPath)
 	if err != nil {
 		return fmt.Errorf("parsing trips: %w", err)
 	}
 
-	e.gtfsIndex = gtfs.BuildIndex(stopTimes, tripRoutes)
+	e.gtfsIndex = builder.Build(tripRoutes)
 	e.gtfsTripRoutes = tripRoutes
 	e.gtfsTripShapes = nil
 	if infos, err := gtfs.ParseTripInfosFile(tripsPath); err == nil {
@@ -89,7 +96,9 @@ func (e *Engine) LoadGTFSDir(dir string) error {
 		e.gtfsRoutes = routes
 	}
 	e.gtfsShapes = nil
-	if shapes, err := gtfs.ParseShapesFile(shapesPath); err == nil {
+	if shapes, err := gtfs.LoadShapesChunked(shapesPath, gtfs.DefaultChunkSize, func(points int) {
+		logging.L().Info("loading GTFS shapes", zap.Int("points", points))
+	}); err == nil {
 		e.gtfsShapes = shapes
 	}
 	if stops, err := gtfs.ParseStopsFile(stopsPath); err == nil {
