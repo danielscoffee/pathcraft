@@ -1,0 +1,64 @@
+{
+  "project": {
+    "name": "PathCraft",
+    "tagline": "Self-hosted multimodal routing engine (OSM + GTFS) with a plugin architecture and an embedded web directions app",
+    "repository": "github.com/danielscoffee/pathcraft",
+    "license": "see LICENSE in repo",
+    "status": "working prototype / pre-release, single developer + AI-assisted",
+    "as_of": "2026-06-11"
+  },
+  "what_it_does": [
+    "Parses OpenStreetMap extracts into a mode-aware street graph (walk/car/bike, oneway and access restrictions honored)",
+    "Parses full GTFS transit feeds and answers multimodal door-to-door journeys (walk + bus with transfers) via a RAPTOR-style algorithm",
+    "Serves a JSON/GeoJSON HTTP API: /route, /journey, /nearest (snap to road), /nodes (viewport intersections), /graph, /transit/*, /modes, /config",
+    "Ships a single Go binary with an embedded React SPA: Google-Maps-style directions UI (A/B picking, per-mode ETAs solved in parallel, transit itineraries, debug overlays)",
+    "Caches parsed OSM graphs to binary cache files for fast restarts"
+  ],
+  "tech_stack": {
+    "backend": "Go 1.26, stdlib HTTP, zap logging, compile-time plugin registry (algorithms, graph loaders, exporters, cost models, loggers)",
+    "algorithms": "A* for street routing, RAPTOR for transit timetables",
+    "frontend": "React 19, Vite 8, UnoCSS, Leaflet/react-leaflet, TypeScript; embedded via go:embed",
+    "data_formats": "OSM XML (Overpass extracts), GTFS static (stop_times, trips, stops, routes, shapes, transfers)",
+    "deployment_model": "single self-contained binary + map tiles from any tile server (OSM default); no external routing APIs, no cloud dependencies"
+  },
+  "scale_proven": {
+    "city": "Recife metropolitan region, Brazil",
+    "osm_graph": "city-scale extract, binary cache ~9.4 MB, loads in seconds",
+    "gtfs_feed": "official Grande Recife feed: 3,150,132 stop_times rows (180 MB), 87,579 trips, 7,143 stops, 30 MB shapes",
+    "gtfs_loading": "chunked streaming parser with string interning; ~35 MB zip fetched via make fetch-gtfs",
+    "query_latency_observed": "street route solve ~20 ms; multimodal journey with real feed returns sub-second; all four modes solved in parallel per request pair",
+    "example_real_result": "08:00 departure across Recife -> arrival 08:38, walk 358 m + bus with transfer, real trip IDs"
+  },
+  "quality_signals": {
+    "tests": "93 Go tests across 28 packages + 19 frontend vitest tests; ESLint and tsc clean; fixtures in tracked testdata/ so suite passes from fresh clone",
+    "ci": "GitHub Actions Go test workflow (frontend not yet in CI)",
+    "docs": "architecture docs, plugin-system docs, roadmap, demo tutorial in docs/"
+  },
+  "differentiators": [
+    "Single-binary, fully self-hosted alternative to Google Directions / Mapbox for orgs that cannot ship rider data to third parties",
+    "Plugin registry design: swap routing algorithms, cost models, exporters without forking the core",
+    "Handles real Brazilian transit feeds out of the box (proven on Grande Recife), a market underserved by polished routing tooling",
+    "Whole stack is inspectable: graph debug overlays (street classes, intersections, stops) built into the shipped UI"
+  ],
+  "current_gaps_be_honest": [
+    "No geocoding/search-by-name (coordinates and map clicks only)",
+    "GTFS calendar/service-day filtering not applied (all trips treated as running); no GTFS-realtime",
+    "No turn-by-turn instructions, no traffic, bike/car use heuristic speeds",
+    "Single-city testing; no horizontal scaling story, auth, rate limiting, or multi-tenant features",
+    "Router marked by author as debug/demo grade rather than production",
+    "No packaged releases, Docker image, or hosted demo yet"
+  ],
+  "near_term_roadmap_hints": [
+    "Frontend CI job, Docker packaging, hosted demo",
+    "Service-calendar filtering and GTFS-realtime ingestion",
+    "Geocoder integration (e.g., Nominatim/Photon) for address search",
+    "More city feeds to prove generality (catalog of Brazilian capitals)"
+  ],
+  "possible_business_surfaces_raw_facts_for_analysis": [
+    "Transit agencies / city governments in Brazil publish GTFS but lack rider-facing journey planners they control",
+    "Logistics and delivery companies need self-hosted routing where per-request API pricing (Google: ~USD 5-10 per 1000 directions calls) dominates costs",
+    "Urban-planning consultancies need multimodal accessibility analysis on open data",
+    "White-label embedded directions widget for real-estate/tourism portals",
+    "The plugin architecture allows selling proprietary cost models (safety, accessibility, low-emission routing) on an open core"
+  ]
+}
