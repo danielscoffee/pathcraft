@@ -1,6 +1,6 @@
 module github.com/danielscoffee/pathcraft
 
-go 1.25.5
+go 1.25.12
 
 require (
 	go.uber.org/multierr v1.10.0 // indirect

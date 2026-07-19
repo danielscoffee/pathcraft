@@ -15,7 +15,7 @@
     "Caches parsed OSM graphs to binary cache files for fast restarts"
   ],
   "tech_stack": {
-    "backend": "Go 1.26, stdlib HTTP, zap logging, compile-time plugin registry (algorithms, graph loaders, exporters, cost models, loggers)",
+    "backend": "Go 1.25.12, stdlib HTTP, zap logging, compile-time plugin registry (algorithms, graph loaders, exporters, cost models, loggers)",
     "algorithms": "A* for street routing, RAPTOR for transit timetables",
     "frontend": "React 19, Vite 8, UnoCSS, Leaflet/react-leaflet, TypeScript; embedded via go:embed",
     "data_formats": "OSM XML (Overpass extracts), GTFS static (stop_times, trips, stops, routes, shapes, transfers)",

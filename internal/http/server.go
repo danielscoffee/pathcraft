@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/danielscoffee/pathcraft/internal/logging"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
@@ -59,10 +60,19 @@ func (s *Server) handleModes(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+}
+
 func RunServer(e *engine.Engine, addr string) {
 	s := NewServer(e)
 	logging.L().Info("server starting", zap.String("addr", addr))
-	if err := http.ListenAndServe(addr, s.Handler()); err != nil {
+	if err := newHTTPServer(addr, s.Handler()).ListenAndServe(); err != nil {
 		logging.L().Fatal("server stopped", zap.String("addr", addr), zap.Error(err))
 	}
 }

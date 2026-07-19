@@ -5,6 +5,7 @@ import type { MapConfig, RouteLayerProps, SnapResult, TripDetail } from '../api/
 import type { SolvedRoute, Status } from '../hooks/useRouting'
 import { formatNumber } from '../lib/geo'
 import { modeColor } from '../lib/mapStyle'
+import { popupContent } from '../lib/popup'
 import { NodesLayer, StopsLayer, StreetGraphLayer, TripLayer } from './overlays'
 
 const markerIcon = (role: 'from' | 'to') =>
@@ -54,18 +55,18 @@ function FitRoute({ route }: { route: SolvedRoute | null }) {
   return null
 }
 
-function routePopup(props: RouteLayerProps): string | null {
+function routePopup(props: RouteLayerProps): HTMLElement | null {
   if (props.mode === 'transit') {
     const line = [props.route_name || props.route_id || props.trip_id || '', props.route_long_name || '']
       .filter(Boolean)
       .join(' — ')
-    return `<strong>Bus ${line}</strong><br>${props.from ?? ''} → ${props.to ?? ''}`
+    return popupContent(`Bus ${line}`, [`${props.from ?? ''} → ${props.to ?? ''}`])
   }
   if (props.mode === 'transfer') {
-    return (
-      `<strong>Transfer</strong><br>${props.from ?? ''} → ${props.to ?? ''}<br>` +
-      `${formatNumber(props.distance_meters ?? 0)} m · ${formatNumber((props.duration_seconds ?? 0) / 60)} min`
-    )
+    return popupContent('Transfer', [
+      `${props.from ?? ''} → ${props.to ?? ''}`,
+      `${formatNumber(props.distance_meters ?? 0)} m · ${formatNumber((props.duration_seconds ?? 0) / 60)} min`,
+    ])
   }
   return null
 }

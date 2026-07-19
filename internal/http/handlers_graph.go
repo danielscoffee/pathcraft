@@ -3,7 +3,9 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/danielscoffee/pathcraft/internal/geojson"
 	"github.com/danielscoffee/pathcraft/internal/graph"
@@ -47,7 +49,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 	var minLon, minLat, maxLon, maxLat float64
 	hasBBox := false
 	if v := r.URL.Query().Get("bbox"); v != "" {
-		parts := splitFour(v)
+		parts := strings.Split(v, ",")
 		if len(parts) == 4 {
 			a, e1 := strconv.ParseFloat(parts[0], 64)
 			b, e2 := strconv.ParseFloat(parts[1], 64)
@@ -84,7 +86,7 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 		}
 		ids = append(ids, id)
 	}
-	sortNodeIDs(ids)
+	slices.Sort(ids)
 	if limit > 0 && limit < len(ids) {
 		ids = ids[:limit]
 	}
@@ -105,26 +107,5 @@ func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(out); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-func splitFour(s string) []string {
-	out := []string{}
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == ',' {
-			out = append(out, s[start:i])
-			start = i + 1
-		}
-	}
-	out = append(out, s[start:])
-	return out
-}
-
-func sortNodeIDs(ids []graph.NodeID) {
-	for i := 1; i < len(ids); i++ {
-		for j := i; j > 0 && ids[j-1] > ids[j]; j-- {
-			ids[j-1], ids[j] = ids[j], ids[j-1]
-		}
 	}
 }

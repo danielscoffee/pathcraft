@@ -16,7 +16,7 @@ It ships working routing today: OSM walking routes via A*, GTFS transit routes v
 
 ## Prerequisites
 
-- Go `1.25.5` (see `go.mod`)
+- Go `1.25.12` (see `go.mod`)
 - `make`
 - `curl` only if you use `make fetch-osm`
 

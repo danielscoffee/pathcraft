@@ -5,6 +5,7 @@ import { fetchNodes, fetchStreetGraph, fetchTransitStops } from '../api/client'
 import type { RouteLayerProps, TripDetail } from '../api/types'
 import type { Status } from '../hooks/useRouting'
 import { highwayStyle } from '../lib/mapStyle'
+import { popupContent } from '../lib/popup'
 
 const MIN_ZOOM_NODES = 16 // below this, too many nodes to draw
 const NODES_MAX = 200 // hard cap per fetch
@@ -199,7 +200,7 @@ export function StopsLayer({ enabled, onStatus }: OverlayProps) {
             }),
           onEachFeature: (feature, lyr) => {
             const props = (feature.properties ?? {}) as { name?: string; id?: string }
-            lyr.bindPopup(`<strong>Bus stop</strong><br>${props.name ?? ''}<br>ID: ${props.id ?? ''}`)
+            lyr.bindPopup(popupContent('Bus stop', [props.name ?? '', `ID: ${props.id ?? ''}`]))
           },
         }).addTo(map)
         onStatus({ text: `Bus stops: ${data.features.length} shown.`, tone: 'ok' })
@@ -236,8 +237,12 @@ export function TripLayer({ trip }: { trip: TripDetail | null }) {
           fillColor: '#60a5fa',
           fillOpacity: 0.95,
         }).bindPopup(
-          `<strong>${st.stop_name}</strong><br>Stop: ${st.stop_id}<br>` +
-            `Seq: ${st.stop_sequence}<br>Arr: ${st.arrival_time}<br>Dep: ${st.departure_time}`,
+          popupContent(st.stop_name, [
+            `Stop: ${st.stop_id}`,
+            `Seq: ${st.stop_sequence}`,
+            `Arr: ${st.arrival_time}`,
+            `Dep: ${st.departure_time}`,
+          ]),
         ),
       ),
     ).addTo(map)
