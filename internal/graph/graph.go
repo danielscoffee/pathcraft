@@ -82,11 +82,6 @@ func (g *Graph) AddRestrictedEdgeWithMeta(from, to NodeID, distanceM float64, hi
 	})
 }
 
-func (g *Graph) AddBidirectionalEdgeWithMeta(a, b NodeID, distanceM float64, highway, name string) {
-	g.AddEdgeWithMeta(a, b, distanceM, highway, name)
-	g.AddEdgeWithMeta(b, a, distanceM, highway, name)
-}
-
 func (g *Graph) Neighbors(id NodeID) []Edge {
 	return g.Edges[id]
 }

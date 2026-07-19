@@ -47,7 +47,6 @@ type TripStopTime struct {
 type StopTimeIndex struct {
 	StopRoutes          map[StopID][]RouteID
 	RoutePatterns       map[RouteID]*RoutePattern
-	RouteStopTrips      map[string][]TripStopTime
 	StopPositionInRoute map[string]int
 	// RouteTrips[routeID][tripIndex][stopIndex]
 	RouteTrips map[RouteID][][]TripStopTime
@@ -57,7 +56,6 @@ func NewStopTimeIndex() *StopTimeIndex {
 	return &StopTimeIndex{
 		StopRoutes:          make(map[StopID][]RouteID),
 		RoutePatterns:       make(map[RouteID]*RoutePattern),
-		RouteStopTrips:      make(map[string][]TripStopTime),
 		StopPositionInRoute: make(map[string]int),
 		RouteTrips:          make(map[RouteID][][]TripStopTime),
 	}
@@ -75,11 +73,6 @@ func (idx *StopTimeIndex) StopsOnRoute(routeID RouteID) []RouteStop {
 	return pattern.Stops
 }
 
-func (idx *StopTimeIndex) TripsAtRouteStop(routeID RouteID, stopSequence int) []TripStopTime {
-	key := fmt.Sprintf("%s:%d", routeID, stopSequence)
-	return idx.RouteStopTrips[key]
-}
-
 func (idx *StopTimeIndex) GetStopSequence(stopID StopID, routeID RouteID) int {
 	key := fmt.Sprintf("%s:%s", stopID, routeID)
 	seq, ok := idx.StopPositionInRoute[key]
@@ -87,22 +80,6 @@ func (idx *StopTimeIndex) GetStopSequence(stopID StopID, routeID RouteID) int {
 		return -1
 	}
 	return seq
-}
-
-func (idx *StopTimeIndex) EarliestTrip(routeID RouteID, stopSequence int, minDepartureTime time.Time) *TripStopTime {
-	trips := idx.TripsAtRouteStop(routeID, stopSequence)
-	if len(trips) == 0 {
-		return nil
-	}
-
-	i := sort.Search(len(trips), func(i int) bool {
-		return trips[i].DepartureTime >= minDepartureTime
-	})
-
-	if i < len(trips) {
-		return &trips[i]
-	}
-	return nil
 }
 
 func (idx *StopTimeIndex) EarliestTripIndex(routeID RouteID, stopIndex int, minDepartureTime time.Time) int {
@@ -122,10 +99,7 @@ func (idx *StopTimeIndex) EarliestTripIndex(routeID RouteID, stopIndex int, minD
 }
 
 // WARN: dedicate error packages?
-var (
-	ErrMissingColumn = errors.New("missing required column")
-	ErrInvalidData   = errors.New("invalid data")
-)
+var ErrMissingColumn = errors.New("missing required column")
 
 type Route struct {
 	ID        RouteID
@@ -245,20 +219,11 @@ func buildIndexFromTripStops(tripStops map[TripID][]StopTime, tripRoutes TripToR
 				for pos, st := range stops {
 					tripStop := TripStopTime{TripID: tripID, ArrivalTime: st.ArrivalTime, DepartureTime: st.DepartureTime}
 					tripData[pos] = tripStop
-					key := fmt.Sprintf("%s:%d", patternID, pos+1)
-					idx.RouteStopTrips[key] = append(idx.RouteStopTrips[key], tripStop)
 				}
 				routeTrips = append(routeTrips, tripData)
 			}
 			idx.RouteTrips[patternID] = routeTrips
 		}
-	}
-
-	for key, trips := range idx.RouteStopTrips {
-		sort.Slice(trips, func(i, j int) bool {
-			return trips[i].DepartureTime < trips[j].DepartureTime
-		})
-		idx.RouteStopTrips[key] = trips
 	}
 
 	return idx

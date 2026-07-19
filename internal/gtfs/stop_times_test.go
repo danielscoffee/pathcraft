@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/danielscoffee/pathcraft/internal/gtfs"
-	"github.com/danielscoffee/pathcraft/internal/time"
 )
 
 func TestParseStopTimes(t *testing.T) {
@@ -82,14 +81,6 @@ func TestBuildIndex(t *testing.T) {
 	if seq != 2 {
 		t.Errorf("GetStopSequence(stopB, routeR) = %d, want 2", seq)
 	}
-
-	trips := idx.TripsAtRouteStop("routeR", 1)
-	if len(trips) != 2 {
-		t.Errorf("TripsAtRouteStop(routeR, 1) has %d trips, want 2", len(trips))
-	}
-	if trips[0].TripID != "trip1" {
-		t.Errorf("first trip should be trip1 (earlier), got %s", trips[0].TripID)
-	}
 }
 
 func TestParseTripInfos(t *testing.T) {
@@ -162,47 +153,5 @@ stopB,Stop B,-8.05480,-34.88030
 	}
 	if stopA.Lat != -8.05428 || stopA.Lon != -34.88130 {
 		t.Errorf("stopA coords = (%v, %v), want (-8.05428, -34.88130)", stopA.Lat, stopA.Lon)
-	}
-}
-
-func TestEarliestTrip(t *testing.T) {
-	stopTimes := []gtfs.StopTime{
-		{TripID: "trip1", StopID: "stopA", ArrivalTime: 8 * 3600, DepartureTime: 8 * 3600, StopSequence: 1},
-		{TripID: "trip2", StopID: "stopA", ArrivalTime: 9 * 3600, DepartureTime: 9 * 3600, StopSequence: 1},
-		{TripID: "trip3", StopID: "stopA", ArrivalTime: 10 * 3600, DepartureTime: 10 * 3600, StopSequence: 1},
-	}
-
-	tripRoutes := gtfs.TripToRoute{
-		"trip1": "routeR",
-		"trip2": "routeR",
-		"trip3": "routeR",
-	}
-
-	idx := gtfs.BuildIndex(stopTimes, tripRoutes)
-
-	tests := []struct {
-		minTime  time.Time
-		expected gtfs.TripID
-	}{
-		{7 * 3600, "trip1"},
-		{8 * 3600, "trip1"},
-		{8*3600 + 1, "trip2"},
-		{9*3600 + 30*60, "trip3"},
-		{11 * 3600, ""},
-	}
-
-	for _, tt := range tests {
-		trip := idx.EarliestTrip("routeR", 1, tt.minTime)
-		if tt.expected == "" {
-			if trip != nil {
-				t.Errorf("EarliestTrip(minTime=%v) = %v, want nil", tt.minTime, trip.TripID)
-			}
-		} else {
-			if trip == nil {
-				t.Errorf("EarliestTrip(minTime=%v) = nil, want %s", tt.minTime, tt.expected)
-			} else if trip.TripID != tt.expected {
-				t.Errorf("EarliestTrip(minTime=%v) = %s, want %s", tt.minTime, trip.TripID, tt.expected)
-			}
-		}
 	}
 }

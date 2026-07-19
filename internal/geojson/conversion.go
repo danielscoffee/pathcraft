@@ -17,39 +17,6 @@ type FeatureCollection struct {
 	Features []Feature `json:"features"`
 }
 
-func GraphToGeoJSON(g *graph.Graph) []byte {
-	var features []Feature
-	for from, edges := range g.Edges {
-		fromNode := g.Nodes[from]
-		for _, e := range edges {
-			toNode := g.Nodes[e.To]
-			props := map[string]any{}
-			if e.Highway != "" {
-				props["highway"] = e.Highway
-			}
-			if e.Name != "" {
-				props["name"] = e.Name
-			}
-			features = append(features, Feature{
-				Type: "Feature",
-				Geometry: map[string]any{
-					"type":        "LineString",
-					"coordinates": [][]float64{{fromNode.Lon, fromNode.Lat}, {toNode.Lon, toNode.Lat}},
-				},
-				Properties: props,
-			})
-		}
-	}
-
-	fc := FeatureCollection{
-		Type:     "FeatureCollection",
-		Features: features,
-	}
-
-	b, _ := json.Marshal(fc)
-	return b
-}
-
 func WriteGraphToGeoJSON(g *graph.Graph, w io.Writer) error {
 	if _, err := w.Write([]byte(`{"type":"FeatureCollection","features":[`)); err != nil {
 		return err

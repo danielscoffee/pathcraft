@@ -78,9 +78,6 @@ func TestIndexBuilder_MatchesBuildIndex(t *testing.T) {
 	if !reflect.DeepEqual(got.RouteTrips, want.RouteTrips) {
 		t.Fatalf("RouteTrips differ")
 	}
-	if !reflect.DeepEqual(got.RouteStopTrips, want.RouteStopTrips) {
-		t.Fatalf("RouteStopTrips differ")
-	}
 	if !reflect.DeepEqual(got.StopRoutes, want.StopRoutes) {
 		t.Fatalf("StopRoutes differ")
 	}

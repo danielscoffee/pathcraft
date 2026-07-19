@@ -3,6 +3,7 @@ package astar
 import (
 	"container/heap"
 	"errors"
+	"slices"
 
 	"github.com/danielscoffee/pathcraft/internal/geo"
 	"github.com/danielscoffee/pathcraft/internal/graph"
@@ -115,9 +116,7 @@ func reconstructPath(cameFrom map[graph.NodeID]graph.NodeID, target graph.NodeID
 	}
 
 	// Reverse to get source -> target order
-	for i, j := 0, len(path)-1; i < j; i, j = i+1, j-1 {
-		path[i], path[j] = path[j], path[i]
-	}
+	slices.Reverse(path)
 
 	return Path{
 		Nodes:      path,

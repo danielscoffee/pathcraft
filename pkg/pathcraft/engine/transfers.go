@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"slices"
 	"time"
 
 	"github.com/danielscoffee/pathcraft/internal/geo"
@@ -70,9 +71,7 @@ func (e *Engine) shapeLegCoordinates(tripID gtfs.TripID, fromStopID, toStopID gt
 		coords = append(coords, Coordinate{Lat: point.Lat, Lon: point.Lon})
 	}
 	if reverse {
-		for i, j := 0, len(coords)-1; i < j; i, j = i+1, j-1 {
-			coords[i], coords[j] = coords[j], coords[i]
-		}
+		slices.Reverse(coords)
 	}
 	return coords
 }

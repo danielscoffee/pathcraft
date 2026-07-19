@@ -34,7 +34,7 @@ Inventory of `internal/*` packages — these are stable engines that the new
 - Round-based RAPTOR with `MaxRounds = 10`.
 
 ## `internal/geojson`
-- `GraphToGeoJSON`, `WriteGraphToGeoJSON`, `PathToGeoJSON`
+- `WriteGraphToGeoJSON`, `PathToGeoJSON`
 - Emits `FeatureCollection` with `LineString` geometry.
 
 ## `internal/geo`, `internal/time`, `internal/mobility`

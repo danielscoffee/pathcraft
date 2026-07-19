@@ -69,16 +69,4 @@ export const ClearIcon = (p: IconProps) => (
   </svg>
 )
 
-export const PlusIcon = (p: IconProps) => (
-  <svg {...base(p)}>
-    <path d="M12 5v14M5 12h14" />
-  </svg>
-)
-
-export const MinusIcon = (p: IconProps) => (
-  <svg {...base(p)}>
-    <path d="M5 12h14" />
-  </svg>
-)
-
 export type { IconProps }
