@@ -41,11 +41,12 @@ func cmdPluginsList(args []string) error {
 		"exporters":  reg.Exporters(),
 		"cost":       reg.CostModels(),
 		"loggers":    reg.Loggers(),
+		"modes":      reg.Modes(),
 	}
 	if *asJSON {
 		return json.NewEncoder(os.Stdout).Encode(data)
 	}
-	for _, kind := range []string{"algorithms", "loaders", "exporters", "cost", "loggers"} {
+	for _, kind := range []string{"algorithms", "loaders", "exporters", "cost", "loggers", "modes"} {
 		fmt.Printf("%s:\n", strings.ToUpper(kind))
 		if len(data[kind]) == 0 {
 			fmt.Println("  (none)")

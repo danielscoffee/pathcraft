@@ -10,10 +10,14 @@ import (
 	// Register built-in plugins so they are visible to the registry-backed
 	// pipeline command and `pathcraft plugins list`.
 	_ "github.com/danielscoffee/pathcraft/pkg/plugins/astar"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/bike"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/car"
 	_ "github.com/danielscoffee/pathcraft/pkg/plugins/geojson"
 	_ "github.com/danielscoffee/pathcraft/pkg/plugins/gtfs"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/gtfsmode"
 	_ "github.com/danielscoffee/pathcraft/pkg/plugins/osm"
 	_ "github.com/danielscoffee/pathcraft/pkg/plugins/raptor"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/walk"
 	_ "github.com/danielscoffee/pathcraft/pkg/plugins/zaplogger"
 )
 
