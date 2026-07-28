@@ -75,6 +75,20 @@ async function solveMode(
   }
 }
 
+export function solveModesProgressively(
+  modes: RouteMode[],
+  solve: (mode: RouteMode) => Promise<ModeResult>,
+  publish: (id: string, result: ModeResult) => void,
+) {
+  return Promise.all(
+    modes.map(async (mode) => {
+      const result = await solve(mode)
+      publish(mode.id, result)
+      return [mode.id, result] as const
+    }),
+  )
+}
+
 /**
  * Google-Maps-style directions state: two snapped endpoints, and on every
  * complete pair ALL modes solve in parallel so mode tabs can show ETAs and
@@ -104,17 +118,19 @@ export function useRouting(modes: RouteMode[], busTime: string) {
     const thisRound = ++round.current
 
     setSolving(true)
+    if (!onlyGTFS) setResults({})
     setStatus({ text: 'Routing all modes…', tone: 'info' })
-    const settled = await Promise.all(
-      activeModes.map(async (mode) => [mode.id, await solveMode(mode, a, b, busTimeRef.current)] as const),
+    const settled = await solveModesProgressively(
+      activeModes,
+      (mode) => solveMode(mode, a, b, busTimeRef.current),
+      (id, result) => {
+        if (thisRound === round.current) {
+          setResults((prev) => ({ ...prev, [id]: result }))
+        }
+      },
     )
     if (thisRound !== round.current) return // a newer round superseded this one
 
-    setResults((prev) => {
-      const next = onlyGTFS ? { ...prev } : {}
-      for (const [id, result] of settled) next[id] = result
-      return next
-    })
     setGeneration((g) => g + 1)
     setSolving(false)
 
