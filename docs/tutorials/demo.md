@@ -1,8 +1,6 @@
 # Interactive Routing Demo (OSRM-style)
 
-PathCraft ships an interactive Leaflet demo: click two points on the map,
-the server snaps them to the nearest OSM nodes, A* finds the optimal
-walking route, and the result comes back as GeoJSON rendered on the map.
+PathCraft ships an interactive Leaflet demo: click two points, then every registered routing-mode plugin resolves independently. The browser consumes plugin manifests and generic route segments; Leaflet converts those segments to map geometry at the visual boundary.
 
 ## Run with the bundled example
 
@@ -45,8 +43,9 @@ Tips:
 
 ## What you get
 
-- **Click A**, then **click B** → optimal walking route appears.
-- Route panel shows distance, estimated walk time, node count, solve time.
+- **Click A**, then **click B** → registered modes resolve progressively.
+- Tabs, colors, durations, distance, and options come from plugin manifests/results.
+- Built-in air routing returns altitude-preserving 3D positions; Leaflet displays their 2D projection.
 - **R** or the Reset button clears markers and route.
 - Background grey lines are the full walkable graph from `/graph`.
 - Optional GTFS overlay (in the collapsible details section) renders the
@@ -57,19 +56,16 @@ Tips:
 ```
 browser click (lat,lon)
    │
-   ▼
-GET /route?from_lat&from_lon&to_lat&to_lon
+   ├─ GET /modes
    │
    ▼
-engine.RouteByCoordinates
-   │   ├─ NearestNode (grid index)
-   │   └─ astar.AStar over internal/graph
+GET /mode-route?mode=<plugin>&from=lon,lat&to=lon,lat
    │
    ▼
-geojson.PathToGeoJSON  →  FeatureCollection LineString  →  Leaflet
+pkg/plugins registry → core.Mode.Route
+   │
+   ▼
+N-dimensional route segments → web visual adapter → Leaflet
 ```
 
-The new pluggable layer (`pkg/pathcraft/registry` + plugins) backs the
-`pathcraft pipeline` CLI. The HTTP demo still uses the classic
-`pkg/pathcraft/engine.Engine` directly because it predates the registry
-and is already wired into the Leaflet template.
+Legacy `/route` and `/journey` endpoints remain compatibility adapters, but they dispatch registered modes rather than owning mode policy.

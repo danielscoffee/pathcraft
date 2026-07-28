@@ -72,14 +72,15 @@ Inventory of `internal/*` packages — these are stable engines that the new
 
 ## `pkg/plugins`
 
-- `NearestNodeIndex` interface + `GridNearestNodeIndex` — the only pre-existing
-  "plugin" surface, used by `internal/graph`.
+- One compile-time registry for modes, algorithms, loaders, exporters, cost models, and loggers.
+- Built-in OSM/GTFS adapters plus A*, RAPTOR, GeoJSON, and zap implementations.
+- Registered high-level `walk`, `bike`, `car`, `gtfs`, and 2D/3D reference `air` modes.
+- `NearestNodeIndex` interface + `GridNearestNodeIndex`, used by `internal/graph`.
 
 ## Public extension and ecosystem layers
 
 - `api/pathcraft/v1` — protobuf contract plus generated Go gRPC client/server types.
 - `sdk/js/pathcraft.mjs` + `cmd/pathcraft-wasm` — browser loader and Go WebAssembly entrypoint.
-- `pkg/pathcraft/core` — interfaces + value types (`Graph`, `Algorithm`, `GraphLoader`, `Exporter`, `CostModel`, `RouteRequest`, `RouteResult`).
-- `pkg/pathcraft/registry` — compile-time plugin registry + `Default` global.
-- `pkg/pathcraft/plugins/{osmgraph,gtfsgraph}` — adapters from internal types to `core.Graph` with `Native` capability escape hatches.
-- `pkg/pathcraft/plugins/{astar,raptor,osm,gtfs,geojson}` — built-in plugins that register with `registry.Default` in `init()`.
+- `pkg/pathcraft/core` — dimension-neutral interfaces + values (`Graph`, `Algorithm`, `Mode`, loaders, exporters, requests, N-dimensional positions, and route segments).
+- `pkg/plugins/{osmgraph,gtfsgraph}` — adapters from internal types to `core.Graph` with `Native` capability escape hatches.
+- `pkg/plugins/*` — registry plus built-in implementations that register with `plugins.Default` in `init()`.

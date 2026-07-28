@@ -141,9 +141,9 @@ import (
     "github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
     "github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
 
-    _ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/astar"
-    _ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/geojson"
-    _ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/osm"
+    _ "github.com/danielscoffee/pathcraft/pkg/plugins/astar"
+    _ "github.com/danielscoffee/pathcraft/pkg/plugins/geojson"
+    _ "github.com/danielscoffee/pathcraft/pkg/plugins/osm"
 )
 
 result, err := engine.Run(context.Background(), engine.PipelineRequest{
@@ -155,7 +155,7 @@ result, err := engine.Run(context.Background(), engine.PipelineRequest{
 })
 ```
 
-Custom plugins are ordinary linked Go packages implementing interfaces from `pkg/pathcraft/core` and registering with `pkg/pathcraft/registry`. See [Plugin system](../architecture/plugin-system.md). PathCraft does not load plugins dynamically.
+Custom plugins are ordinary linked Go packages implementing interfaces from `pkg/pathcraft/core` and registering with `pkg/plugins`. High-level `core.Mode` plugins accept N-dimensional positions and return generic route segments, so custom domains do not require transport or UI changes. See [Plugin system](../architecture/plugin-system.md). PathCraft does not load plugins dynamically.
 
 ## API reference and runnable example
 

@@ -43,17 +43,20 @@ flowchart TB
     %% Layers
     Interfaces["Interfaces<br/>CLI · HTTP · gRPC · JavaScript/WASM"]
 
-    Engine["Engine Facade<br/>Mode selection<br/>Policies<br/>Configuration"]
+    Plugins["Plugin Registry<br/>Modes · Algorithms · Loaders · Exporters"]
 
-    Core["Core Domain<br/>Graph · Geo · Routing Algorithms"]
+    Engine["Engine Facade<br/>Data · Primitive routing operations"]
 
-    Adapters["Adapters<br/>OSM · GTFS · GeoJSON · Cache"]
+    Core["Core Contracts<br/>Graphs · N-dimensional routes"]
+
+    Adapters["Adapters<br/>HTTP · CLI · gRPC · WASM · Visuals"]
 
     %% Dependency flow (top-down usage, bottom-up dependencies)
-    Interfaces --> Engine
+    Interfaces --> Adapters
+    Adapters --> Plugins
+    Plugins --> Engine
+    Plugins --> Core
     Engine --> Core
-    Adapters --> Core
-    Adapters --> Engine
 ```
 
 ---
@@ -91,6 +94,10 @@ Private core logic (not exported).
 
 ---
 
+### `/pkg/plugins`
+
+Public compile-time registry and built-in implementations. Applications activate plugins through imports; adapters discover registered manifests/capabilities.
+
 ### `/pkg/pathcraft/engine`
 
 Primary public Go routing API.
@@ -99,7 +106,7 @@ Responsibilities:
 
 - Load data (OSM path or plain XML reader, GTFS directory)
 - Validate default mode, speed, and highway penalties through `Config`
-- Select routing mode
+- Expose primitive street/transit operations consumed by mode plugins
 - Expose a clean API:
   - `NewWithConfig()`
   - `Route()`
@@ -163,7 +170,7 @@ This prevents HTTP/CLI concerns from leaking into algorithms.
 - Transit (RAPTOR)
 - Multimodal (timed Walk + Transit)
 
-Each mode implements a shared interface.
+Each mode implements `core.Mode`, registers through `pkg/plugins`, declares its coordinate dimensions/options/presentation, and returns generic route segments. The built-in `air` mode demonstrates altitude-preserving 3D output without adding air concepts to core.
 
 ---
 

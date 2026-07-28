@@ -2,14 +2,14 @@
 
 **PathCraft is an extensible Go routing engine for maps, transit, simulations, and custom graphs.**
 
-It ships working routing today: OSM street routes via A*, GTFS transit routes via RAPTOR, timetable-aware walk+transit journeys, GeoJSON export, a CLI, an HTTP debug/demo server, and a compile-time plugin registry for custom loaders, algorithms, exporters, and cost models.
+It ships working routing today: OSM street routes via A*, GTFS transit routes via RAPTOR, timetable-aware walk+transit journeys, a 3D air-routing reference, GeoJSON export, a CLI, an HTTP debug/demo server, and one compile-time registry for custom routing modes, loaders, algorithms, exporters, and cost models.
 
 ## Features
 
 - **Walking routing**: parse OSM XML / `.osm.gz`, build a walkable graph, and route by node ID or coordinates.
 - **Transit routing**: ingest GTFS `stop_times.txt`, `trips.txt`, optional `transfers.txt`, and optional `stops.txt`; query earliest arrivals with RAPTOR.
 - **Time-dependent multimodal journeys**: compare direct walking against walk → scheduled transit → walk, with timed journey legs.
-- **Plugin registry**: `core.Algorithm`, `core.GraphLoader`, `core.Exporter`, and `core.CostModel` extension points.
+- **Plugin registry**: `core.Mode`, `core.Algorithm`, `core.GraphLoader`, `core.Exporter`, and `core.CostModel` extension points under `pkg/plugins`.
 - **Engine configuration**: validated defaults for mode, speed, and per-highway route penalties.
 - **Multiple surfaces**: Go SDK, CLI, HTTP, protobuf/gRPC, browser WASM, and a Leaflet routing demo.
 - **Opt-in CORS**: exact browser origins, disabled by default.
@@ -51,6 +51,9 @@ Built-ins currently include:
 | `raptor`  | algorithm | internal RAPTOR transit router    |
 | `geojson` | exporter  | GeoJSON `FeatureCollection`       |
 | `zap`     | logger    | Development structured logger     |
+| `walk` / `bike` / `car` | mode | OSM street-routing policies |
+| `gtfs`    | mode      | Timetable-aware multimodal routing |
+| `air`     | mode      | N-dimensional direct air route example |
 
 ### Run the plugin pipeline
 
@@ -89,6 +92,12 @@ Transit RAPTOR on GTFS:
 ./bin/pathcraft serve --file testdata/example.osm --addr :8080 \
   --cors-origin https://app.example
 ./bin/pathcraft grpc --file testdata/example.osm --addr 127.0.0.1:9090
+
+# Self-contained 3D plugin; no street graph required.
+./bin/pathcraft route --mode air \
+  --from-position '12.5648,55.6726,100' \
+  --to-position '12.5717,55.6833,200' \
+  --opt cruise_altitude_m=1500 --coords
 ```
 
 `pathcraft grpc` is plaintext and unauthenticated. It binds loopback by default; add trusted TLS/auth infrastructure before any untrusted-network exposure.
@@ -107,9 +116,9 @@ import (
     "github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
     pcengine "github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
 
-    _ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/astar"
-    _ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/geojson"
-    _ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/osm"
+    _ "github.com/danielscoffee/pathcraft/pkg/plugins/astar"
+    _ "github.com/danielscoffee/pathcraft/pkg/plugins/geojson"
+    _ "github.com/danielscoffee/pathcraft/pkg/plugins/osm"
 )
 
 func main() {
@@ -136,13 +145,13 @@ Full guide: [Go SDK](docs/sdk/go.md).
 
 - [JavaScript/WASM SDK](docs/sdk/javascript.md) — synchronous in-browser street routing from plain OSM XML.
 - [gRPC API](docs/api/grpc.md) — generated `pathcraft.v1` client/server contract for street routes and multimodal journeys.
-- [Plugin system](docs/architecture/plugin-system.md) — compile-time algorithms, loaders, exporters, cost models, and loggers.
+- [Plugin system](docs/architecture/plugin-system.md) — compile-time routing modes, algorithms, loaders, exporters, cost models, and loggers.
 
 These interfaces remain pre-release. WASM does not load GTFS; gRPC has no built-in TLS or authentication.
 
 ## Interactive Demo
 
-Run the Leaflet demo, then click two points on the map. The server snaps each click to the nearest OSM node, runs A*, and draws the route.
+Run the Leaflet demo, then click two points on the map. The UI discovers registered modes, resolves them independently, and draws plugin-supplied route segments. Leaflet projects longitude/latitude; 3D altitude remains present in air-route API results.
 
 ```bash
 make demo
@@ -166,6 +175,8 @@ The HTTP server is a GET-only debug/demo interface, not a stable production API.
 - `GET /graph` — loaded walking graph as GeoJSON lines
 - `GET /nodes?bbox=minLon,minLat,maxLon,maxLat&limit=200&min_degree=3` — graph nodes as GeoJSON points
 - `GET /nearest?lat=...&lon=...` — nearest graph node and snap distance
+- `GET /modes` — manifests for every registered routing mode
+- `GET /mode-route?mode=air&from=lon,lat,alt&to=lon,lat,alt` — generic N-dimensional plugin routing
 - `GET /route?from=<id>&to=<id>` — node-id walking route as GeoJSON
 - `GET /route?from_lat=...&from_lon=...&to_lat=...&to_lon=...` — coordinate walking route as GeoJSON
 - `GET /journey?from_lat=...&from_lon=...&to_lat=...&to_lon=...&time=HH:MM:SS` — timetable-aware walk+transit journey JSON
@@ -178,11 +189,9 @@ The HTTP server is a GET-only debug/demo interface, not a stable production API.
 api/pathcraft/v1          protobuf contract and generated Go client/server types
 cmd/pathcraft             CLI entrypoint
 cmd/pathcraft-wasm        browser WebAssembly entrypoint
-pkg/pathcraft/core        public plugin interfaces and value types
-pkg/pathcraft/registry    compile-time plugin registry
+pkg/pathcraft/core        dimension-neutral plugin interfaces and value types
 pkg/pathcraft/engine      public engine facade and pipeline runner
-pkg/pathcraft/plugins     built-in plugin adapters
-pkg/plugins               nearest-node spatial index plugin surface
+pkg/plugins               registry, standard plugins, and nearest-node index surface
 internal/graph            private graph, contraction index, and cache format
 internal/osm              OSM parser and graph builder
 internal/gtfs             GTFS parsers and RAPTOR-ready indexes
