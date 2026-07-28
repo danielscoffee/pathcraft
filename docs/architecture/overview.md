@@ -41,7 +41,7 @@ mechanisms or infrastructure abstractions.
 ```mermaid
 flowchart TB
     %% Layers
-    Interfaces["Interfaces<br/>CLI · HTTP · Future gRPC"]
+    Interfaces["Interfaces<br/>CLI · HTTP · gRPC · JavaScript/WASM"]
 
     Engine["Engine Facade<br/>Mode selection<br/>Policies<br/>Configuration"]
 
@@ -84,16 +84,20 @@ Private core logic (not exported).
   - Conversion of routes to GeoJSON
 - `http/`
   - HTTP handlers (adapter layer)
+- `grpcapi/`
+  - Protobuf/gRPC adapter over the public engine
+- `wasmapi/`
+  - JSON bridge used by browser WebAssembly bindings
 
 ---
 
 ### `/pkg/pathcraft/engine`
 
-Public API – **the only thing users should import**.
+Primary public Go routing API.
 
 Responsibilities:
 
-- Load data (OSM / GTFS)
+- Load data (OSM path or plain XML reader, GTFS directory)
 - Validate default mode, speed, and highway penalties through `Config`
 - Select routing mode
 - Expose a clean API:
@@ -106,13 +110,25 @@ The engine **orchestrates**, it does not compute.
 
 ---
 
-### `/cmd/pathcraft`
+### `/api/pathcraft/v1`
 
-CLI entrypoint.
+Versioned protobuf contract plus generated Go gRPC client/server types.
 
-- Parses flags
-- Calls engine
-- Prints output
+---
+
+### `/cmd/pathcraft` and `/cmd/pathcraft-wasm`
+
+Native CLI and browser WebAssembly entrypoints.
+
+- Parse transport inputs
+- Call engine adapters
+- Return CLI, gRPC, or JavaScript results
+
+---
+
+### `/sdk/js`
+
+Small JavaScript loader that starts Go WebAssembly and unwraps bridge results.
 
 ---
 

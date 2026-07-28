@@ -52,19 +52,20 @@ Inventory of `internal/*` packages — these are stable engines that the new
 - Custom `time.Time` (seconds since midnight) + parser
 - `mobility.Profile` interface + `Walking` profile, `DefaultWalkingSpeedMPS`.
 
-## `internal/http`
+## Transport adapters
 
-- HTTP server exposing GET-only routing / GTFS endpoints; consumes `pkg/pathcraft/engine.Engine`.
-- Optional exact HTTP(S)-origin CORS allowlist; disabled by default.
+- `internal/http` — GET-only routing / GTFS endpoints over `engine.Engine`; optional exact HTTP(S)-origin CORS allowlist, disabled by default.
+- `internal/grpcapi` — generated `pathcraft.v1` street-route and multimodal-journey service plus standard health checks.
+- `internal/wasmapi` — strict JSON bridge for synchronous browser street routes.
 
 ## `internal/cli`
 
-- Subcommands: `parse`, `preprocess`, `route`, `transit`, `journey`, `serve`, `plugins`, and `pipeline`.
+- Subcommands: `parse`, `preprocess`, `route`, `transit`, `journey`, `grpc`, `serve`, `plugins`, and `pipeline`.
 - `loadEngine(file)` uses cache only when source SHA-256 and cache/preprocessing versions match.
 
 ## `pkg/pathcraft/engine`
 
-- High-level `Engine` API (predates the new `pkg/pathcraft/core` layer): `LoadOSM`, `LoadGTFSDir`, `Route`, `RouteByCoordinates`, `TransitRoute`, `MultimodalRoute`, `RouteGeoJSON*`.
+- High-level `Engine` API: `LoadOSM`, `LoadOSMReader`, `LoadGTFSDir`, `Route`, `RouteByCoordinates`, `TransitRoute`, `MultimodalRoute`, `RouteGeoJSON*`.
 - `LoadOSM` publishes parse → graph → contraction preprocessing as one immutable read-mostly graph; loaded engines support concurrent queries, not concurrent reload/mutation.
 - `NewWithConfig` validates default street mode, speed, and per-highway penalty multipliers; `New` preserves walking defaults.
 - The new `pipeline.go` (`engine.Run`) lives in the same package and drives the registry-backed loader→algorithm→exporter pipeline.
@@ -74,8 +75,10 @@ Inventory of `internal/*` packages — these are stable engines that the new
 - `NearestNodeIndex` interface + `GridNearestNodeIndex` — the only pre-existing
   "plugin" surface, used by `internal/graph`.
 
-## New public layer (this work)
+## Public extension and ecosystem layers
 
+- `api/pathcraft/v1` — protobuf contract plus generated Go gRPC client/server types.
+- `sdk/js/pathcraft.mjs` + `cmd/pathcraft-wasm` — browser loader and Go WebAssembly entrypoint.
 - `pkg/pathcraft/core` — interfaces + value types (`Graph`, `Algorithm`, `GraphLoader`, `Exporter`, `CostModel`, `RouteRequest`, `RouteResult`).
 - `pkg/pathcraft/registry` — compile-time plugin registry + `Default` global.
 - `pkg/pathcraft/plugins/{osmgraph,gtfsgraph}` — adapters from internal types to `core.Graph` with `Native` capability escape hatches.

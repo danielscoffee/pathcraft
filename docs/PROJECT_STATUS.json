@@ -5,23 +5,25 @@
     "repository": "github.com/danielscoffee/pathcraft",
     "license": "see LICENSE in repo",
     "status": "working prototype / pre-release, single developer + AI-assisted",
-    "as_of": "2026-07-27"
+    "as_of": "2026-07-28"
   },
   "what_it_does": [
     "Parses OpenStreetMap extracts into a mode-aware street graph (walk/car/bike, oneway and access restrictions honored)",
     "Exposes validated engine defaults for mode, speed, and per-highway routing penalties",
     "Parses full GTFS transit feeds and answers timetable-aware multimodal door-to-door journeys with timed walk, transit, and transfer legs via a RAPTOR-style algorithm",
     "Serves a JSON/GeoJSON HTTP API with disabled-by-default exact-origin CORS: /route, /journey, /nearest, /nodes, /graph, /transit/*, /modes, /config",
-    "Ships a single Go binary with an embedded React SPA: Google-Maps-style directions UI (A/B picking, per-mode ETAs solved in parallel, transit itineraries, debug overlays)",
+    "Serves a versioned protobuf/gRPC API for coordinate street routes and multimodal journeys, with standard health checks",
+    "Runs street routing in browser-compatible Go WebAssembly through a small JavaScript binding",
+    "Ships a single native Go binary with an embedded React SPA: Google-Maps-style directions UI (A/B picking, per-mode ETAs solved in parallel, transit itineraries, debug overlays)",
     "Caches parsed OSM graphs and directed degree-two contraction indexes in source-hashed, versioned, atomically replaced binary files",
     "Runs concurrent read-only routes against published graph/index state; loading and mutation remain serial"
   ],
   "tech_stack": {
-    "backend": "Go 1.25.12, stdlib HTTP, zap logging, compile-time plugin registry (algorithms, graph loaders, exporters, cost models, loggers)",
+    "backend": "Go 1.25.12, stdlib HTTP, grpc-go/protobuf, zap logging, compile-time plugin registry (algorithms, graph loaders, exporters, cost models, loggers)",
     "algorithms": "A* over base or exact directed degree-two contraction chains for street routing, RAPTOR for transit timetables",
-    "frontend": "React 19, Vite 8, UnoCSS, Leaflet/react-leaflet, TypeScript; embedded via go:embed",
-    "data_formats": "OSM XML (Overpass extracts), GTFS static (stop_times, trips, stops, routes, shapes, transfers)",
-    "deployment_model": "single self-contained binary + map tiles from any tile server (OSM default); no external routing APIs, no cloud dependencies"
+    "frontend": "React 19, Vite 8, UnoCSS, Leaflet/react-leaflet, TypeScript; embedded via go:embed; optional Go WebAssembly street-routing module",
+    "data_formats": "OSM XML (Overpass extracts), GTFS static (stop_times, trips, stops, routes, shapes, transfers), Protocol Buffers",
+    "deployment_model": "single self-contained native binary plus optional browser WASM artifact + map tiles from any tile server (OSM default); no external routing APIs, no cloud dependencies"
   },
   "scale_proven": {
     "city": "Recife metropolitan region, Brazil",
@@ -34,9 +36,9 @@
     "profiling": "standard Go benchmarks, race detector, and reproducible pprof alloc_space/inuse_space commands; synthetic numbers are not city-wide guarantees"
   },
   "quality_signals": {
-    "tests": "Deterministic Go and frontend tests cover graph, contraction differential behavior, source-safe caches, concurrent routing, transit, engine, HTTP, registry, and UI helpers; fixtures live in tracked testdata/",
-    "ci": "GitHub Actions Go test workflow (frontend not yet in CI)",
-    "docs": "architecture docs, plugin-system docs, roadmap, demo tutorial, and reproducible performance/memory profile guide in docs/"
+    "tests": "Deterministic Go, gRPC bufconn, WASM/Node, and frontend tests cover graph, contraction differential behavior, source-safe caches, concurrent routing, transit, engine, transports, registry, and UI helpers; fixtures live in tracked testdata/",
+    "ci": "GitHub Actions runs Go tests, real js/wasm build and Node smoke test, frontend tests, lint, and production build",
+    "docs": "architecture, Go SDK, JavaScript/WASM, gRPC, plugin-system, roadmap, demo, and reproducible performance/memory guides live in docs/"
   },
   "differentiators": [
     "Single-binary, fully self-hosted alternative to Google Directions / Mapbox for orgs that cannot ship rider data to third parties",
@@ -49,12 +51,14 @@
     "GTFS calendar/service-day filtering not applied (all trips treated as running); no GTFS-realtime",
     "No turn-by-turn instructions, no traffic, bike/car use heuristic speeds",
     "Single-city testing; no full contraction hierarchies, horizontal scaling story, auth, rate limiting, or multi-tenant features",
+    "gRPC is plaintext and unauthenticated; loopback default is prototype-safe, not public-internet hardening",
+    "WASM supports synchronous street routing only; no GTFS, workers, streaming input, or npm release",
     "Base street graph remains resident beside contraction index; concurrent hot reload and graph mutation are unsupported",
     "Router marked by author as debug/demo grade rather than production",
     "No packaged releases, Docker image, or hosted demo yet"
   ],
   "near_term_roadmap_hints": [
-    "Frontend CI job, Docker packaging, hosted demo",
+    "Docker packaging, tagged releases, generated SDK packaging, and hosted demo",
     "Service-calendar filtering and GTFS-realtime ingestion",
     "Geocoder integration (e.g., Nominatim/Photon) for address search",
     "More city feeds to prove generality (catalog of Brazilian capitals)",

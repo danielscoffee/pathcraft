@@ -120,8 +120,9 @@ for _, request := range requests {
     group.Add(1)
     go func() {
         defer group.Done()
-        route, err := router.RouteByCoordinates(request)
-        // Consume route and err independently.
+        if _, err := router.RouteByCoordinates(request); err != nil {
+            // Handle this request's error.
+        }
     }()
 }
 group.Wait()
