@@ -8,11 +8,13 @@ import (
 )
 
 type JourneyStep struct {
-	FromStop   gtfs.StopID
-	ToStop     gtfs.StopID
-	TripID     gtfs.TripID // Empty if transfer
-	IsTransfer bool
-	Duration   time.Time
+	FromStop      gtfs.StopID
+	ToStop        gtfs.StopID
+	TripID        gtfs.TripID // Empty if transfer
+	IsTransfer    bool
+	DepartureTime time.Time
+	ArrivalTime   time.Time
+	Duration      time.Time
 }
 
 type Result struct {
@@ -77,6 +79,7 @@ func (r *Router) Search(source gtfs.StopID, departureTime time.Time) *Result {
 		for routeID, startSeq := range activeRoutes {
 			tripIndex := -1
 			var boardingStop gtfs.StopID
+			var boardingDeparture time.Time
 			pattern := r.index.RoutePatterns[routeID]
 			routeTrips := r.index.RouteTrips[routeID]
 
@@ -104,9 +107,11 @@ func (r *Router) Search(source gtfs.StopID, departureTime time.Time) *Result {
 						earliestArrival[stop.StopID] = arrTime
 						markedStops[stop.StopID] = true
 						parents[k][stop.StopID] = JourneyStep{
-							FromStop: boardingStop,
-							ToStop:   stop.StopID,
-							TripID:   trip.TripID,
+							FromStop:      boardingStop,
+							ToStop:        stop.StopID,
+							TripID:        trip.TripID,
+							DepartureTime: boardingDeparture,
+							ArrivalTime:   arrTime,
 						}
 					}
 				}
@@ -118,6 +123,7 @@ func (r *Router) Search(source gtfs.StopID, departureTime time.Time) *Result {
 						if tripIndex == -1 || etIndex < tripIndex {
 							tripIndex = etIndex
 							boardingStop = stop.StopID
+							boardingDeparture = routeTrips[etIndex][i].DepartureTime
 						}
 					}
 				}
@@ -139,10 +145,12 @@ func (r *Router) Search(source gtfs.StopID, departureTime time.Time) *Result {
 					earliestArrival[tr.To] = arrWithTransfer
 					markedStops[tr.To] = true
 					parents[k][tr.To] = JourneyStep{
-						FromStop:   stopID,
-						ToStop:     tr.To,
-						IsTransfer: true,
-						Duration:   tr.Duration,
+						FromStop:      stopID,
+						ToStop:        tr.To,
+						IsTransfer:    true,
+						DepartureTime: arrivalTimes[k][stopID],
+						ArrivalTime:   arrWithTransfer,
+						Duration:      tr.Duration,
 					}
 				}
 			}

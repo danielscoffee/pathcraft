@@ -63,16 +63,15 @@ func BenchmarkEngine_RouteByCoordinates_ExampleOSM(b *testing.B) {
 }
 
 // BenchmarkEngine_TransitRoute_ExampleGTFS measures end-to-end transit
-// routing via the public facade on the Recife example GTFS fixture
-// (~102 stop_times, 16 trips, 6 transfers).
+// routing via the public facade on the tracked shuttle fixture.
 func BenchmarkEngine_TransitRoute_ExampleGTFS(b *testing.B) {
 	e := New()
 	if err := e.LoadGTFSDir("../../../testdata/mini_gtfs"); err != nil {
 		b.Fatalf("LoadGTFSDir: %v", err)
 	}
 	req := TransitRouteRequest{
-		FromStop:      "RECIFE",
-		ToStop:        "TI_CDU",
+		FromStop:      "START_STOP",
+		ToStop:        "END_STOP",
 		DepartureTime: "05:00:00",
 	}
 	if _, err := e.TransitRoute(req); err != nil {

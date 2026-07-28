@@ -1,119 +1,61 @@
 # Pathcraft Repository Audit
 
-Date: 2026-03-08
+Date: 2026-07-27
 
 ## Verdict
 
-Pathcraft is going in the right direction.
-
-The repo is now more coherent than before: the docs, CLI, engine, and HTTP surface line up better, coordinate-based walking routes are implemented, and there is now an initial walk + transit flow instead of only separate walking and transit demos.
-
-It is still a prototype, not a polished routing platform, but it is now a more believable and usable prototype.
+Phases 0.1–0.3 now match repository behavior. Pathcraft exposes configurable street routing, a runnable HTTP prototype with opt-in CORS, and timetable-aware walk + transit journeys. It remains a prototype rather than a production routing service.
 
 ## What Was Verified
 
-- `go test ./...` passes.
-- `go build ./...` passes.
-- `go run ./cmd/pathcraft route --file examples/example.osm --from-lat -8.05428 --from-lon -34.88130 --to-lat -8.05480 --to-lon -34.88030 --coords` works.
-- `go run ./cmd/pathcraft journey --file examples/example.osm --gtfs examples/mini_gtfs --from-lat -8.05428 --from-lon -34.88130 --to-lat -8.05480 --to-lon -34.88030 --time 05:00:00` works.
-- `GET /health` works.
-- `GET /route` now works with node IDs and with coordinates.
-- `GET /journey` works when GTFS stop coordinates are loaded.
-
-## What Improved
-
-- `pathcraft serve` and `pathcraft server` are both valid.
-- `/health` exists in addition to `/status`.
-- The engine now exposes coordinate-based walking routing.
-- The engine now exposes an initial multimodal route search that compares direct walking with walk + transit.
-- GTFS loading can now include `stops.txt`, enabling stop-coordinate-based access and egress legs.
-- The README and roadmap are much closer to the real product surface.
+- Focused engine and A* tests cover mode defaults, speed, access restrictions, and highway penalties.
+- HTTP tests cover disabled-by-default CORS, exact allowlists, preflight, and timed journey responses.
+- RAPTOR and engine tests prove access-walk timing changes trip eligibility and reconstruct scheduled leg times.
+- A*, RAPTOR, and public-engine benchmarks run with standard Go benchmark tooling.
+- `go test ./...`, `go test -race ./...`, `go vet ./...`, and `go build ./...` pass.
+- Frontend tests, lint, and production build pass.
 
 ## Current Capability Snapshot
 
-### Working well now
+### Working now
 
-- OSM parsing and graph construction
-- A* walking routes
-- RAPTOR transit routing
-- coordinate-based walking route lookup via nearest graph nodes
-- initial walk + transit journey planning via nearest GTFS stops
-- CLI demos for walking, transit, and multimodal journeys
-- HTTP debug endpoints for walking and multimodal queries
+- OSM parsing and mode-aware graph construction
+- configurable walk, bike, and car defaults through `engine.Config`
+- highway penalty multipliers that affect A* route selection
+- coordinate and node-ID street routing
+- GTFS ingestion and RAPTOR transit routing
+- time-dependent walk → transit → walk journeys
+- scheduled departure, arrival, and duration on journey legs
+- CLI, JSON/GeoJSON HTTP API, and embedded map viewer
+- disabled-by-default exact-origin CORS allowlists
+- routing and ingestion benchmark suites
 
 ### Still prototype-grade
 
-- multimodal routing uses nearest-stop heuristics rather than a deeper integrated street-transit model
-- the HTTP API is still query-based and debug-oriented
-- the map viewer is still hardcoded around a demo center
-- stop discovery and ergonomics are still thin for real users
-- there is still no Docker packaging, CORS support, or benchmark suite
+- multimodal stop access uses nearest-stop candidates
+- GTFS calendar/service-day filtering is not applied
+- no GTFS-realtime, traffic, turn instructions, geocoding, auth, or rate limiting
+- HTTP contracts remain debug/demo oriented
+- no packaged release, Docker image, hosted demo, or horizontal scaling story
 
 ## Roadmap vs Code Reality
 
-### Now accurate or mostly accurate
+### Phase 0.1 – Engine stabilization
 
-- Phase 0 walking work is implemented.
-- Phase 0.2 server work is implemented as a runnable prototype.
-- Phase 0.3 transit routing is implemented.
-- Walk + Transit integration is now implemented in an initial form.
+Complete for current prototype scope: public facade, configuration, deterministic tests, route export, memory layout work, and benchmarks exist. `New()` remains compatible; `NewWithConfig` adds validated defaults and penalties.
 
-### Still overstated or unfinished
+### Phase 0.2 – HTTP server
 
-- The config struct item is still not implemented.
-- Time-dependent multimodal routing is still not implemented.
-- Docker-ready server packaging is still absent.
-- Performance/scale roadmap items are still future work.
+Complete for prototype scope: server aliases, route/health endpoints, JSON and GeoJSON responses, SPA, and opt-in CORS exist. CORS supports exact origins and read-only preflight; it does not imply production API security.
 
-## Usability Readout
+### Phase 0.3 – Transit routing
 
-### Better than before
+Complete for timetable routing scope: GTFS, RAPTOR, access/egress walking, scheduled trip selection, and timed journey legs exist. Calendar dates and realtime updates remain explicit later work.
 
-- Walking CLI no longer requires only raw node IDs.
-- HTTP routing no longer requires only raw node IDs.
-- There is now a concrete multimodal example dataset in `examples/mini_gtfs`.
-- The engine is more useful as a library because it now supports routing by coordinates and a basic multimodal flow.
+## Remaining Highest-Value Work
 
-### Still awkward
-
-- Multimodal journeys depend on GTFS stop coordinates and a graph that roughly covers those stops.
-- The journey response is useful, but still minimal.
-- Users still need exact GTFS stop IDs for direct transit-only queries.
-
-## Remaining Highest-Value Fixes
-
-### 1. Improve multimodal quality
-
-- replace simple nearest-stop candidate selection with better stop access search
-- include explicit wait times and richer transit leg metadata
-- add constraints and ranking beyond earliest arrival only
-
-### 2. Improve API usability
-
-- add stop listing and stop search helpers
-- make HTTP response contracts more product-like and less debug-like
-- add CORS if browser clients are expected
-
-### 3. Improve map and frontend usability
-
-- derive map bounds from graph data
-- let the viewer call the new coordinate-based route and journey APIs directly
-- visualize journey legs with distinct styles
-
-### 4. Harden the codebase
-
-- add more tests around CLI and full engine flows
-- add benchmarks for A* and RAPTOR
-- resolve known model issues like ignored OSM one-way handling and unused edge cost fields
-
-## Recommendation
-
-The repo no longer needs a basic coherence rescue first; that was the right move and it helped.
-
-The next good move is to harden the new multimodal path instead of jumping immediately to scale features:
-
-1. improve stop selection and journey leg detail,
-2. improve stop/user discovery UX,
-3. then expand performance and deployment work.
-
-That sequence keeps Pathcraft moving from “solid algorithm prototype” toward “usable routing engine prototype” without losing focus.
+1. Apply GTFS service calendars, then ingest GTFS-realtime.
+2. Improve stop access search and expose explicit waiting legs.
+3. Add address/geocoder discovery.
+4. Add production API controls and packaging.
+5. Benchmark additional city-scale fixtures before performance claims.

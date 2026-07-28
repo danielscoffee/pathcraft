@@ -169,6 +169,53 @@ func TestAStar_NoPathExists(t *testing.T) {
 	}
 }
 
+type penalizedProfile struct {
+	mobility.Profile
+	penalties map[string]float64
+}
+
+func (p penalizedProfile) HighwayPenalty(highway string) float64 {
+	if penalty, ok := p.penalties[highway]; ok {
+		return penalty
+	}
+	return 1
+}
+
+func TestAStarWithProfileAppliesHighwayPenalties(t *testing.T) {
+	g := graph.NewGraph()
+	for id := graph.NodeID(1); id <= 4; id++ {
+		g.AddNode(id, 0, 0)
+	}
+	g.AddEdgeWithMeta(1, 2, 50, "primary", "Fast Road")
+	g.AddEdgeWithMeta(2, 4, 50, "primary", "Fast Road")
+	g.AddEdgeWithMeta(1, 3, 75, "residential", "Calm Road")
+	g.AddEdgeWithMeta(3, 4, 75, "residential", "Calm Road")
+
+	profile := penalizedProfile{
+		Profile:   mobility.NewWalking(2),
+		penalties: map[string]float64{"primary": 2},
+	}
+	path, err := astar.AStarWithProfile(g, 1, 4, zeroHeuristic, profile)
+	if err != nil {
+		t.Fatalf("AStarWithProfile() error = %v", err)
+	}
+	want := []graph.NodeID{1, 3, 4}
+	if len(path.Nodes) != len(want) {
+		t.Fatalf("Nodes = %v, want %v", path.Nodes, want)
+	}
+	for i := range want {
+		if path.Nodes[i] != want[i] {
+			t.Fatalf("Nodes = %v, want %v", path.Nodes, want)
+		}
+	}
+	if path.TotalCost != 150 {
+		t.Fatalf("TotalCost = %v, want 150", path.TotalCost)
+	}
+	if path.TotalDistance != 150 {
+		t.Fatalf("TotalDistance = %v, want 150", path.TotalDistance)
+	}
+}
+
 func TestAStar_WeightedEdges(t *testing.T) {
 	g := graph.NewGraph()
 

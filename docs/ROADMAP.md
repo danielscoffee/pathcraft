@@ -14,23 +14,24 @@
 
 ---
 
-## Phase 0.1 – Engine Stabilization 
+## Phase 0.1 – Engine Stabilization
 
 Goal: Make Pathcraft usable as a library.
 
 - [x] Finalize `engine` public API
-- [ ] Config struct (speed, mode, penalties)
+- [x] Config struct (mode, speed, highway penalties)
 - [x] Route → GeoJSON pipeline
 - [x] Deterministic tests
-- [ ] Benchmark routing performance
+- [x] Benchmark routing performance (A*, RAPTOR, engine)
 - [x] Improve graph memory layout
 
 Deliverable:
+
 - Stable `pkg/pathcraft/engine`
 
 ---
 
-## Phase 0.2 – HTTP Server 
+## Phase 0.2 – HTTP Server
 
 Goal: Turn Pathcraft into a service.
 
@@ -38,10 +39,11 @@ Goal: Turn Pathcraft into a service.
 - [x] `/route` endpoint
 - [x] `/health` endpoint
 - [x] JSON + GeoJSON output
-- [ ] CORS support
+- [x] Opt-in exact-origin CORS support
 - [x] Static map viewer
 
 Deliverable:
+
 - Runnable routing server prototype
 
 ---
@@ -53,9 +55,10 @@ Goal: Multimodal routing.
 - [x] GTFS ingestion
 - [x] RAPTOR algorithm
 - [x] Walk + Transit integration (initial coordinate + nearest-stop version)
-- [ ] Time-dependent multimodal routing
+- [x] Time-dependent multimodal routing (access walk + scheduled transit + timed legs)
 
 Deliverable:
+
 - Public transit and multimodal routing prototype
 
 ---

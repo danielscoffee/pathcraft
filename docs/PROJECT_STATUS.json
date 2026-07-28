@@ -5,12 +5,13 @@
     "repository": "github.com/danielscoffee/pathcraft",
     "license": "see LICENSE in repo",
     "status": "working prototype / pre-release, single developer + AI-assisted",
-    "as_of": "2026-06-11"
+    "as_of": "2026-07-27"
   },
   "what_it_does": [
     "Parses OpenStreetMap extracts into a mode-aware street graph (walk/car/bike, oneway and access restrictions honored)",
-    "Parses full GTFS transit feeds and answers multimodal door-to-door journeys (walk + bus with transfers) via a RAPTOR-style algorithm",
-    "Serves a JSON/GeoJSON HTTP API: /route, /journey, /nearest (snap to road), /nodes (viewport intersections), /graph, /transit/*, /modes, /config",
+    "Exposes validated engine defaults for mode, speed, and per-highway routing penalties",
+    "Parses full GTFS transit feeds and answers timetable-aware multimodal door-to-door journeys with timed walk, transit, and transfer legs via a RAPTOR-style algorithm",
+    "Serves a JSON/GeoJSON HTTP API with disabled-by-default exact-origin CORS: /route, /journey, /nearest, /nodes, /graph, /transit/*, /modes, /config",
     "Ships a single Go binary with an embedded React SPA: Google-Maps-style directions UI (A/B picking, per-mode ETAs solved in parallel, transit itineraries, debug overlays)",
     "Caches parsed OSM graphs to binary cache files for fast restarts"
   ],
@@ -30,7 +31,7 @@
     "example_real_result": "08:00 departure across Recife -> arrival 08:38, walk 358 m + bus with transfer, real trip IDs"
   },
   "quality_signals": {
-    "tests": "93 Go tests across 28 packages + 19 frontend vitest tests; ESLint and tsc clean; fixtures in tracked testdata/ so suite passes from fresh clone",
+    "tests": "Deterministic Go and frontend tests cover graph, routing, transit, engine, HTTP, registry, and UI helpers; fixtures live in tracked testdata/",
     "ci": "GitHub Actions Go test workflow (frontend not yet in CI)",
     "docs": "architecture docs, plugin-system docs, roadmap, demo tutorial in docs/"
   },

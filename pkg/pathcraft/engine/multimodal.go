@@ -46,20 +46,23 @@ func (e *Engine) MultimodalRoute(req MultimodalRouteRequest) (*MultimodalRouteRe
 		return nil, err
 	}
 
+	directArrival := addDuration(departure, directWalk.Duration)
 	best := &MultimodalRouteResult{
 		Mode:             "walk",
 		DepartureTime:    departure.String(),
-		ArrivalTime:      addDuration(departure, directWalk.Duration).String(),
+		ArrivalTime:      directArrival.String(),
 		TotalDuration:    directWalk.Duration,
 		WalkingDistanceM: directWalk.Distance,
 		Legs: []JourneyLeg{{
-			Mode:        "walk",
-			FromName:    "origin",
-			ToName:      "destination",
-			DistanceM:   directWalk.Distance,
-			Duration:    directWalk.Duration,
-			Nodes:       directWalk.Nodes,
-			Coordinates: directWalk.Coordinates,
+			Mode:          "walk",
+			FromName:      "origin",
+			ToName:        "destination",
+			DepartureTime: departure.String(),
+			ArrivalTime:   directArrival.String(),
+			DistanceM:     directWalk.Distance,
+			Duration:      directWalk.Duration,
+			Nodes:         directWalk.Nodes,
+			Coordinates:   directWalk.Coordinates,
 		}},
 	}
 
@@ -99,14 +102,16 @@ func (e *Engine) MultimodalRoute(req MultimodalRouteRequest) (*MultimodalRouteRe
 			}
 
 			legs := []JourneyLeg{{
-				Mode:        "walk",
-				FromName:    "origin",
-				ToName:      fromStop.stop.Name,
-				FromStopID:  string(fromStop.stop.ID),
-				DistanceM:   walkToTransit.Distance,
-				Duration:    walkToTransit.Duration,
-				Nodes:       walkToTransit.Nodes,
-				Coordinates: walkToTransit.Coordinates,
+				Mode:          "walk",
+				FromName:      "origin",
+				ToName:        fromStop.stop.Name,
+				FromStopID:    string(fromStop.stop.ID),
+				DepartureTime: departure.String(),
+				ArrivalTime:   searchDeparture.String(),
+				DistanceM:     walkToTransit.Distance,
+				Duration:      walkToTransit.Duration,
+				Nodes:         walkToTransit.Nodes,
+				Coordinates:   walkToTransit.Coordinates,
 			}}
 
 			transitSteps := transitResult.ReconstructPath(toStop.stop.ID)
@@ -116,12 +121,15 @@ func (e *Engine) MultimodalRoute(req MultimodalRouteRequest) (*MultimodalRouteRe
 			transitDuration := durationBetween(searchDeparture, transitArrival)
 			for _, step := range transitSteps {
 				leg := JourneyLeg{
-					Mode:       "transit",
-					FromName:   e.stopLabel(step.FromStop),
-					ToName:     e.stopLabel(step.ToStop),
-					FromStopID: string(step.FromStop),
-					ToStopID:   string(step.ToStop),
-					TripID:     string(step.TripID),
+					Mode:          "transit",
+					FromName:      e.stopLabel(step.FromStop),
+					ToName:        e.stopLabel(step.ToStop),
+					FromStopID:    string(step.FromStop),
+					ToStopID:      string(step.ToStop),
+					TripID:        string(step.TripID),
+					DepartureTime: step.DepartureTime.String(),
+					ArrivalTime:   step.ArrivalTime.String(),
+					Duration:      durationBetween(step.DepartureTime, step.ArrivalTime),
 				}
 				leg.Coordinates = e.transitLegCoordinates(step.TripID, step.FromStop, step.ToStop)
 				if routeID, ok := e.gtfsTripRoutes[step.TripID]; ok {
@@ -138,21 +146,24 @@ func (e *Engine) MultimodalRoute(req MultimodalRouteRequest) (*MultimodalRouteRe
 				legs = append(legs, leg)
 			}
 
+			journeyArrival := addDuration(transitArrival, walkFromTransit.Duration)
 			legs = append(legs, JourneyLeg{
-				Mode:        "walk",
-				FromName:    toStop.stop.Name,
-				ToName:      "destination",
-				ToStopID:    string(toStop.stop.ID),
-				DistanceM:   walkFromTransit.Distance,
-				Duration:    walkFromTransit.Duration,
-				Nodes:       walkFromTransit.Nodes,
-				Coordinates: walkFromTransit.Coordinates,
+				Mode:          "walk",
+				FromName:      toStop.stop.Name,
+				ToName:        "destination",
+				ToStopID:      string(toStop.stop.ID),
+				DepartureTime: transitArrival.String(),
+				ArrivalTime:   journeyArrival.String(),
+				DistanceM:     walkFromTransit.Distance,
+				Duration:      walkFromTransit.Duration,
+				Nodes:         walkFromTransit.Nodes,
+				Coordinates:   walkFromTransit.Coordinates,
 			})
 
 			best = &MultimodalRouteResult{
 				Mode:              "multimodal",
 				DepartureTime:     departure.String(),
-				ArrivalTime:       addDuration(transitArrival, walkFromTransit.Duration).String(),
+				ArrivalTime:       journeyArrival.String(),
 				TotalDuration:     totalDuration,
 				TransitDuration:   transitDuration,
 				WalkingDistanceM:  walkToTransit.Distance + walkFromTransit.Distance,

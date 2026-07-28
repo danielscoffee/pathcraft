@@ -78,8 +78,14 @@ func TestRAPTOR(t *testing.T) {
 	}
 
 	path := res.ReconstructPath("D")
-	if len(path) == 0 {
-		t.Error("Path to D not found")
+	if len(path) != 2 {
+		t.Fatalf("path = %+v, want transit and transfer steps", path)
+	}
+	if path[0].DepartureTime != 110 || path[0].ArrivalTime != 300 {
+		t.Fatalf("transit timing = %d-%d, want 110-300", path[0].DepartureTime, path[0].ArrivalTime)
+	}
+	if path[1].DepartureTime != 300 || path[1].ArrivalTime != 350 {
+		t.Fatalf("transfer timing = %d-%d, want 300-350", path[1].DepartureTime, path[1].ArrivalTime)
 	}
 
 	t.Logf("Path to D: %+v", path)

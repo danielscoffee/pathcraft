@@ -1,5 +1,5 @@
-OSM_FILE ?= examples/recife.osm
-GTFS_DIR ?= examples/recife_gtfs
+OSM_FILE ?= testdata/example.osm
+GTFS_DIR ?= testdata/mini_gtfs
 ADDR     ?= :8080
 
 test:
@@ -22,12 +22,7 @@ clean:
 # Starts without transit when GTFS_DIR is missing; mini_gtfs ships in-repo.
 demo: web build
 	@echo "Open http://localhost$(ADDR)/"
-	@if [ -d "$(GTFS_DIR)" ]; then \
-		./bin/pathcraft serve --file $(OSM_FILE) --gtfs $(GTFS_DIR) --addr $(ADDR); \
-	else \
-		echo "GTFS dir $(GTFS_DIR) not found; starting without transit (try GTFS_DIR=examples/mini_gtfs)"; \
-		./bin/pathcraft serve --file $(OSM_FILE) --addr $(ADDR); \
-	fi
+	@set --; [ ! -d "$(GTFS_DIR)" ] || set -- --gtfs "$(GTFS_DIR)"; exec ./bin/pathcraft serve --file "$(OSM_FILE)" "$$@" --addr "$(ADDR)"
 
 # Frontend dev server with hot reload, proxying API calls to ADDR.
 dev-web:

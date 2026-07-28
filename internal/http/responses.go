@@ -41,6 +41,8 @@ func toJourneyLegResponse(leg engine.JourneyLeg) journeyLegResponse {
 		RouteID:         leg.RouteID,
 		RouteName:       leg.RouteName,
 		RouteLongName:   leg.RouteLongName,
+		DepartureTime:   leg.DepartureTime,
+		ArrivalTime:     leg.ArrivalTime,
 		DistanceM:       leg.DistanceM,
 		DurationSeconds: int64(leg.Duration / time.Second),
 		Nodes:           leg.Nodes,

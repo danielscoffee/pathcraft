@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/danielscoffee/pathcraft/internal/geo"
@@ -27,10 +28,6 @@ func (e *Engine) Route(req RouteRequest) (*RouteResult, error) {
 		return nil, fmt.Errorf("target node %d not found", req.To)
 	}
 
-	if req.Profile == nil {
-		return nil, fmt.Errorf("routing profile is required")
-	}
-
 	return e.routeBetweenNodes(sourceID, targetID, req.Profile, req.IncludeCoordinates)
 }
 
@@ -38,10 +35,6 @@ func (e *Engine) RouteByCoordinates(req CoordinateRouteRequest) (*CoordinateRout
 	if e.graph == nil {
 		return nil, fmt.Errorf("graph not loaded")
 	}
-	if req.Profile == nil {
-		return nil, fmt.Errorf("routing profile is required")
-	}
-
 	fromNodeID, fromSnapDist, err := e.NearestNode(req.FromLat, req.FromLon)
 	if err != nil {
 		return nil, err
@@ -135,13 +128,16 @@ func (e *Engine) SetNearestNodeIndex(index plugins.NearestNodeIndex) error {
 }
 
 func (e *Engine) routeBetweenNodes(sourceID, targetID graph.NodeID, profile mobility.Profile, includeCoordinates bool) (*RouteResult, error) {
+	profile = e.routeProfile(profile)
 	speed := profile.Speed()
 	if speed <= 0 {
 		speed = mobility.DefaultWalkingSpeedMPS
 	}
+	if math.IsNaN(speed) || math.IsInf(speed, 0) {
+		return nil, fmt.Errorf("routing profile speed must be finite")
+	}
 
-	heuristic := geo.HaversineHeuristic(speed)
-	path, err := astar.AStarWithProfile(e.graph, sourceID, targetID, heuristic, profile)
+	path, err := astar.AStarWithProfile(e.graph, sourceID, targetID, geo.HaversineHeuristic(1), profile)
 	if err != nil {
 		return nil, fmt.Errorf("routing failed: %w", err)
 	}
@@ -161,7 +157,10 @@ func (e *Engine) routeBetweenNodes(sourceID, targetID graph.NodeID, profile mobi
 	}
 
 	durationSeconds := path.TotalCost / speed
+	if math.IsNaN(durationSeconds) || math.IsInf(durationSeconds, 0) || durationSeconds > float64(math.MaxInt64)/float64(time.Second) {
+		return nil, fmt.Errorf("route duration is out of range")
+	}
 	duration := time.Duration(durationSeconds * float64(time.Second))
 
-	return &RouteResult{Nodes: nodes, Coordinates: coords, Distance: path.TotalCost, Duration: duration}, nil
+	return &RouteResult{Nodes: nodes, Coordinates: coords, Distance: path.TotalDistance, Duration: duration}, nil
 }

@@ -11,13 +11,14 @@ import (
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
 )
 
-func newTestEngine() *engine.Engine {
+func newTestEngine(t *testing.T) *engine.Engine {
+	t.Helper()
 	e := engine.New()
 	if err := e.LoadOSM(filepath.Join("..", "..", "testdata", "example.osm")); err != nil {
-		panic(err)
+		t.Fatalf("LoadOSM: %v", err)
 	}
 	if err := e.LoadGTFSDir(filepath.Join("..", "..", "testdata", "mini_gtfs")); err != nil {
-		panic(err)
+		t.Fatalf("LoadGTFSDir: %v", err)
 	}
 	return e
 }
@@ -124,7 +125,7 @@ func TestServer_Modes(t *testing.T) {
 }
 
 func TestServer_NearestIncludesSnappedCoordinates(t *testing.T) {
-	e := newTestEngine()
+	e := newTestEngine(t)
 	s := NewServer(e)
 	handler := s.Handler()
 
@@ -146,7 +147,7 @@ func TestServer_NearestIncludesSnappedCoordinates(t *testing.T) {
 }
 
 func TestServer_RouteModeControlsOnewayDirection(t *testing.T) {
-	e := newTestEngine()
+	e := newTestEngine(t)
 	s := NewServer(e)
 	handler := s.Handler()
 
@@ -172,7 +173,7 @@ func TestServer_RouteModeControlsOnewayDirection(t *testing.T) {
 }
 
 func TestServer_RouteByCoordinates(t *testing.T) {
-	e := newTestEngine()
+	e := newTestEngine(t)
 	s := NewServer(e)
 	handler := s.Handler()
 
@@ -193,7 +194,7 @@ func TestServer_RouteByCoordinates(t *testing.T) {
 }
 
 func TestServer_Journey(t *testing.T) {
-	e := newTestEngine()
+	e := newTestEngine(t)
 	s := NewServer(e)
 	handler := s.Handler()
 
@@ -208,13 +209,25 @@ func TestServer_Journey(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("handler returned wrong status code: got %v want %v body=%s", rr.Code, http.StatusOK, rr.Body.String())
 	}
-	if body := rr.Body.String(); body == "" || body[0] != '{' {
-		t.Fatalf("expected json body, got %q", body)
+	var body journeyResponse
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode journey: %v", err)
+	}
+	if len(body.Legs) == 0 {
+		t.Fatal("journey has no legs")
+	}
+	for _, leg := range body.Legs {
+		if leg.DepartureTime == "" || leg.ArrivalTime == "" {
+			t.Fatalf("leg missing timing: %+v", leg)
+		}
+		if leg.DurationSeconds <= 0 {
+			t.Fatalf("leg duration = %d, want positive: %+v", leg.DurationSeconds, leg)
+		}
 	}
 }
 
 func TestServer_JourneyAcceptsBrowserTimeWithoutSeconds(t *testing.T) {
-	e := newTestEngine()
+	e := newTestEngine(t)
 	s := NewServer(e)
 	handler := s.Handler()
 
@@ -235,7 +248,7 @@ func TestServer_JourneyAcceptsBrowserTimeWithoutSeconds(t *testing.T) {
 }
 
 func TestServer_TransitStops(t *testing.T) {
-	e := newTestEngine()
+	e := newTestEngine(t)
 	s := NewServer(e)
 	handler := s.Handler()
 
@@ -256,7 +269,7 @@ func TestServer_TransitStops(t *testing.T) {
 }
 
 func TestServer_TransitTrips(t *testing.T) {
-	e := newTestEngine()
+	e := newTestEngine(t)
 	s := NewServer(e)
 	handler := s.Handler()
 
@@ -277,7 +290,7 @@ func TestServer_TransitTrips(t *testing.T) {
 }
 
 func TestServer_TransitTrip(t *testing.T) {
-	e := newTestEngine()
+	e := newTestEngine(t)
 	s := NewServer(e)
 	handler := s.Handler()
 

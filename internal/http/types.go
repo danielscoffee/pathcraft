@@ -5,7 +5,8 @@ import "github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
 // WARN: THIS ROUTER IS MORE TO DEBUG AND TEST THE GEOJSON OUTPUTS AND BASIC ROUTING THAN A PRODUCTION FEAT
 
 type Server struct {
-	engine *engine.Engine
+	engine         *engine.Engine
+	allowedOrigins map[string]struct{}
 }
 
 type modeResponse struct {
@@ -29,6 +30,8 @@ type journeyLegResponse struct {
 	RouteID         string              `json:"route_id,omitempty"`
 	RouteName       string              `json:"route_name,omitempty"`
 	RouteLongName   string              `json:"route_long_name,omitempty"`
+	DepartureTime   string              `json:"departure_time"`
+	ArrivalTime     string              `json:"arrival_time"`
 	DistanceM       float64             `json:"distance_meters,omitempty"`
 	DurationSeconds int64               `json:"duration_seconds"`
 	Nodes           []int64             `json:"nodes,omitempty"`

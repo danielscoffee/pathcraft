@@ -43,7 +43,7 @@ func TestServer_ConfigDefaultsWithoutGraph(t *testing.T) {
 }
 
 func TestServer_ConfigCentersOnGraph(t *testing.T) {
-	e := newTestEngine()
+	e := newTestEngine(t)
 	s := NewServer(e)
 
 	req, err := http.NewRequest("GET", "/config", nil)

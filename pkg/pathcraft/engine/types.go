@@ -12,6 +12,7 @@ import (
 const defaultStopCandidates = 8
 
 type Engine struct {
+	config         Config
 	graph          *graph.Graph
 	gtfsIndex      *gtfs.StopTimeIndex
 	gtfsStops      map[gtfs.StopID]gtfs.Stop
@@ -23,7 +24,7 @@ type Engine struct {
 }
 
 func New() *Engine {
-	return &Engine{}
+	return &Engine{config: DefaultConfig()}
 }
 
 type RouteRequest struct {
@@ -89,6 +90,8 @@ type JourneyLeg struct {
 	RouteID       string        `json:"route_id,omitempty"`
 	RouteName     string        `json:"route_name,omitempty"`
 	RouteLongName string        `json:"route_long_name,omitempty"`
+	DepartureTime string        `json:"departure_time"`
+	ArrivalTime   string        `json:"arrival_time"`
 	DistanceM     float64       `json:"distance_meters,omitempty"`
 	Duration      time.Duration `json:"duration"`
 	Nodes         []int64       `json:"nodes,omitempty"`

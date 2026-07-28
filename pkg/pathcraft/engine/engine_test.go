@@ -3,6 +3,7 @@ package engine
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/danielscoffee/pathcraft/internal/geo"
 	"github.com/danielscoffee/pathcraft/internal/graph"
@@ -99,7 +100,7 @@ func TestRouteByCoordinates(t *testing.T) {
 	}
 }
 
-func TestMultimodalRoutePrefersTransitWhenFaster(t *testing.T) {
+func buildMultimodalEngine() *Engine {
 	e := New()
 	e.graph = buildRoutingGraph()
 	e.gtfsStops = map[gtfs.StopID]gtfs.Stop{
@@ -121,7 +122,11 @@ func TestMultimodalRoutePrefersTransitWhenFaster(t *testing.T) {
 		{ShapeID: "SHAPE_1", Lat: -8.05465, Lon: -34.88070, Sequence: 4},
 		{ShapeID: "SHAPE_1", Lat: -8.05480, Lon: -34.88080, Sequence: 5},
 	}}
+	return e
+}
 
+func TestMultimodalRoutePrefersTransitWhenFaster(t *testing.T) {
+	e := buildMultimodalEngine()
 	res, err := e.MultimodalRoute(MultimodalRouteRequest{
 		FromLat:        -8.05428,
 		FromLon:        -34.88130,
@@ -152,10 +157,47 @@ func TestMultimodalRoutePrefersTransitWhenFaster(t *testing.T) {
 	if transitLeg == nil {
 		t.Fatal("expected a transit leg")
 	}
+	if transitLeg.DepartureTime != "05:00:45" || transitLeg.ArrivalTime != "05:01:05" {
+		t.Fatalf("transit timing = %s-%s, want 05:00:45-05:01:05", transitLeg.DepartureTime, transitLeg.ArrivalTime)
+	}
+	if transitLeg.Duration != 20*time.Second {
+		t.Fatalf("transit duration = %v, want 20s", transitLeg.Duration)
+	}
+	if len(res.Legs) != 3 {
+		t.Fatalf("legs = %+v, want access/transit/egress", res.Legs)
+	}
+	access, egress := res.Legs[0], res.Legs[2]
+	if access.DepartureTime != res.DepartureTime || access.ArrivalTime != "05:00:39" || access.Duration <= 0 {
+		t.Fatalf("access timing = %+v, journey departure %s", access, res.DepartureTime)
+	}
+	if egress.DepartureTime != transitLeg.ArrivalTime || egress.ArrivalTime != res.ArrivalTime || egress.Duration <= 0 {
+		t.Fatalf("egress timing = %+v, transit arrival %s, journey arrival %s", egress, transitLeg.ArrivalTime, res.ArrivalTime)
+	}
 	if len(transitLeg.Coordinates) != 5 {
 		t.Fatalf("transit leg coordinates = %v, want GTFS shape polyline", transitLeg.Coordinates)
 	}
 	if transitLeg.Coordinates[2].Lat != -8.05450 || transitLeg.Coordinates[2].Lon != -34.88060 {
 		t.Fatalf("expected shape coordinate in transit geometry, got %+v", transitLeg.Coordinates[2])
+	}
+}
+
+func TestMultimodalRouteMissesTripAfterAccessWalk(t *testing.T) {
+	e := buildMultimodalEngine()
+	res, err := e.MultimodalRoute(MultimodalRouteRequest{
+		FromLat:        -8.05428,
+		FromLon:        -34.88130,
+		ToLat:          -8.05480,
+		ToLon:          -34.88030,
+		DepartureTime:  "05:00:10",
+		WalkingProfile: mobility.NewWalking(1.4),
+	})
+	if err != nil {
+		t.Fatalf("MultimodalRoute() error = %v", err)
+	}
+	if res.Mode != "walk" {
+		t.Fatalf("mode = %q, want walk after scheduled trip is missed", res.Mode)
+	}
+	if len(res.Legs) != 1 || res.Legs[0].DepartureTime != "05:00:10" || res.Legs[0].ArrivalTime != res.ArrivalTime {
+		t.Fatalf("walk leg timing = %+v, journey arrival %s", res.Legs, res.ArrivalTime)
 	}
 }

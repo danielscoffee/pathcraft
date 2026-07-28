@@ -14,10 +14,10 @@ make demo
 `make demo` is shorthand for:
 
 ```bash
-./bin/pathcraft serve --file examples/example.osm --gtfs examples/mini_gtfs --addr :8080
+./bin/pathcraft serve --file testdata/example.osm --gtfs testdata/mini_gtfs --addr :8080
 ```
 
-The bundled `examples/example.osm` is tiny (7 nodes) — fine to verify the
+The tracked `testdata/example.osm` is tiny (7 nodes) — fine to verify the
 demo loads, not impressive visually.
 
 ## Run with a real city
@@ -38,6 +38,7 @@ make demo OSM_FILE=examples/manhattan.osm
 ```
 
 Tips:
+
 - Keep bboxes small (~1–3 km²) — first load parses XML and writes a
   `<file>.cache` so subsequent runs are instant.
 - Overpass rate-limits aggressively. If you get an empty file, wait and retry.

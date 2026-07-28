@@ -8,7 +8,7 @@ It is designed to work as:
 - a **small HTTP server for debugging and demos**
 - an **embedded engine** inside other systems
 
-The architecture follows **Modular Monolith** 
+The architecture follows **Modular Monolith**.
 
 > An initial evaluation considered a Hexagonal (Ports and Adapters) architecture. However, given
 the current scope of the project and its focus on algorithmic correctness, performance, and
@@ -21,15 +21,13 @@ overhead.
 transition to a Hexagonal architecture if the project evolves to require multiple delivery
 mechanisms or infrastructure abstractions.
 
-
-
 ---
 
 ## 1. Design Principles
 
 - Core logic must be **pure and deterministic**
 - No dependency from core → infra (HTTP, CLI, JSON, files)
-- Multiple routing modes (walk, car, transit)
+- Multiple routing modes (walk, bike, car, transit)
 - Multiple execution modes (CLI, HTTP, embedded)
 - Easy to extend without rewriting the engine
 - Optimized for **correctness first**, performance second
@@ -63,47 +61,53 @@ flowchart TB
 ## 3. Directory Responsibilities
 
 ### `/internal`
+
 Private core logic (not exported).
 
 - `graph/`
-    - Adjacency list representation
-    - Nodes, edges, costs, distances
+  - Adjacency list representation
+  - Nodes, edges, costs, distances
 - `geo/`
-    - Haversine distance
-    - Heuristics for routing
+  - Haversine distance
+  - Heuristics for routing
 - `routing/`
-    - Algorithms (A*, future RAPTOR, Dijkstra)
+  - Algorithms (A*, RAPTOR; future Dijkstra)
 - `time/`
-    - Time implement time handling but support > 24:00:00 needed by GTFS
+  - Time implement time handling but support > 24:00:00 needed by GTFS
 - `mobility/`
-    - Mobility is the domain of transit entities
+  - Mobility is the domain of transit entities
 - `osm/`
-    - OSM parsing → graph adapter
+  - OSM parsing → graph adapter
 - `gtfs/`
-    - GTFS parsing (public transit)
+  - GTFS parsing (public transit)
 - `geojson/`
-    - Conversion of routes to GeoJSON
+  - Conversion of routes to GeoJSON
 - `http/`
-    - HTTP handlers (adapter layer)
+  - HTTP handlers (adapter layer)
 
 ---
 
 ### `/pkg/pathcraft/engine`
+
 Public API – **the only thing users should import**.
 
 Responsibilities:
+
 - Load data (OSM / GTFS)
+- Validate default mode, speed, and highway penalties through `Config`
 - Select routing mode
 - Expose a clean API:
-    - `Route()`
-    - `RouteGeoJSON()`
-    - `Stats()`
+  - `NewWithConfig()`
+  - `Route()`
+  - `RouteGeoJSON()`
+  - `Stats()`
 
 The engine **orchestrates**, it does not compute.
 
 ---
 
 ### `/cmd/pathcraft`
+
 CLI entrypoint.
 
 - Parses flags
@@ -113,6 +117,7 @@ CLI entrypoint.
 ---
 
 ### `/web`
+
 Visualization and frontend helpers.
 
 ---
@@ -134,12 +139,13 @@ This prevents HTTP/CLI concerns from leaking into algorithms.
 
 ---
 
-## 5. Routing Modes (Planned)
+## 5. Routing Modes
 
 - Walking (A*)
-- Driving (A* + penalties)
+- Cycling (A* with pedestrian access rules and configurable speed)
+- Driving (A* with access rules and configurable highway penalties)
 - Transit (RAPTOR)
-- Multimodal (Walk + Transit)
+- Multimodal (timed Walk + Transit)
 
 Each mode implements a shared interface.
 

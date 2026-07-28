@@ -38,6 +38,8 @@ export interface JourneyLeg {
   route_id?: string
   route_name?: string
   route_long_name?: string
+  departure_time?: string
+  arrival_time?: string
   distance_meters?: number
   duration_seconds: number
   nodes?: number[]

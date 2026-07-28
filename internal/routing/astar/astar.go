@@ -3,6 +3,7 @@ package astar
 import (
 	"container/heap"
 	"errors"
+	"math"
 	"slices"
 
 	"github.com/danielscoffee/pathcraft/internal/geo"
@@ -14,14 +15,21 @@ var ErrNoPath = errors.New("no path found")
 
 var ErrNodeNotFound = errors.New("node not found in graph")
 
+var ErrInvalidCost = errors.New("invalid edge cost")
+
 type Path struct {
-	Nodes      []graph.NodeID
-	TotalCost  float64
-	NodesCount int
+	Nodes         []graph.NodeID
+	TotalCost     float64
+	TotalDistance float64
+	NodesCount    int
 }
 
 func AStar(g *graph.Graph, source, target graph.NodeID, h geo.Heuristic) (Path, error) {
-	return AStarWithProfile(g, source, target, h, nil)
+	path, err := AStarWithProfile(g, source, target, h, nil)
+	if err != nil {
+		return Path{}, err
+	}
+	return path, nil
 }
 
 func AStarWithProfile(g *graph.Graph, source, target graph.NodeID, h geo.Heuristic, profile mobility.Profile) (Path, error) {
@@ -32,16 +40,13 @@ func AStarWithProfile(g *graph.Graph, source, target graph.NodeID, h geo.Heurist
 	if source == target {
 		return Path{
 			Nodes:      []graph.NodeID{source},
-			TotalCost:  0,
 			NodesCount: 1,
 		}, nil
 	}
 
 	targetNode := g.Nodes[target]
-
-	gScore := make(map[graph.NodeID]float64)
-	gScore[source] = 0
-
+	gScore := map[graph.NodeID]float64{source: 0}
+	distanceScore := map[graph.NodeID]float64{source: 0}
 	cameFrom := make(map[graph.NodeID]graph.NodeID)
 
 	openSet := &priorityQueue{}
@@ -51,43 +56,57 @@ func AStarWithProfile(g *graph.Graph, source, target graph.NodeID, h geo.Heurist
 		priority: h(g.Nodes[source], targetNode),
 	})
 
-	inOpenSet := make(map[graph.NodeID]bool)
-	inOpenSet[source] = true
-
 	for openSet.Len() > 0 {
 		current := heap.Pop(openSet).(*pqItem)
 		currentID := current.nodeID
-
-		if currentID == target {
-			return reconstructPath(cameFrom, target, gScore[target]), nil
+		if current.cost != gScore[currentID] {
+			continue
 		}
-
-		delete(inOpenSet, currentID)
+		if currentID == target {
+			return reconstructPath(cameFrom, target, gScore[target], distanceScore[target]), nil
+		}
 
 		for _, edge := range g.Neighbors(currentID) {
 			if edgeRestrictedForProfile(edge, profile) {
 				continue
 			}
-			tentativeG := gScore[currentID] + edge.DistanceM
-			existingG, visited := gScore[edge.To]
-			if !visited || tentativeG < existingG {
-				cameFrom[edge.To] = currentID
-				gScore[edge.To] = tentativeG
-
-				fScore := tentativeG + h(g.Nodes[edge.To], targetNode)
-
-				if !inOpenSet[edge.To] {
-					heap.Push(openSet, &pqItem{
-						nodeID:   edge.To,
-						priority: fScore,
-					})
-					inOpenSet[edge.To] = true
-				}
+			cost, err := edgeCost(edge, profile)
+			if err != nil {
+				return Path{}, err
 			}
+			tentativeG := gScore[currentID] + cost
+			existingG, visited := gScore[edge.To]
+			if visited && tentativeG >= existingG {
+				continue
+			}
+
+			cameFrom[edge.To] = currentID
+			gScore[edge.To] = tentativeG
+			distanceScore[edge.To] = distanceScore[currentID] + edge.DistanceM
+			heap.Push(openSet, &pqItem{
+				nodeID:   edge.To,
+				cost:     tentativeG,
+				priority: tentativeG + h(g.Nodes[edge.To], targetNode),
+			})
 		}
 	}
 
 	return Path{}, ErrNoPath
+}
+
+type highwayPenaltyProfile interface {
+	HighwayPenalty(highway string) float64
+}
+
+func edgeCost(edge graph.Edge, profile mobility.Profile) (float64, error) {
+	cost := edge.DistanceM
+	if profile, ok := profile.(highwayPenaltyProfile); ok {
+		cost *= profile.HighwayPenalty(edge.Highway)
+	}
+	if cost < 0 || math.IsNaN(cost) || math.IsInf(cost, 0) {
+		return 0, ErrInvalidCost
+	}
+	return cost, nil
 }
 
 func edgeRestrictedForProfile(edge graph.Edge, profile mobility.Profile) bool {
@@ -102,7 +121,7 @@ func edgeRestrictedForProfile(edge graph.Edge, profile mobility.Profile) bool {
 	return false
 }
 
-func reconstructPath(cameFrom map[graph.NodeID]graph.NodeID, target graph.NodeID, totalCost float64) Path {
+func reconstructPath(cameFrom map[graph.NodeID]graph.NodeID, target graph.NodeID, totalCost, totalDistance float64) Path {
 	path := []graph.NodeID{target}
 	current := target
 
@@ -119,15 +138,17 @@ func reconstructPath(cameFrom map[graph.NodeID]graph.NodeID, target graph.NodeID
 	slices.Reverse(path)
 
 	return Path{
-		Nodes:      path,
-		TotalCost:  totalCost,
-		NodesCount: len(path),
+		Nodes:         path,
+		TotalCost:     totalCost,
+		TotalDistance: totalDistance,
+		NodesCount:    len(path),
 	}
 }
 
 // Priority queue implementation for A*
 type pqItem struct {
 	nodeID   graph.NodeID
+	cost     float64
 	priority float64 // fScore = gScore + heuristic
 	index    int
 }

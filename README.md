@@ -2,15 +2,17 @@
 
 **PathCraft is an extensible Go routing engine for maps, transit, simulations, and custom graphs.**
 
-It ships working routing today: OSM walking routes via A*, GTFS transit routes via RAPTOR, initial walk+transit journeys, GeoJSON export, a CLI, an HTTP debug/demo server, and a compile-time plugin registry for custom loaders, algorithms, exporters, and cost models.
+It ships working routing today: OSM street routes via A*, GTFS transit routes via RAPTOR, timetable-aware walk+transit journeys, GeoJSON export, a CLI, an HTTP debug/demo server, and a compile-time plugin registry for custom loaders, algorithms, exporters, and cost models.
 
 ## Features
 
 - **Walking routing**: parse OSM XML / `.osm.gz`, build a walkable graph, and route by node ID or coordinates.
 - **Transit routing**: ingest GTFS `stop_times.txt`, `trips.txt`, optional `transfers.txt`, and optional `stops.txt`; query earliest arrivals with RAPTOR.
-- **Initial multimodal journeys**: compare direct walking against walk → transit → walk using nearest GTFS stop candidates.
+- **Time-dependent multimodal journeys**: compare direct walking against walk → scheduled transit → walk, with timed journey legs.
 - **Plugin registry**: `core.Algorithm`, `core.GraphLoader`, `core.Exporter`, and `core.CostModel` extension points.
+- **Engine configuration**: validated defaults for mode, speed, and per-highway route penalties.
 - **Multiple surfaces**: Go library, `pathcraft` CLI, HTTP endpoints, and a Leaflet routing demo.
+- **Opt-in CORS**: exact browser origins, disabled by default.
 - **GeoJSON output**: route and graph visualization through FeatureCollections.
 - **Tests and benchmarks**: coverage for graph, OSM, GTFS, A*, RAPTOR, HTTP, engine, registry, and plugin pipeline behavior.
 
@@ -20,7 +22,7 @@ It ships working routing today: OSM walking routes via A*, GTFS transit routes v
 - `make`
 - `curl` only if you use `make fetch-osm`
 
-PathCraft currently has no third-party Go module dependencies.
+Go dependencies are pinned in `go.mod` and `go.sum`.
 
 ## Install / Build
 
@@ -53,7 +55,7 @@ Walking A* on OSM, exported as GeoJSON:
 
 ```bash
 ./bin/pathcraft pipeline \
-  --loader osm --graph examples/example.osm \
+  --loader osm --graph testdata/example.osm \
   --algorithm astar --from 1 --to 6 \
   --export geojson
 ```
@@ -62,7 +64,7 @@ Transit RAPTOR on GTFS:
 
 ```bash
 ./bin/pathcraft pipeline \
-  --loader gtfs --graph examples/mini_gtfs \
+  --loader gtfs --graph testdata/mini_gtfs \
   --algorithm raptor --from START_STOP --to END_STOP \
   --opt departure_time=05:00:00
 ```
@@ -70,16 +72,18 @@ Transit RAPTOR on GTFS:
 ### Classic commands
 
 ```bash
-./bin/pathcraft parse --file examples/example.osm
-./bin/pathcraft route --file examples/example.osm --from 1 --to 6 --coords
-./bin/pathcraft route --file examples/example.osm \
+./bin/pathcraft parse --file testdata/example.osm
+./bin/pathcraft route --file testdata/example.osm --from 1 --to 6 --coords
+./bin/pathcraft route --file testdata/example.osm \
   --from-lat -8.05428 --from-lon -34.88130 \
   --to-lat -8.05480 --to-lon -34.88030 --coords
-./bin/pathcraft transit --gtfs examples/gtfs --from RECIFE --to CAMARAGIBE --time 05:00:00
-./bin/pathcraft journey --file examples/example.osm --gtfs examples/mini_gtfs \
+./bin/pathcraft transit --gtfs testdata/mini_gtfs --from START_STOP --to END_STOP --time 05:00:00
+./bin/pathcraft journey --file testdata/example.osm --gtfs testdata/mini_gtfs \
   --from-lat -8.05428 --from-lon -34.88130 \
   --to-lat -8.05480 --to-lon -34.88030 --time 05:00:00
-./bin/pathcraft serve --file examples/example.osm --gtfs examples/mini_gtfs --addr :8080
+./bin/pathcraft serve --file testdata/example.osm --gtfs testdata/mini_gtfs --addr :8080
+./bin/pathcraft serve --file testdata/example.osm --addr :8080 \
+  --cors-origin https://app.example
 ```
 
 ## Go Library Quickstart
@@ -104,7 +108,7 @@ import (
 func main() {
     res, err := pcengine.Run(context.Background(), pcengine.PipelineRequest{
         LoaderName:    "osm",
-        Source:        "examples/example.osm",
+        Source:        "testdata/example.osm",
         AlgorithmName: "astar",
         ExporterName:  "geojson",
         Route:         core.RouteRequest{From: "1", To: "6"},
@@ -117,7 +121,7 @@ func main() {
 }
 ```
 
-The older `engine.Engine` facade is also still available for direct OSM/GTFS loading, coordinate routing, transit routing, and multimodal journey search.
+The `engine.Engine` facade supports direct OSM/GTFS loading, coordinate routing, transit routing, and multimodal journey search. `engine.New()` keeps walking defaults; `engine.NewWithConfig(engine.Config{...})` validates default mode, speed, and per-highway penalty multipliers. Route requests may still provide an explicit profile override.
 
 ## Interactive Demo
 
@@ -139,7 +143,7 @@ Full guide: [docs/tutorials/demo.md](docs/tutorials/demo.md).
 
 ## HTTP Endpoints
 
-The HTTP server is a debug/demo interface, not a stable production API.
+The HTTP server is a GET-only debug/demo interface, not a stable production API. CORS is disabled by default; `--cors-origin` accepts comma-separated exact HTTP(S) origins and enables browser preflight without credentials. Wildcard, opaque, and path-bearing origins are ignored.
 
 - `GET /health`, `GET /status`
 - `GET /graph` — loaded walking graph as GeoJSON lines
@@ -147,7 +151,7 @@ The HTTP server is a debug/demo interface, not a stable production API.
 - `GET /nearest?lat=...&lon=...` — nearest graph node and snap distance
 - `GET /route?from=<id>&to=<id>` — node-id walking route as GeoJSON
 - `GET /route?from_lat=...&from_lon=...&to_lat=...&to_lon=...` — coordinate walking route as GeoJSON
-- `GET /journey?from_lat=...&from_lon=...&to_lat=...&to_lon=...&time=HH:MM:SS` — initial walk+transit journey JSON
+- `GET /journey?from_lat=...&from_lon=...&to_lat=...&to_lon=...&time=HH:MM:SS` — timetable-aware walk+transit journey JSON
 - `GET /transit/stops`, `GET /transit/trips`, `GET /transit/trip?trip_id=...`
 - `GET /graph-visual` — Leaflet viewer
 
@@ -166,7 +170,7 @@ internal/gtfs             GTFS parsers and RAPTOR-ready indexes
 internal/routing          A* and RAPTOR implementations
 internal/http             HTTP demo/debug adapter
 web/template              Leaflet demo
-examples                  small OSM and GTFS fixtures
+testdata                  tracked small OSM and GTFS fixtures
 ```
 
 See also:
@@ -179,10 +183,11 @@ See also:
 
 ## Configuration
 
-- CLI flags configure OSM file paths, GTFS directories, node/coordinate endpoints, departure time, walking speed, output path, and server address.
+- `engine.Config` sets default street mode, speed in m/s, and OSM-highway penalty multipliers (`>= 1`).
+- CLI flags configure OSM file paths, GTFS directories, node/coordinate endpoints, departure time, walking speed, server address, and optional exact CORS origins.
 - `Makefile` variables:
-  - `OSM_FILE` (default `examples/recife_demo.osm`)
-  - `GTFS_DIR` (default `examples/mini_gtfs`)
+  - `OSM_FILE` (default `testdata/example.osm`)
+  - `GTFS_DIR` (default `testdata/mini_gtfs`)
   - `ADDR` (default `:8080`)
   - `BBOX` / `OUT` for `make fetch-osm`
 - Parsed graph caches are written as `<osm-file>.cache`; `*.cache` is ignored by git.
@@ -204,7 +209,7 @@ go test ./internal/routing/astar -bench=. -benchmem
 
 ## Project Status
 
-PathCraft is a prototype routing engine. The core walking, transit, plugin, CLI, and demo flows work, but production hardening is still pending. Known next steps include richer multimodal modeling, better stop discovery, CORS/API polish, deployment packaging, preprocessing, caching, and scale-oriented performance work.
+PathCraft is a prototype routing engine. Phase 0.1–0.3 library, HTTP, and timetable-routing deliverables work, but production hardening remains. Known next steps include GTFS service calendars/realtime, richer stop access, API security, deployment packaging, preprocessing, caching, and scale-oriented performance work.
 
 ## Contributing
 
