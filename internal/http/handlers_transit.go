@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/danielscoffee/pathcraft/internal/mobility"
+	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
 )
 
@@ -143,13 +143,15 @@ func (s *Server) handleJourney(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := s.engine.MultimodalRoute(engine.MultimodalRouteRequest{
-		FromLat:        fromLat,
-		FromLon:        fromLon,
-		ToLat:          toLat,
-		ToLon:          toLon,
-		DepartureTime:  depTime,
-		WalkingProfile: mobility.NewWalking(1.4),
+	mode, ok := s.registry.Mode("gtfs")
+	if !ok {
+		http.Error(w, "mode \"gtfs\" not registered", http.StatusServiceUnavailable)
+		return
+	}
+	result, err := mode.Route(r.Context(), s.engine, core.ModeRequest{
+		From:    core.Position{fromLon, fromLat},
+		To:      core.Position{toLon, toLat},
+		Options: map[string]string{"departure_time": depTime},
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
@@ -157,7 +159,7 @@ func (s *Server) handleJourney(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(toJourneyResponse(res)); err != nil {
+	if err := json.NewEncoder(w).Encode(modeResultToJourneyResponse(result)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
