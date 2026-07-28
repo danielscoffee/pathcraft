@@ -8,11 +8,13 @@ import (
 	"github.com/danielscoffee/pathcraft/internal/http"
 )
 
+const defaultHTTPAddress = "127.0.0.1:8080"
+
 func CmdServer(args []string) error {
 	fs := flag.NewFlagSet("server", flag.ExitOnError)
 	file := fs.String("file", "", "OSM file to parse (.osm or .osm.gz)")
 	gtfsDir := fs.String("gtfs", "", "Directory containing GTFS files for transit and multimodal endpoints")
-	addr := fs.String("addr", ":8080", "HTTP server address")
+	addr := fs.String("addr", defaultHTTPAddress, "HTTP server address")
 	corsOrigin := fs.String("cors-origin", "", "Comma-separated exact origins allowed for browser API requests")
 	if err := fs.Parse(args); err != nil {
 		return err

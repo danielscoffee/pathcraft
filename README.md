@@ -88,7 +88,8 @@ Transit RAPTOR on GTFS:
 ./bin/pathcraft journey --file testdata/example.osm --gtfs testdata/mini_gtfs \
   --from-lat -8.05428 --from-lon -34.88130 \
   --to-lat -8.05480 --to-lon -34.88030 --time 05:00:00
-./bin/pathcraft serve --file testdata/example.osm --gtfs testdata/mini_gtfs --addr :8080
+./bin/pathcraft serve --file testdata/example.osm --gtfs testdata/mini_gtfs --addr 127.0.0.1:8080
+# Network exposure is explicit; add authentication/rate limiting at the reverse proxy.
 ./bin/pathcraft serve --file testdata/example.osm --addr :8080 \
   --cors-origin https://app.example
 ./bin/pathcraft grpc --file testdata/example.osm --addr 127.0.0.1:9090
@@ -222,7 +223,7 @@ See also:
 - `Makefile` variables:
   - `OSM_FILE` (default `testdata/example.osm`)
   - `GTFS_DIR` (default `testdata/mini_gtfs`)
-  - `ADDR` (default `:8080`)
+  - `ADDR` (default `127.0.0.1:8080`)
   - `BBOX` / `OUT` for `make fetch-osm`
 - Parsed graph caches are written as `<osm-file>.cache`; source SHA-256 plus graph/preprocessing versions prevent stale reuse, writes replace atomically, and `*.cache` is ignored by git. Caches are trusted local build artifacts, not upload/network input; gob decoding precedes structural validation.
 

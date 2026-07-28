@@ -29,7 +29,7 @@ func PrintUsage() {
 	pathcraft transit --gtfs examples/recife_gtfs --from 452 --to 5931 --time 05:00
 	pathcraft journey --file examples/recife.osm --gtfs examples/recife_gtfs --from-lat -8.12903 --from-lon -34.90058 --to-lat -8.06266 --to-lon -34.87798 --time 05:00
 	pathcraft grpc --file examples/recife.osm --gtfs examples/recife_gtfs
-	pathcraft serve --file examples/recife.osm --gtfs examples/recife_gtfs --addr :8080
+	pathcraft serve --file examples/recife.osm --gtfs examples/recife_gtfs --addr 127.0.0.1:8080
 	pathcraft serve --file testdata/example.osm --cors-origin https://app.example
 	`)
 }

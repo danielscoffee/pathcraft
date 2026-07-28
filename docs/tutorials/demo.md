@@ -12,7 +12,7 @@ make demo
 `make demo` is shorthand for:
 
 ```bash
-./bin/pathcraft serve --file testdata/example.osm --gtfs testdata/mini_gtfs --addr :8080
+./bin/pathcraft serve --file testdata/example.osm --gtfs testdata/mini_gtfs --addr 127.0.0.1:8080
 ```
 
 The tracked `testdata/example.osm` is tiny (7 nodes) — fine to verify the

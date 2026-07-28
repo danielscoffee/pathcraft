@@ -5,6 +5,12 @@ import (
 	"testing"
 )
 
+func TestDefaultHTTPAddressIsLoopback(t *testing.T) {
+	if defaultHTTPAddress != "127.0.0.1:8080" {
+		t.Fatalf("default HTTP address = %q", defaultHTTPAddress)
+	}
+}
+
 func TestParseCORSOrigins(t *testing.T) {
 	tests := []struct {
 		name  string
