@@ -1,7 +1,6 @@
 package http
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
@@ -9,17 +8,25 @@ import (
 
 	"github.com/danielscoffee/pathcraft/internal/logging"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 	"go.uber.org/zap"
 )
 
 func NewServer(e *engine.Engine, allowedOrigins ...string) *Server {
+	return NewServerWithRegistry(e, plugins.Default, allowedOrigins...)
+}
+
+func NewServerWithRegistry(e *engine.Engine, registry *plugins.Registry, allowedOrigins ...string) *Server {
+	if registry == nil {
+		registry = plugins.Default
+	}
 	origins := make(map[string]struct{}, len(allowedOrigins))
 	for _, origin := range allowedOrigins {
 		if origin = strings.TrimSpace(origin); validOrigin(origin) {
 			origins[origin] = struct{}{}
 		}
 	}
-	return &Server{engine: e, allowedOrigins: origins}
+	return &Server{engine: e, registry: registry, allowedOrigins: origins}
 }
 
 func validOrigin(origin string) bool {
@@ -37,6 +44,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/journey", s.handleJourney)
 	mux.HandleFunc("/modes", s.handleModes)
+	mux.HandleFunc("/mode-route", s.handleModeRoute)
 	mux.HandleFunc("/route", s.handleRoute)
 	mux.HandleFunc("/transit/stops", s.handleTransitStops)
 	mux.HandleFunc("/transit/trips", s.handleTransitTrips)
@@ -117,18 +125,6 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, `{"status": "not health"}`, http.StatusInternalServerError)
 		return
-	}
-}
-
-func (s *Server) handleModes(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(modeResponse{Modes: []routeMode{
-		{ID: "walk", Label: "Walk", Kind: "standard", Endpoint: "/route"},
-		{ID: "bus", Label: "Bus / GTFS", Kind: "gtfs", Endpoint: "/journey"},
-		{ID: "car", Label: "Car", Kind: "standard", Endpoint: "/route"},
-		{ID: "bike", Label: "Bike", Kind: "standard", Endpoint: "/route"},
-	}}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
