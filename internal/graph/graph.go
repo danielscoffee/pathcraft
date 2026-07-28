@@ -1,10 +1,6 @@
 package graph
 
 import (
-	"encoding/gob"
-	"fmt"
-	"os"
-
 	"github.com/danielscoffee/pathcraft/internal/time"
 	"github.com/danielscoffee/pathcraft/pkg/plugins"
 )
@@ -33,7 +29,7 @@ type Node struct {
 	Lon float64
 }
 
-const CacheVersion = 3
+const CacheVersion = 4
 
 type Graph struct {
 	CacheVersion int
@@ -120,36 +116,6 @@ func (g *Graph) NearestNode(lat, lon float64, distanceFunc func(lat1, lon1, lat2
 	}
 
 	return nearest, minDist
-}
-
-// Save serializes the graph to a file.
-func (g *Graph) Save(path string) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	return gob.NewEncoder(f).Encode(g)
-}
-
-// LoadGraph deserializes a graph from a file.
-func LoadGraph(path string) (*Graph, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	var g Graph
-	if err := gob.NewDecoder(f).Decode(&g); err != nil {
-		return nil, err
-	}
-	if g.CacheVersion != CacheVersion {
-		return nil, fmt.Errorf("unsupported graph cache version %d, want %d", g.CacheVersion, CacheVersion)
-	}
-	g.rebuildNearestNodeIndex()
-	return &g, nil
 }
 
 func (g *Graph) HasNode(id NodeID) bool {
