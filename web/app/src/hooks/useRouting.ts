@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchJourney, fetchNearest, fetchRoute } from '../api/client'
-import type { Journey, RouteMode, SnapResult } from '../api/types'
-import { estimateMinutes, lineLengthMeters, normalizeClockTime } from '../lib/geo'
-import { journeyToGeoJSON, totalCoordinateCount } from '../lib/journey'
+import { fetchModeRoute, fetchNearest } from '../api/client'
+import type { ModeRouteResult, RouteMode, SnapResult } from '../api/types'
+import { normalizeClockTime } from '../lib/geo'
+import { modeResultToGeoJSON, totalPositionCount } from '../lib/modeResult'
 
 export type StatusTone = 'info' | 'ok' | 'err'
 
@@ -11,12 +11,11 @@ export interface Status {
   tone: StatusTone
 }
 
-/** Outcome of solving one mode between the current A/B pair. */
+/** Outcome of solving one registered mode between the current A/B pair. */
 export interface ModeResult {
   ok: boolean
   geojson?: GeoJSON.FeatureCollection
-  /** Present for GTFS modes. */
-  journey?: Journey
+  route?: ModeRouteResult
   durationSeconds?: number
   distanceMeters?: number
   nodeCount?: number
@@ -27,49 +26,39 @@ export interface ModeResult {
 export interface SolvedRoute {
   geojson: GeoJSON.FeatureCollection
   modeID: string
-  journey?: Journey
   /** Bumps once per solve round so the map can remount/refit. */
   generation: number
 }
+
+const timeOption = (mode: RouteMode) => (mode.options ?? []).find((option) => option.kind === 'time')
 
 async function solveMode(
   mode: RouteMode,
   a: SnapResult,
   b: SnapResult,
-  busTime: string,
+  departureTime: string,
 ): Promise<ModeResult> {
-  const t0 = performance.now()
+  const started = performance.now()
   try {
-    if (mode.kind === 'gtfs') {
-      const time = normalizeClockTime(busTime || '05:00:00')
-      const journey = await fetchJourney(mode.endpoint || '/journey', a, b, time)
-      const geojson = journeyToGeoJSON(journey)
-      return {
-        ok: true,
-        geojson,
-        journey,
-        durationSeconds: journey.total_duration_seconds ?? 0,
-        distanceMeters: journey.walking_distance_meters,
-        nodeCount: totalCoordinateCount(geojson),
-        solveMs: performance.now() - t0,
-      }
+    const option = timeOption(mode)
+    const options: Record<string, string> = {}
+    if (option) {
+      options[option.name] = normalizeClockTime(departureTime || option.default || '05:00:00')
     }
-    const geojson = await fetchRoute(mode.endpoint || '/route', mode.id, a, b)
-    const first = geojson.features?.[0]
-    const coords = first && first.geometry.type === 'LineString' ? first.geometry.coordinates : []
-    const distanceMeters = lineLengthMeters(coords)
+    const route = await fetchModeRoute(mode.id, a, b, options)
     return {
       ok: true,
-      geojson,
-      durationSeconds: estimateMinutes(mode.id, distanceMeters) * 60,
-      distanceMeters,
-      nodeCount: coords.length,
-      solveMs: performance.now() - t0,
+      geojson: modeResultToGeoJSON(route),
+      route,
+      durationSeconds: route.duration_seconds ?? 0,
+      distanceMeters: route.distance_meters ?? 0,
+      nodeCount: totalPositionCount(route),
+      solveMs: performance.now() - started,
     }
   } catch (err) {
     return {
       ok: false,
-      solveMs: performance.now() - t0,
+      solveMs: performance.now() - started,
       error: err instanceof Error ? err.message : String(err),
     }
   }
@@ -89,12 +78,8 @@ export function solveModesProgressively(
   )
 }
 
-/**
- * Google-Maps-style directions state: two snapped endpoints, and on every
- * complete pair ALL modes solve in parallel so mode tabs can show ETAs and
- * switching tabs is instant (no refetch).
- */
-export function useRouting(modes: RouteMode[], busTime: string) {
+/** Every complete A/B pair resolves registered modes in parallel. */
+export function useRouting(modes: RouteMode[], departureTime: string) {
   const [from, setFrom] = useState<SnapResult | null>(null)
   const [to, setTo] = useState<SnapResult | null>(null)
   const [results, setResults] = useState<Record<string, ModeResult>>({})
@@ -103,38 +88,38 @@ export function useRouting(modes: RouteMode[], busTime: string) {
   const [status, setStatus] = useState<Status>({ text: 'Click the map to set A.', tone: 'info' })
 
   const modesRef = useRef(modes)
-  const busTimeRef = useRef(busTime)
+  const departureTimeRef = useRef(departureTime)
   useEffect(() => {
     modesRef.current = modes
-    busTimeRef.current = busTime
-  }, [modes, busTime])
+    departureTimeRef.current = departureTime
+  }, [modes, departureTime])
 
   // Guards against late results from a superseded solve round.
   const round = useRef(0)
 
-  const solveAll = useCallback(async (a: SnapResult, b: SnapResult, onlyGTFS = false) => {
-    const activeModes = modesRef.current.filter((m) => !onlyGTFS || m.kind === 'gtfs')
+  const solveAll = useCallback(async (a: SnapResult, b: SnapResult, onlyTimed = false) => {
+    const activeModes = modesRef.current.filter((mode) => !onlyTimed || Boolean(timeOption(mode)))
     if (activeModes.length === 0) return
     const thisRound = ++round.current
 
     setSolving(true)
-    if (!onlyGTFS) setResults({})
+    if (!onlyTimed) setResults({})
     setStatus({ text: 'Routing all modes…', tone: 'info' })
     const settled = await solveModesProgressively(
       activeModes,
-      (mode) => solveMode(mode, a, b, busTimeRef.current),
+      (mode) => solveMode(mode, a, b, departureTimeRef.current),
       (id, result) => {
         if (thisRound === round.current) {
-          setResults((prev) => ({ ...prev, [id]: result }))
+          setResults((previous) => ({ ...previous, [id]: result }))
         }
       },
     )
-    if (thisRound !== round.current) return // a newer round superseded this one
+    if (thisRound !== round.current) return
 
-    setGeneration((g) => g + 1)
+    setGeneration((value) => value + 1)
     setSolving(false)
 
-    const okCount = settled.filter(([, r]) => r.ok).length
+    const okCount = settled.filter(([, result]) => result.ok).length
     setStatus(
       okCount === 0
         ? { text: `No route found: ${settled[0][1].error ?? 'unknown error'}`, tone: 'err' }
@@ -190,8 +175,7 @@ export function useRouting(modes: RouteMode[], busTime: string) {
     [from, to, reset, solveAll],
   )
 
-  /** Re-solve GTFS modes when the departure time changes. */
-  const resolveGTFS = useCallback(() => {
+  const resolveTimed = useCallback(() => {
     if (from && to) void solveAll(from, to, true)
   }, [from, to, solveAll])
 
@@ -207,6 +191,6 @@ export function useRouting(modes: RouteMode[], busTime: string) {
     clearPoint,
     swap,
     reset,
-    resolveGTFS,
+    resolveTimed,
   }
 }

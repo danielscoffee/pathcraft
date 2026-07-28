@@ -4,7 +4,7 @@ import L from 'leaflet'
 import type { MapConfig, RouteLayerProps, SnapResult, TripDetail } from '../api/types'
 import type { SolvedRoute, Status } from '../hooks/useRouting'
 import { formatNumber } from '../lib/geo'
-import { modeColor } from '../lib/mapStyle'
+import { DEFAULT_ROUTE_COLOR } from '../lib/mapStyle'
 import { popupContent } from '../lib/popup'
 import { NodesLayer, StopsLayer, StreetGraphLayer, TripLayer } from './overlays'
 
@@ -56,19 +56,15 @@ function FitRoute({ route }: { route: SolvedRoute | null }) {
 }
 
 function routePopup(props: RouteLayerProps): HTMLElement | null {
-  if (props.mode === 'transit') {
-    const line = [props.route_name || props.route_id || props.trip_id || '', props.route_long_name || '']
-      .filter(Boolean)
-      .join(' — ')
-    return popupContent(`Bus ${line}`, [`${props.from ?? ''} → ${props.to ?? ''}`])
-  }
-  if (props.mode === 'transfer') {
-    return popupContent('Transfer', [
-      `${props.from ?? ''} → ${props.to ?? ''}`,
-      `${formatNumber(props.distance_meters ?? 0)} m · ${formatNumber((props.duration_seconds ?? 0) / 60)} min`,
-    ])
-  }
-  return null
+  const title = props.label || props.mode
+  if (!title) return null
+  const lines = [
+    props.from || props.to ? `${props.from ?? ''} → ${props.to ?? ''}` : '',
+    props.distance_meters || props.duration_seconds
+      ? `${formatNumber(props.distance_meters ?? 0)} m · ${formatNumber((props.duration_seconds ?? 0) / 60)} min`
+      : '',
+  ].filter(Boolean)
+  return popupContent(title, lines)
 }
 
 export interface MapViewProps {
@@ -119,16 +115,15 @@ export default function MapView({
 
       {route && (
         <GeoJSON
-          key={route.generation}
+          key={`${route.generation}:${route.modeID}`}
           data={route.geojson}
           style={(feature) => {
             const props = (feature?.properties ?? {}) as RouteLayerProps
-            const mode = route.journey ? props.mode || 'bus' : route.modeID
             return {
-              color: modeColor(mode ?? route.modeID),
+              color: props.color || DEFAULT_ROUTE_COLOR,
               weight: 5,
               opacity: 0.92,
-              dashArray: props.mode === 'transit' ? '8 6' : undefined,
+              dashArray: props.dashed ? '8 6' : undefined,
             }
           }}
           onEachFeature={(feature, layer) => {

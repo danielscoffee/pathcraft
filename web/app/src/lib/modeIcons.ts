@@ -1,12 +1,22 @@
 import type { ComponentType } from 'react'
-import { BikeIcon, BusIcon, CarIcon, WalkIcon, type IconProps } from '../components/Icons'
+import {
+  AirIcon,
+  BikeIcon,
+  BusIcon,
+  CarIcon,
+  RouteIcon,
+  WalkIcon,
+  type IconProps,
+} from '../components/Icons'
 
-/** Mode id → icon component; unknown ids fall back to walking. */
+/** Manifest icon key → visual component; unknown plugins get a generic route icon. */
 const MODE_ICONS: Record<string, ComponentType<IconProps>> = {
-  walk: WalkIcon,
+  air: AirIcon,
+  bike: BikeIcon,
   bus: BusIcon,
   car: CarIcon,
-  bike: BikeIcon,
+  walk: WalkIcon,
 }
 
-export const modeIcon = (id: string): ComponentType<IconProps> => MODE_ICONS[id] ?? WalkIcon
+export const modeIcon = (key?: string): ComponentType<IconProps> =>
+  (key && MODE_ICONS[key]) || RouteIcon

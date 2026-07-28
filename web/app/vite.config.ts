@@ -7,6 +7,7 @@ const API_TARGET = process.env.PATHCRAFT_API ?? 'http://localhost:8080'
 const API_PATHS = [
   '/config',
   '/modes',
+  '/mode-route',
   '/route',
   '/journey',
   '/nearest',

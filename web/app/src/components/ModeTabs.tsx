@@ -1,7 +1,7 @@
 import type { RouteMode } from '../api/types'
 import type { ModeResult } from '../hooks/useRouting'
 import { formatDuration } from '../lib/geo'
-import { modeColor } from '../lib/mapStyle'
+import { DEFAULT_ROUTE_COLOR } from '../lib/mapStyle'
 import { modeIcon } from '../lib/modeIcons'
 
 export interface ModeTabsProps {
@@ -17,7 +17,7 @@ export default function ModeTabs({ modes, selected, results, solving, onSelect }
   return (
     <div className="flex gap-1" role="tablist" aria-label="Travel mode">
       {modes.map((mode) => {
-        const Icon = modeIcon(mode.id)
+        const Icon = modeIcon(mode.icon)
         const result = results[mode.id]
         const active = mode.id === selected
         const eta = result?.ok
@@ -40,7 +40,7 @@ export default function ModeTabs({ modes, selected, results, solving, onSelect }
                 ? 'border-transparent text-paper'
                 : 'bg-transparent border-transparent text-ink-faint hover:text-ink-soft hover:bg-paper-deep'
             }`}
-            style={active ? { background: modeColor(mode.id) } : undefined}
+            style={active ? { background: mode.color || DEFAULT_ROUTE_COLOR } : undefined}
           >
             <Icon size={19} />
             <span

@@ -50,6 +50,20 @@ export const BikeIcon = (p: IconProps) => (
   </svg>
 )
 
+export const AirIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M3 14l8-2 4-8 2 1-2 7 5 2v2l-6-1-3 5-1-1 1-5-8 2z" />
+  </svg>
+)
+
+export const RouteIcon = (p: IconProps) => (
+  <svg {...base(p)}>
+    <circle cx="6" cy="18" r="2" />
+    <circle cx="18" cy="6" r="2" />
+    <path d="M7.5 16.5l9-9" />
+  </svg>
+)
+
 export const SwapIcon = (p: IconProps) => (
   <svg {...base(p)}>
     <path d="M7 4v13M7 4L4 7M7 4l3 3M17 20V7M17 20l-3-3M17 20l3-3" />

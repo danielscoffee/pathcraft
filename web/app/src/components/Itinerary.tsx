@@ -1,56 +1,50 @@
-import type { Journey, JourneyLeg } from '../api/types'
+import type { ModeRouteSegment } from '../api/types'
 import { formatNumber } from '../lib/geo'
-import { modeColor } from '../lib/mapStyle'
+import { DEFAULT_ROUTE_COLOR } from '../lib/mapStyle'
 
-function legTitle(leg: JourneyLeg): string {
-  if (leg.mode === 'transit') {
-    const line = [leg.route_name || leg.route_id || leg.trip_id || '', leg.route_long_name || '']
-      .filter(Boolean)
-      .join(' — ')
-    return `Bus ${line}`
-  }
-  if (leg.mode === 'transfer') return 'Transfer'
-  if (leg.mode === 'walk') return 'Walk'
-  return leg.mode || 'Leg'
+const metaString = (value: unknown) => (typeof value === 'string' ? value : '')
+
+function segmentDetail(segment: ModeRouteSegment): string {
+  const from = metaString(segment.meta?.from) || metaString(segment.meta?.from_stop_id)
+  const to = metaString(segment.meta?.to) || metaString(segment.meta?.to_stop_id)
+  const fromTo = from || to ? `${from} → ${to}` : ''
+  const distance = segment.distance_meters ? `${formatNumber(segment.distance_meters)} m` : ''
+  const minutes = segment.duration_seconds
+    ? `${formatNumber(segment.duration_seconds / 60)} min`
+    : ''
+  return [fromTo, distance, minutes].filter(Boolean).join(' · ')
 }
 
-function legDetail(leg: JourneyLeg): string {
-  const fromTo = `${leg.from_name || leg.from_stop_id || ''} → ${leg.to_name || leg.to_stop_id || ''}`
-  if (leg.mode === 'transit') return fromTo
-  const distance = `${formatNumber(leg.distance_meters ?? 0)} m`
-  const minutes = `${formatNumber((leg.duration_seconds ?? 0) / 60)} min`
-  return `${fromTo} · ${distance} · ${minutes}`
-}
-
-export default function Itinerary({ journey }: { journey: Journey }) {
-  const legs = journey.legs ?? []
-  if (legs.length === 0) return null
+export default function Itinerary({ segments }: { segments: ModeRouteSegment[] }) {
+  if (segments.length === 0) return null
 
   return (
     <section className="mt-2.5">
       <h2 className="text-11px font-600 uppercase tracking-widest text-ink-faint mb-2">Steps</h2>
       <ol className="grid">
-        {legs.map((leg, i) => (
-          <li key={i} className="relative pl-5 pb-2.5 last:pb-0">
-            {/* ticket-style connector line + mode dot */}
-            {i < legs.length - 1 && (
+        {segments.map((segment, index) => {
+          const color = segment.color || DEFAULT_ROUTE_COLOR
+          return (
+            <li key={index} className="relative pl-5 pb-2.5 last:pb-0">
+              {index < segments.length - 1 && (
+                <span
+                  aria-hidden
+                  className="absolute left-1.25 top-3 bottom--1 w-2px"
+                  style={{ background: color }}
+                />
+              )}
               <span
                 aria-hidden
-                className="absolute left-1.25 top-3 bottom--1 w-2px"
-                style={{ background: modeColor(leg.mode) }}
+                className="absolute left-0 top-1 w-2.75 h-2.75 rounded-full border-2 border-paper"
+                style={{ background: color }}
               />
-            )}
-            <span
-              aria-hidden
-              className="absolute left-0 top-1 w-2.75 h-2.75 rounded-full border-2 border-paper"
-              style={{ background: modeColor(leg.mode) }}
-            />
-            <p className="text-12px font-600" style={{ color: modeColor(leg.mode) }}>
-              {legTitle(leg)}
-            </p>
-            <p className="text-12px text-ink-soft leading-snug">{legDetail(leg)}</p>
-          </li>
-        ))}
+              <p className="text-12px font-600" style={{ color }}>
+                {segment.label || segment.kind || 'Segment'}
+              </p>
+              <p className="text-12px text-ink-soft leading-snug">{segmentDetail(segment)}</p>
+            </li>
+          )
+        })}
       </ol>
     </section>
   )
