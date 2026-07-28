@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 	"time"
 
@@ -24,6 +25,24 @@ func buildRoutingGraph() *graph.Graph {
 	g.AddBidirectionalEdge(4, 5, geo.HaversineDistance(-8.05450, -34.88080, -8.05480, -34.88080))
 	g.AddBidirectionalEdge(5, 6, geo.HaversineDistance(-8.05480, -34.88080, -8.05480, -34.88030))
 	return g
+}
+
+func TestNearestNodeRejectsInvalidCoordinates(t *testing.T) {
+	e := New()
+	e.graph = graph.NewGraph()
+	for _, point := range []struct {
+		lat float64
+		lon float64
+	}{
+		{lat: math.NaN()},
+		{lat: math.Inf(1)},
+		{lat: 91},
+		{lon: 181},
+	} {
+		if _, _, err := e.NearestNode(point.lat, point.lon); err == nil {
+			t.Fatalf("NearestNode(%v, %v) error = nil", point.lat, point.lon)
+		}
+	}
 }
 
 func TestRouteGeoJSON(t *testing.T) {

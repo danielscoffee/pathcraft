@@ -17,6 +17,8 @@ type multimodalHost interface {
 	MultimodalRoute(engine.MultimodalRouteRequest) (*engine.MultimodalRouteResult, error)
 }
 
+const maxStopCandidates = 64
+
 type Plugin struct{}
 
 func (Plugin) Name() string { return "gtfs" }
@@ -65,8 +67,8 @@ func (Plugin) Route(ctx context.Context, host any, req core.ModeRequest) (core.M
 	maxStopCount := 8
 	if value := req.Options["max_stop_count"]; value != "" {
 		maxStopCount, err = strconv.Atoi(value)
-		if err != nil || maxStopCount < 0 {
-			return core.ModeResult{}, fmt.Errorf("max_stop_count must be a non-negative integer")
+		if err != nil || maxStopCount < 0 || maxStopCount > maxStopCandidates {
+			return core.ModeResult{}, fmt.Errorf("max_stop_count must be between 0 and %d", maxStopCandidates)
 		}
 	}
 

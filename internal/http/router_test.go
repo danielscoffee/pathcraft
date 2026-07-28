@@ -123,6 +123,45 @@ func TestServer_Modes(t *testing.T) {
 	}
 }
 
+func TestParseGeographicCoordinateRejectsUnsafeValues(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		min   float64
+		max   float64
+	}{
+		{name: "not finite", value: "NaN", min: -90, max: 90},
+		{name: "latitude overflow", value: "91", min: -90, max: 90},
+		{name: "longitude overflow", value: "181", min: -180, max: 180},
+		{name: "huge finite value", value: "1e308", min: -90, max: 90},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := parseGeographicCoordinate(test.name, test.value, test.min, test.max); err == nil {
+				t.Fatalf("parseGeographicCoordinate(%q) error = nil", test.value)
+			}
+		})
+	}
+}
+
+func TestServer_NearestRejectsUnsafeCoordinates(t *testing.T) {
+	handler := NewServer(newTestEngine(t)).Handler()
+	for _, query := range []string{
+		"lat=NaN&lon=0",
+		"lat=91&lon=0",
+		"lat=0&lon=181",
+		"lat=1e308&lon=0",
+	} {
+		t.Run(query, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/nearest?"+query, nil))
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body=%s", rr.Code, rr.Body.String())
+			}
+		})
+	}
+}
+
 func TestServer_NearestIncludesSnappedCoordinates(t *testing.T) {
 	e := newTestEngine(t)
 	s := NewServer(e)

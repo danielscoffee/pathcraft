@@ -73,7 +73,14 @@ func (Plugin) Route(ctx context.Context, _ any, req core.ModeRequest) (core.Mode
 	halfGround := groundDistance / 2
 	distance := math.Hypot(halfGround, cruiseAltitude-fromAltitude) +
 		math.Hypot(halfGround, cruiseAltitude-toAltitude)
-	duration := int64(math.Ceil(distance / speed))
+	if math.IsNaN(distance) || math.IsInf(distance, 0) {
+		return core.ModeResult{}, fmt.Errorf("air route distance must be finite")
+	}
+	durationSeconds := math.Ceil(distance / speed)
+	if math.IsNaN(durationSeconds) || math.IsInf(durationSeconds, 0) || durationSeconds >= float64(1<<63) {
+		return core.ModeResult{}, fmt.Errorf("air route duration exceeds supported range")
+	}
+	duration := int64(durationSeconds)
 	positions := []core.Position{
 		{fromLon, fromLat, fromAltitude},
 		{(fromLon + toLon) / 2, (fromLat + toLat) / 2, cruiseAltitude},

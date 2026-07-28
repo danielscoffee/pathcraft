@@ -2,6 +2,8 @@ package air
 
 import (
 	"context"
+	"math"
+	"strings"
 	"testing"
 
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
@@ -37,6 +39,41 @@ func TestPluginRoutesInThreeDimensions(t *testing.T) {
 	}
 	if result.DistanceMeters <= 0 || result.DurationSeconds <= 0 {
 		t.Fatalf("expected positive metrics, got %+v", result)
+	}
+}
+
+func TestPluginRejectsUnrepresentableMetrics(t *testing.T) {
+	tests := []struct {
+		name    string
+		request core.ModeRequest
+		want    string
+	}{
+		{
+			name: "duration overflow",
+			request: core.ModeRequest{
+				From:    core.Position{12, 55},
+				To:      core.Position{13, 56},
+				Options: map[string]string{"speed_mps": "5e-324"},
+			},
+			want: "duration",
+		},
+		{
+			name: "distance overflow",
+			request: core.ModeRequest{
+				From: core.Position{12, 55, -math.MaxFloat64},
+				To:   core.Position{13, 56, -math.MaxFloat64},
+			},
+			want: "distance",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := (Plugin{}).Route(context.Background(), nil, test.request)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("Route() error = %v, want %s rejection", err, test.want)
+			}
+		})
 	}
 }
 

@@ -3,6 +3,7 @@ package http
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -19,15 +20,15 @@ func (s *Server) handleNearest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lat, err := strconv.ParseFloat(latStr, 64)
+	lat, err := parseGeographicCoordinate("lat", latStr, -90, 90)
 	if err != nil {
-		http.Error(w, "invalid lat parameter", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	lon, err := strconv.ParseFloat(lonStr, 64)
+	lon, err := parseGeographicCoordinate("lon", lonStr, -180, 180)
 	if err != nil {
-		http.Error(w, "invalid lon parameter", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -50,6 +51,14 @@ func (s *Server) handleNearest(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprintf(w, `{"id": %d, "distance": %f, "lat": %f, "lon": %f}`, id, dist, node.Lat, node.Lon)
+}
+
+func parseGeographicCoordinate(name, value string, minValue, maxValue float64) (float64, error) {
+	coordinate, err := strconv.ParseFloat(value, 64)
+	if err != nil || math.IsNaN(coordinate) || math.IsInf(coordinate, 0) || coordinate < minValue || coordinate > maxValue {
+		return 0, fmt.Errorf("invalid %s parameter", name)
+	}
+	return coordinate, nil
 }
 
 func (s *Server) handleRoute(w http.ResponseWriter, r *http.Request) {

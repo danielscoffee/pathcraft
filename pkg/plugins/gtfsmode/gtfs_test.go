@@ -3,6 +3,7 @@ package gtfsmode
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +34,18 @@ func TestPluginOwnsJourneyDefaults(t *testing.T) {
 	}
 	if got := host.request.WalkingProfile.Speed(); got != 1.4 {
 		t.Fatalf("walking speed = %v, want 1.4", got)
+	}
+}
+
+func TestPluginRejectsExcessiveStopCandidates(t *testing.T) {
+	host := &captureHost{}
+	_, err := (Plugin{}).Route(context.Background(), host, core.ModeRequest{
+		From:    core.Position{0, 0},
+		To:      core.Position{1, 1},
+		Options: map[string]string{"max_stop_count": "65"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "between 0 and 64") {
+		t.Fatalf("Route() error = %v, want bounded stop-candidate rejection", err)
 	}
 }
 

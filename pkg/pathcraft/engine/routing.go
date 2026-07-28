@@ -119,6 +119,9 @@ func (e *Engine) NearestNode(lat, lon float64) (int64, float64, error) {
 	if e.graph == nil {
 		return 0, 0, fmt.Errorf("graph not loaded")
 	}
+	if math.IsNaN(lat) || math.IsInf(lat, 0) || math.IsNaN(lon) || math.IsInf(lon, 0) || lat < -90 || lat > 90 || lon < -180 || lon > 180 {
+		return 0, 0, fmt.Errorf("coordinates must be finite and within geographic bounds")
+	}
 
 	id, dist := e.graph.NearestNode(lat, lon, geo.HaversineDistance)
 	return int64(id), dist, nil
