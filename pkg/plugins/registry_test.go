@@ -15,11 +15,17 @@ func (f fakeAlgo) Route(_ context.Context, _ core.Graph, _ core.RouteRequest) (c
 	return core.RouteResult{}, nil
 }
 
-type fakeMode struct{ name string }
+type fakeMode struct {
+	name string
+	id   string
+}
 
 func (f fakeMode) Name() string { return f.name }
 func (f fakeMode) Manifest() core.ModeManifest {
-	return core.ModeManifest{ID: f.name, Label: f.name}
+	if f.id == "" {
+		f.id = f.name
+	}
+	return core.ModeManifest{ID: f.id, Label: f.name}
 }
 func (f fakeMode) Route(_ context.Context, _ any, _ core.ModeRequest) (core.ModeResult, error) {
 	return core.ModeResult{Mode: f.name}, nil
@@ -73,6 +79,14 @@ func TestModeRegistrationLookupAndSorting(t *testing.T) {
 	got := r.Modes()
 	if len(got) != 2 || got[0] != "air" || got[1] != "space" {
 		t.Fatalf("expected sorted [air space], got %v", got)
+	}
+}
+
+func TestModeManifestIDMustMatchRegistrationName(t *testing.T) {
+	r := New()
+	err := r.RegisterMode(fakeMode{name: "air", id: "plane"})
+	if err == nil {
+		t.Fatal("expected mismatched mode ID to be rejected")
 	}
 }
 

@@ -28,5 +28,12 @@ export function modeResultToGeoJSON(result: ModeRouteResult): GeoJSON.FeatureCol
 export const totalPositionCount = (result: ModeRouteResult): number =>
   (result.segments ?? []).reduce((count, segment) => count + (segment.positions?.length ?? 0), 0)
 
-export const findModeOption = (mode: RouteMode, name: string) =>
-  (mode.options ?? []).find((option) => option.name === name)
+export const defaultModeOptions = (mode: RouteMode): Record<string, string> =>
+  Object.fromEntries(
+    (mode.options ?? [])
+      .filter((option) => option.default !== undefined)
+      .map((option) => [option.name, option.default ?? '']),
+  )
+
+export const supportsGeographicMap = (mode: RouteMode): boolean =>
+  mode.crs === 'EPSG:4326' && (mode.dimensions ?? []).includes(2)

@@ -151,7 +151,7 @@ These interfaces remain pre-release. WASM does not load GTFS; gRPC has no built-
 
 ## Interactive Demo
 
-Run the Leaflet demo, then click two points on the map. The UI discovers registered modes, resolves them independently, and draws plugin-supplied route segments. Leaflet projects longitude/latitude; 3D altitude remains present in air-route API results.
+Run the Leaflet demo, then click two points on the map. The UI discovers registered modes compatible with its geographic renderer, builds controls from manifest options, resolves modes independently, and draws plugin-supplied segments. Leaflet projects longitude/latitude; 3D altitude remains present in air-route API results.
 
 ```bash
 make demo

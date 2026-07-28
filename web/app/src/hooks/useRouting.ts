@@ -5,6 +5,7 @@ import { normalizeClockTime } from '../lib/geo'
 import { modeResultToGeoJSON, totalPositionCount } from '../lib/modeResult'
 
 export type StatusTone = 'info' | 'ok' | 'err'
+export type ModeOptions = Record<string, Record<string, string>>
 
 export interface Status {
   text: string
@@ -30,22 +31,22 @@ export interface SolvedRoute {
   generation: number
 }
 
-const timeOption = (mode: RouteMode) => (mode.options ?? []).find((option) => option.kind === 'time')
-
 async function solveMode(
   mode: RouteMode,
-  a: SnapResult,
-  b: SnapResult,
-  departureTime: string,
+  from: SnapResult,
+  to: SnapResult,
+  options: Record<string, string>,
 ): Promise<ModeResult> {
   const started = performance.now()
   try {
-    const option = timeOption(mode)
-    const options: Record<string, string> = {}
-    if (option) {
-      options[option.name] = normalizeClockTime(departureTime || option.default || '05:00:00')
+    const serializedOptions = { ...options }
+    for (const option of mode.options ?? []) {
+      const value = serializedOptions[option.name] ?? option.default
+      if (value !== undefined) {
+        serializedOptions[option.name] = option.kind === 'time' ? normalizeClockTime(value) : value
+      }
     }
-    const route = await fetchModeRoute(mode.id, a, b, options)
+    const route = await fetchModeRoute(mode.id, from, to, serializedOptions)
     return {
       ok: true,
       geojson: modeResultToGeoJSON(route),
@@ -79,7 +80,7 @@ export function solveModesProgressively(
 }
 
 /** Every complete A/B pair resolves registered modes in parallel. */
-export function useRouting(modes: RouteMode[], departureTime: string) {
+export function useRouting(modes: RouteMode[], modeOptions: ModeOptions) {
   const [from, setFrom] = useState<SnapResult | null>(null)
   const [to, setTo] = useState<SnapResult | null>(null)
   const [results, setResults] = useState<Record<string, ModeResult>>({})
@@ -88,44 +89,60 @@ export function useRouting(modes: RouteMode[], departureTime: string) {
   const [status, setStatus] = useState<Status>({ text: 'Click the map to set A.', tone: 'info' })
 
   const modesRef = useRef(modes)
-  const departureTimeRef = useRef(departureTime)
+  const optionsRef = useRef(modeOptions)
   useEffect(() => {
     modesRef.current = modes
-    departureTimeRef.current = departureTime
-  }, [modes, departureTime])
+    optionsRef.current = modeOptions
+  }, [modes, modeOptions])
 
   // Guards against late results from a superseded solve round.
   const round = useRef(0)
 
-  const solveAll = useCallback(async (a: SnapResult, b: SnapResult, onlyTimed = false) => {
-    const activeModes = modesRef.current.filter((mode) => !onlyTimed || Boolean(timeOption(mode)))
-    if (activeModes.length === 0) return
-    const thisRound = ++round.current
+  const solveAll = useCallback(
+    async (
+      a: SnapResult,
+      b: SnapResult,
+      onlyModeID = '',
+      optionOverride?: Record<string, string>,
+    ) => {
+      const activeModes = modesRef.current.filter((mode) => !onlyModeID || mode.id === onlyModeID)
+      if (activeModes.length === 0) return
+      const thisRound = ++round.current
 
-    setSolving(true)
-    if (!onlyTimed) setResults({})
-    setStatus({ text: 'Routing all modes…', tone: 'info' })
-    const settled = await solveModesProgressively(
-      activeModes,
-      (mode) => solveMode(mode, a, b, departureTimeRef.current),
-      (id, result) => {
-        if (thisRound === round.current) {
-          setResults((previous) => ({ ...previous, [id]: result }))
-        }
-      },
-    )
-    if (thisRound !== round.current) return
+      setSolving(true)
+      if (!onlyModeID) setResults({})
+      setStatus({ text: onlyModeID ? `Routing ${onlyModeID}…` : 'Routing all modes…', tone: 'info' })
+      const settled = await solveModesProgressively(
+        activeModes,
+        (mode) =>
+          solveMode(
+            mode,
+            a,
+            b,
+            mode.id === onlyModeID && optionOverride
+              ? optionOverride
+              : (optionsRef.current[mode.id] ?? {}),
+          ),
+        (id, result) => {
+          if (thisRound === round.current) {
+            setResults((previous) => ({ ...previous, [id]: result }))
+          }
+        },
+      )
+      if (thisRound !== round.current) return
 
-    setGeneration((value) => value + 1)
-    setSolving(false)
+      setGeneration((value) => value + 1)
+      setSolving(false)
 
-    const okCount = settled.filter(([, result]) => result.ok).length
-    setStatus(
-      okCount === 0
-        ? { text: `No route found: ${settled[0][1].error ?? 'unknown error'}`, tone: 'err' }
-        : { text: `${okCount}/${settled.length} modes solved.`, tone: 'ok' },
-    )
-  }, [])
+      const okCount = settled.filter(([, result]) => result.ok).length
+      setStatus(
+        okCount === 0
+          ? { text: `No route found: ${settled[0][1].error ?? 'unknown error'}`, tone: 'err' }
+          : { text: `${okCount}/${settled.length} modes solved.`, tone: 'ok' },
+      )
+    },
+    [],
+  )
 
   const reset = useCallback((announce = true) => {
     round.current++
@@ -175,9 +192,12 @@ export function useRouting(modes: RouteMode[], departureTime: string) {
     [from, to, reset, solveAll],
   )
 
-  const resolveTimed = useCallback(() => {
-    if (from && to) void solveAll(from, to, true)
-  }, [from, to, solveAll])
+  const resolveMode = useCallback(
+    (modeID: string, options?: Record<string, string>) => {
+      if (from && to) void solveAll(from, to, modeID, options)
+    },
+    [from, to, solveAll],
+  )
 
   return {
     from,
@@ -191,6 +211,6 @@ export function useRouting(modes: RouteMode[], departureTime: string) {
     clearPoint,
     swap,
     reset,
-    resolveTimed,
+    resolveMode,
   }
 }

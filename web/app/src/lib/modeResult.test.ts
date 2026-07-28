@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { ModeRouteResult, RouteMode } from '../api/types'
-import { findModeOption, modeResultToGeoJSON, totalPositionCount } from './modeResult'
+import {
+  defaultModeOptions,
+  modeResultToGeoJSON,
+  supportsGeographicMap,
+  totalPositionCount,
+} from './modeResult'
 
 const result: ModeRouteResult = {
   mode: 'air',
@@ -54,8 +59,20 @@ describe('modeResultToGeoJSON', () => {
   })
 })
 
-describe('findModeOption', () => {
-  it('discovers inputs from plugin manifest instead of mode names', () => {
-    expect(findModeOption(mode, 'departure_time')?.default).toBe('05:00:00')
+describe('mode manifest consumption', () => {
+  it('builds option defaults without knowing mode names', () => {
+    expect(defaultModeOptions(mode)).toEqual({ departure_time: '05:00:00' })
+  })
+
+  it('selects modes compatible with the current geographic map renderer', () => {
+    expect(supportsGeographicMap(mode)).toBe(true)
+    expect(
+      supportsGeographicMap({
+        id: 'space',
+        label: 'Space',
+        crs: 'spacecraft-local',
+        dimensions: [3],
+      }),
+    ).toBe(false)
   })
 })

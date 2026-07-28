@@ -2,14 +2,13 @@ import type { RouteMode } from '../api/types'
 import type { ModeResult } from '../hooks/useRouting'
 import { formatDistance, formatDuration, formatNumber } from '../lib/geo'
 import { DEFAULT_ROUTE_COLOR } from '../lib/mapStyle'
-import { findModeOption } from '../lib/modeResult'
 import Itinerary from './Itinerary'
 
 export interface RouteSummaryProps {
   mode: RouteMode
   result: ModeResult
-  departureTime: string
-  onDepartureTime: (value: string) => void
+  options: Record<string, string>
+  onOption: (name: string, value: string) => void
 }
 
 const metaString = (value: unknown) => (typeof value === 'string' ? value : '')
@@ -17,8 +16,8 @@ const metaString = (value: unknown) => (typeof value === 'string' ? value : '')
 export default function RouteSummary({
   mode,
   result,
-  departureTime,
-  onDepartureTime,
+  options,
+  onOption,
 }: RouteSummaryProps) {
   if (!result.ok) {
     return (
@@ -28,7 +27,7 @@ export default function RouteSummary({
     )
   }
 
-  const timeOption = (mode.options ?? []).find((option) => option.kind === 'time')
+  const declaredOptions = mode.options ?? []
   const departure = metaString(result.route?.meta?.departure_time)
   const arrival = metaString(result.route?.meta?.arrival_time)
   const segments = result.route?.segments ?? []
@@ -48,20 +47,23 @@ export default function RouteSummary({
         </p>
       </div>
 
-      {timeOption && (
-        <div className="mt-2 flex items-center gap-2 text-12px text-ink-soft">
-          <label className="flex items-center gap-1.5">
-            <span className="text-11px uppercase tracking-widest text-ink-faint">
-              {findModeOption(mode, timeOption.name)?.label || timeOption.label}
-            </span>
-            <input
-              type="time"
-              step={1}
-              value={departureTime}
-              onChange={(event) => onDepartureTime(event.target.value)}
-              className="px-1.5 py-0.5 font-mono text-12px text-ink bg-paper-deep border border-paper-edge rounded outline-none focus:border-accent"
-            />
-          </label>
+      {declaredOptions.length > 0 && (
+        <div className="mt-2 grid gap-1.5 text-12px text-ink-soft">
+          {declaredOptions.map((option) => (
+            <label key={option.name} className="flex items-center gap-1.5">
+              <span className="text-11px uppercase tracking-widest text-ink-faint">
+                {option.label}
+              </span>
+              <input
+                type={option.kind === 'time' ? 'time' : option.kind === 'number' ? 'number' : 'text'}
+                step={option.kind === 'time' ? 1 : 'any'}
+                value={options[option.name] ?? option.default ?? ''}
+                required={option.required}
+                onChange={(event) => onOption(option.name, event.target.value)}
+                className="min-w-0 flex-1 px-1.5 py-0.5 font-mono text-12px text-ink bg-paper-deep border border-paper-edge rounded outline-none focus:border-accent"
+              />
+            </label>
+          ))}
           {departure && arrival && (
             <span className="font-mono text-11px tabular-nums text-ink-faint">
               {departure} → {arrival}

@@ -101,6 +101,12 @@ func (r *Registry) RegisterLogger(l core.LoggerPlugin) error {
 }
 
 func (r *Registry) RegisterMode(mode core.Mode) error {
+	if mode.Name() == "" {
+		return fmt.Errorf("registry: mode name is required")
+	}
+	if manifestID := mode.Manifest().ID; manifestID != mode.Name() {
+		return fmt.Errorf("registry: mode %q manifest id %q does not match", mode.Name(), manifestID)
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.modes[mode.Name()]; ok {
