@@ -1,8 +1,9 @@
 package osm
 
-import "github.com/danielscoffee/pathcraft/internal/geo"
-import "github.com/danielscoffee/pathcraft/internal/graph"
-import "strings"
+import (
+	"github.com/danielscoffee/pathcraft/internal/geo"
+	"github.com/danielscoffee/pathcraft/internal/graph"
+)
 
 func BuildGraph(data *Data, filter *Filter) *graph.Graph {
 	if filter == nil {
@@ -84,16 +85,20 @@ const (
 )
 
 func drivingDirection(w *Way) onewayDirection {
-	switch strings.ToLower(strings.TrimSpace(w.Tags["oneway"])) {
-	case "yes", "true", "1":
+	switch PolicyForTags(w.Tags).Direction {
+	case DirectionForward:
 		return onewayForward
-	case "-1", "reverse":
+	case DirectionReverse:
 		return onewayReverse
-	case "no", "false", "0":
+	default:
 		return twoway
 	}
-	if strings.ToLower(strings.TrimSpace(w.Tags["junction"])) == "roundabout" {
-		return onewayForward
-	}
-	return twoway
+}
+
+func drivingRestricted(w *Way) bool {
+	return PolicyForTags(w.Tags).RestrictDriving
+}
+
+func walkingRestricted(w *Way) bool {
+	return PolicyForTags(w.Tags).RestrictWalking
 }
