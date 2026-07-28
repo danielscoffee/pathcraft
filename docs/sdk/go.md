@@ -12,41 +12,40 @@ Use the Go version declared in PathCraft's `go.mod` or newer.
 
 ## Street routing
 
-Load OSM from a file and route between coordinates:
+Load OSM from a file and route through a registered mode:
 
 ```go
 package main
 
 import (
+    "context"
     "fmt"
 
+    "github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
     "github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
+    "github.com/danielscoffee/pathcraft/pkg/plugins"
+    _ "github.com/danielscoffee/pathcraft/pkg/plugins/bike"
 )
 
 func main() {
-    router, err := engine.NewWithConfig(engine.Config{
-        Mode:     engine.ModeBike,
-        SpeedMPS: 4.5,
-    })
-    if err != nil {
-        panic(err)
-    }
+    router := engine.New()
     if err := router.LoadOSM("city.osm.gz"); err != nil {
         panic(err)
     }
 
-    route, err := router.RouteByCoordinates(engine.CoordinateRouteRequest{
-        FromLat:            -8.05428,
-        FromLon:            -34.88130,
-        ToLat:              -8.05520,
-        ToLon:              -34.87970,
-        IncludeCoordinates: true,
+    mode, ok := plugins.Default.Mode("bike")
+    if !ok {
+        panic("bike mode not registered")
+    }
+    route, err := mode.Route(context.Background(), router, core.ModeRequest{
+        From: core.Position{-34.88130, -8.05428},
+        To:   core.Position{-34.87970, -8.05520},
     })
     if err != nil {
         panic(err)
     }
 
-    fmt.Printf("%.0f m in %s\n", route.Distance, route.Duration)
+    fmt.Printf("%.0f m in %d seconds\n", route.DistanceMeters, route.DurationSeconds)
 }
 ```
 
@@ -56,13 +55,12 @@ Node-ID routing uses `Route(engine.RouteRequest{From: ..., To: ...})`. `RouteGeo
 
 ### Configuration
 
-`engine.Config` controls default street behavior:
+`engine.Config` controls low-level street primitives:
 
-- `Mode`: `engine.ModeWalk`, `engine.ModeBike`, or `engine.ModeCar`;
-- `SpeedMPS`: positive route speed; zero chooses mode default;
+- `SpeedMPS`: positive default walking speed; zero uses `1.4` m/s;
 - `HighwayPenalties`: multipliers of at least `1` keyed by OSM highway type.
 
-Requests with no explicit profile use engine defaults. Invalid modes, speeds, and penalties fail in `NewWithConfig`.
+Routing-mode defaults belong to registered mode plugins. Invalid speeds and penalties fail in `NewWithConfig`.
 
 ## Transit and multimodal routing
 

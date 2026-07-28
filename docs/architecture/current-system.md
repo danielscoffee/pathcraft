@@ -67,7 +67,7 @@ Inventory of `internal/*` packages — these are stable engines that the new
 
 - High-level `Engine` API: `LoadOSM`, `LoadOSMReader`, `LoadGTFSDir`, `Route`, `RouteByCoordinates`, `TransitRoute`, `MultimodalRoute`, `RouteGeoJSON*`.
 - `LoadOSM` publishes parse → graph → contraction preprocessing as one immutable read-mostly graph; loaded engines support concurrent queries, not concurrent reload/mutation.
-- `NewWithConfig` validates default street mode, speed, and per-highway penalty multipliers; `New` preserves walking defaults.
+- `NewWithConfig` validates primitive walking speed and per-highway penalty multipliers; high-level mode policy lives in plugins.
 - The new `pipeline.go` (`engine.Run`) lives in the same package and drives the registry-backed loader→algorithm→exporter pipeline.
 
 ## `pkg/plugins`

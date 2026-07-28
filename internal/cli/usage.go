@@ -4,20 +4,20 @@ import "fmt"
 
 func PrintUsage() {
 	fmt.Println(`
-	PathCraft - Walking and transit routing engine
+	PathCraft - Plugin-first routing engine
 	Usage:
 	pathcraft <command> [options]
 
 	Commands:
 	parse      Parse OSM file and show statistics
 	preprocess Build versioned routing cache from OSM
-	route      Find route between two points (walking, node IDs or coordinates)
+	route      Find route with a registered mode and plugin-defined positions
 	transit  Find transit route using RAPTOR algorithm
 	journey  Find a walk + transit journey from coordinates
 	grpc     Start protobuf/gRPC routing server
 	serve    Start HTTP server with routing endpoints
 	server   Alias for serve
-	plugins  List registered plugins (algorithms, loaders, exporters)
+	plugins  List registered plugins, including routing modes
 	pipeline Run loader → algorithm → exporter via plugin registry
 	help     Show this help message
 

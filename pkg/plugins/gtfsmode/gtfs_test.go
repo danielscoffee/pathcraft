@@ -4,10 +4,37 @@ import (
 	"context"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
 )
+
+type captureHost struct {
+	request engine.MultimodalRouteRequest
+}
+
+func (host *captureHost) MultimodalRoute(request engine.MultimodalRouteRequest) (*engine.MultimodalRouteResult, error) {
+	host.request = request
+	return &engine.MultimodalRouteResult{Mode: "walk", TotalDuration: time.Second}, nil
+}
+
+func TestPluginOwnsJourneyDefaults(t *testing.T) {
+	host := &captureHost{}
+	_, err := (Plugin{}).Route(context.Background(), host, core.ModeRequest{
+		From: core.Position{0, 0},
+		To:   core.Position{1, 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if host.request.MaxStopCount != 8 {
+		t.Fatalf("MaxStopCount = %d, want 8", host.request.MaxStopCount)
+	}
+	if got := host.request.WalkingProfile.Speed(); got != 1.4 {
+		t.Fatalf("walking speed = %v, want 1.4", got)
+	}
+}
 
 func TestPluginReturnsGenericJourneySegments(t *testing.T) {
 	e := engine.New()

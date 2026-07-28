@@ -10,7 +10,7 @@ It ships working routing today: OSM street routes via A*, GTFS transit routes vi
 - **Transit routing**: ingest GTFS `stop_times.txt`, `trips.txt`, optional `transfers.txt`, and optional `stops.txt`; query earliest arrivals with RAPTOR.
 - **Time-dependent multimodal journeys**: compare direct walking against walk → scheduled transit → walk, with timed journey legs.
 - **Plugin registry**: `core.Mode`, `core.Algorithm`, `core.GraphLoader`, `core.Exporter`, and `core.CostModel` extension points under `pkg/plugins`.
-- **Engine configuration**: validated defaults for mode, speed, and per-highway route penalties.
+- **Engine configuration**: validated primitive walking speed and per-highway penalties; routing-mode policy lives in plugins.
 - **Multiple surfaces**: Go SDK, CLI, HTTP, protobuf/gRPC, browser WASM, and a Leaflet routing demo.
 - **Opt-in CORS**: exact browser origins, disabled by default.
 - **GeoJSON output**: route and graph visualization through FeatureCollections.
@@ -137,7 +137,7 @@ func main() {
 }
 ```
 
-The `engine.Engine` facade supports direct OSM/GTFS loading, plain-XML reader loading, coordinate routing, transit routing, and multimodal journey search. `engine.New()` keeps walking defaults; `engine.NewWithConfig(engine.Config{...})` validates default mode, speed, and per-highway penalty multipliers. Route requests may still provide an explicit profile override.
+The `engine.Engine` facade supplies data loading and primitive street/transit operations to plugins. `engine.New()` keeps a walking primitive default; `engine.NewWithConfig(engine.Config{...})` validates primitive speed and per-highway penalty multipliers. Applications select discoverable routing behavior through `core.Mode` plugins.
 
 Full guide: [Go SDK](docs/sdk/go.md).
 
@@ -217,7 +217,7 @@ See also:
 
 ## Configuration
 
-- `engine.Config` sets default street mode, speed in m/s, and OSM-highway penalty multipliers (`>= 1`).
+- `engine.Config` sets primitive walking speed in m/s and OSM-highway penalty multipliers (`>= 1`); registered mode plugins own mode defaults/policy.
 - CLI flags configure OSM file paths, GTFS directories, node/coordinate endpoints, departure time, walking speed, server address, and optional exact CORS origins.
 - `Makefile` variables:
   - `OSM_FILE` (default `testdata/example.osm`)

@@ -32,6 +32,7 @@ func (Plugin) Manifest() core.ModeManifest {
 		Axes:       []string{"longitude", "latitude"},
 		Options: []core.ModeOption{
 			{Name: "departure_time", Label: "Depart", Kind: "time", Default: "05:00:00"},
+			{Name: "walking_speed_mps", Label: "Walking speed (m/s)", Kind: "number", Default: "1.4"},
 			{Name: "max_stop_count", Label: "Stop candidates", Kind: "number", Default: "8"},
 		},
 	}
@@ -57,7 +58,11 @@ func (Plugin) Route(ctx context.Context, host any, req core.ModeRequest) (core.M
 	if departure == "" {
 		departure = "05:00:00"
 	}
-	maxStopCount := 0
+	walkingSpeed, err := modeutil.PositiveOption(req.Options, "walking_speed_mps", mobility.DefaultWalkingSpeedMPS)
+	if err != nil {
+		return core.ModeResult{}, err
+	}
+	maxStopCount := 8
 	if value := req.Options["max_stop_count"]; value != "" {
 		maxStopCount, err = strconv.Atoi(value)
 		if err != nil || maxStopCount < 0 {
@@ -71,7 +76,7 @@ func (Plugin) Route(ctx context.Context, host any, req core.ModeRequest) (core.M
 		ToLat:          toLat,
 		ToLon:          toLon,
 		DepartureTime:  departure,
-		WalkingProfile: mobility.NewWalking(mobility.DefaultWalkingSpeedMPS),
+		WalkingProfile: mobility.NewWalking(walkingSpeed),
 		MaxStopCount:   maxStopCount,
 	})
 	if err != nil {

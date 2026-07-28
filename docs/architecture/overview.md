@@ -105,7 +105,7 @@ Primary public Go routing API.
 Responsibilities:
 
 - Load data (OSM path or plain XML reader, GTFS directory)
-- Validate default mode, speed, and highway penalties through `Config`
+- Validate primitive speed and highway penalties through `Config`
 - Expose primitive street/transit operations consumed by mode plugins
 - Expose a clean API:
   - `NewWithConfig()`
