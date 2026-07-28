@@ -9,12 +9,12 @@ import (
 
 	// Register built-in plugins so they are visible to the registry-backed
 	// pipeline command and `pathcraft plugins list`.
-	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/astar"
-	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/geojson"
-	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/gtfs"
-	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/osm"
-	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/raptor"
-	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/zaplogger"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/astar"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/geojson"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/gtfs"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/osm"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/raptor"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/zaplogger"
 )
 
 func main() {

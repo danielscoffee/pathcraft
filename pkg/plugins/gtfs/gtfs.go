@@ -13,8 +13,8 @@ import (
 	"github.com/danielscoffee/pathcraft/internal/routing/raptor"
 	pcTime "github.com/danielscoffee/pathcraft/internal/time"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/gtfsgraph"
 	"github.com/danielscoffee/pathcraft/pkg/plugins"
+	"github.com/danielscoffee/pathcraft/pkg/plugins/gtfsgraph"
 )
 
 type Loader struct{}

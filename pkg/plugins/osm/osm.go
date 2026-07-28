@@ -9,8 +9,8 @@ import (
 
 	iosm "github.com/danielscoffee/pathcraft/internal/osm"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/osmgraph"
 	"github.com/danielscoffee/pathcraft/pkg/plugins"
+	"github.com/danielscoffee/pathcraft/pkg/plugins/osmgraph"
 )
 
 type Loader struct{}

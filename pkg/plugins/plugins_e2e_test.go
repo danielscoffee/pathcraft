@@ -1,4 +1,4 @@
-package plugins_e2e_test
+package plugins_test
 
 import (
 	"context"
@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/osmgraph"
 	"github.com/danielscoffee/pathcraft/pkg/plugins"
+	"github.com/danielscoffee/pathcraft/pkg/plugins/osmgraph"
 
-	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/astar"
-	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/geojson"
-	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/osm"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/astar"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/geojson"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/osm"
 )
 
 func TestOSMAstarGeoJSONPipeline(t *testing.T) {
@@ -21,7 +21,7 @@ func TestOSMAstarGeoJSONPipeline(t *testing.T) {
 	if !ok {
 		t.Fatal("osm loader not registered")
 	}
-	g, err := loader.Load(ctx, "../../../testdata/example.osm")
+	g, err := loader.Load(ctx, "../../testdata/example.osm")
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}

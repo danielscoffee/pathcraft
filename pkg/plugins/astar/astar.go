@@ -11,8 +11,8 @@ import (
 	"github.com/danielscoffee/pathcraft/internal/geo"
 	iastar "github.com/danielscoffee/pathcraft/internal/routing/astar"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/osmgraph"
 	"github.com/danielscoffee/pathcraft/pkg/plugins"
+	"github.com/danielscoffee/pathcraft/pkg/plugins/osmgraph"
 )
 
 const defaultSpeedMPS = 1.4
