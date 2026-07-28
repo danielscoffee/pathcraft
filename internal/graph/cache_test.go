@@ -179,6 +179,11 @@ func TestLoadGraphRejectsMalformedContractionReferences(t *testing.T) {
 		{name: "segment count", mutate: func(index *ContractionIndex) { index.Chains[0].Segments = nil }},
 		{name: "missing node", mutate: func(index *ContractionIndex) { index.Chains[0].Nodes[1] = 99 }},
 		{name: "numeric field", mutate: func(index *ContractionIndex) { index.Chains[0].Segments[0].DistanceM = math.NaN() }},
+		{name: "base edge mismatch", mutate: func(index *ContractionIndex) {
+			index.Chains[0].Segments[0].DistanceM = 2
+			index.Chains[0].DistanceM = 2
+			index.Chains[0].CostComponents[0].DistanceM = 2
+		}},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

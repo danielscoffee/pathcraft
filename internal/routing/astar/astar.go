@@ -45,8 +45,11 @@ func AStarWithProfile(g *graph.Graph, source, target graph.NodeID, h geo.Heurist
 	if source == target {
 		return Path{Nodes: []graph.NodeID{source}, NodesCount: 1, ExpandedNodes: 1}, nil
 	}
+	useContraction := true
 	if _, ok := profile.(highwayPenaltyProfile); ok {
 		h = func(_, _ graph.Node) float64 { return 0 }
+		bounded, safe := profile.(boundedHighwayPenaltyProfile)
+		useContraction = safe && !invalidCost(bounded.HighwayPenaltyLowerBound())
 	}
 
 	targetNode := g.Nodes[target]
@@ -86,7 +89,7 @@ func AStarWithProfile(g *graph.Graph, source, target graph.NodeID, h geo.Heurist
 			})
 		}
 
-		if index := g.Contraction; index != nil && index.Version == graph.ContractionVersion {
+		if index := g.Contraction; useContraction && index != nil && index.Version == graph.ContractionVersion {
 			for _, arc := range index.Outgoing(currentID, source, target) {
 				chain := index.Chains[arc.Chain]
 				cost, distance, blocked, err := contractionArcCost(chain, arc.From, arc.To, profile)
@@ -118,6 +121,11 @@ func AStarWithProfile(g *graph.Graph, source, target graph.NodeID, h geo.Heurist
 
 type highwayPenaltyProfile interface {
 	HighwayPenalty(highway string) float64
+}
+
+type boundedHighwayPenaltyProfile interface {
+	highwayPenaltyProfile
+	HighwayPenaltyLowerBound() float64
 }
 
 func edgeCost(edge graph.Edge, profile mobility.Profile) (float64, error) {

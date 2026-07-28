@@ -99,6 +99,10 @@ func (profile configuredProfile) HighwayPenalty(highway string) float64 {
 	return 1
 }
 
+func (configuredProfile) HighwayPenaltyLowerBound() float64 {
+	return 1
+}
+
 func (e *Engine) routeProfile(profile mobility.Profile) mobility.Profile {
 	config := e.config
 	if config.Mode == "" {

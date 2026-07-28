@@ -25,10 +25,10 @@ func TestAStarContractionMatchesBaseForEveryEndpoint(t *testing.T) {
 	}{
 		{name: "walking", profile: mobility.NewWalking(1.4)},
 		{name: "driving", profile: mobility.NewDriving(8.3)},
-		{name: "penalties", profile: penalizedProfile{
+		{name: "penalties", profile: boundedPenalizedProfile{penalizedProfile{
 			Profile:   mobility.NewWalking(1.4),
 			penalties: map[string]float64{"primary": 2},
-		}},
+		}}},
 	}
 
 	for _, test := range profiles {
@@ -112,6 +112,37 @@ func TestAStarContractionRejectsMaskedNegativePenalty(t *testing.T) {
 	}
 }
 
+func TestAStarContractionDoesNotEagerlyValidateUnvisitedPenalizedEdge(t *testing.T) {
+	g := graph.NewGraph()
+	for id := graph.NodeID(1); id <= 6; id++ {
+		g.AddNode(id, 0, float64(id))
+	}
+	add := func(a, b graph.NodeID, distance float64, highway string) {
+		g.AddEdgeWithMeta(a, b, distance, highway, "")
+		g.AddEdgeWithMeta(b, a, distance, highway, "")
+	}
+	add(1, 5, 1, "good")
+	add(1, 2, 10, "good")
+	add(2, 3, 10, "good")
+	add(3, 4, 10, "bad")
+	add(1, 6, 10, "good")
+	profile := penalizedProfile{
+		Profile: mobility.NewWalking(1),
+		penalties: map[string]float64{
+			"bad": -1,
+		},
+	}
+
+	g.Contraction, _ = graph.BuildDegreeTwoContraction(g)
+	path, err := astar.AStarWithProfile(g, 1, 5, zeroHeuristic, profile)
+	if err != nil {
+		t.Fatalf("AStarWithProfile() error = %v", err)
+	}
+	if !slices.Equal(path.Nodes, []graph.NodeID{1, 5}) {
+		t.Fatalf("nodes = %v, want direct route", path.Nodes)
+	}
+}
+
 func TestAStarCustomPenaltyUsesAdmissibleHeuristic(t *testing.T) {
 	g := graph.NewGraph()
 	g.AddNode(1, 0, 0)
@@ -137,6 +168,14 @@ func TestAStarCustomPenaltyUsesAdmissibleHeuristic(t *testing.T) {
 	if math.Abs(path.TotalCost-10.01) > 1e-9 {
 		t.Fatalf("cost = %v, want 10.01", path.TotalCost)
 	}
+}
+
+type boundedPenalizedProfile struct {
+	penalizedProfile
+}
+
+func (boundedPenalizedProfile) HighwayPenaltyLowerBound() float64 {
+	return 1
 }
 
 func contractionTestGraph() *graph.Graph {

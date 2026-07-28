@@ -162,7 +162,8 @@ func (index *ContractionIndex) validate(g *Graph) error {
 				continue
 			}
 			segment := chain.Segments[offset]
-			if segment.To != chain.Nodes[offset+1] || invalidDistance(segment.DistanceM) {
+			if segment.To != chain.Nodes[offset+1] || invalidDistance(segment.DistanceM) ||
+				!matchesBaseEdge(g.Edges[node], segment) {
 				return fmt.Errorf("contraction chain %d has invalid segment %d", chainID, offset)
 			}
 			distance += segment.DistanceM
@@ -200,6 +201,27 @@ func hasContractionPosition(positions []ContractionPosition, chain, offset int) 
 
 func invalidDistance(distance float64) bool {
 	return distance < 0 || math.IsNaN(distance) || math.IsInf(distance, 0)
+}
+
+func matchesBaseEdge(edges []Edge, want Edge) bool {
+	for _, edge := range edges {
+		if edge.To == want.To && edge.Cost == want.Cost && edge.DistanceM == want.DistanceM &&
+			edge.Highway == want.Highway && edge.Name == want.Name && sameRestrictedModes(edge.RestrictedModes, want.RestrictedModes) {
+			return true
+		}
+	}
+	return false
+}
+
+func sameRestrictedModes(a, b []RestrictedMode) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	a = append([]RestrictedMode(nil), a...)
+	b = append([]RestrictedMode(nil), b...)
+	slices.Sort(a)
+	slices.Sort(b)
+	return slices.Equal(a, b)
 }
 
 // BuildDegreeTwoContraction builds directed chains without changing base graph.
