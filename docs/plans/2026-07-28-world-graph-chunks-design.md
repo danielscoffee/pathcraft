@@ -18,8 +18,10 @@ Add `pkg/plugins/worldgraph` without changing `core.Mode`.
 ```text
 world/
   manifest.json
-  12/<x>/<y>.pcg
+  generations/<generation>/12/<x>/<y>.pcg
 ```
+
+`manifest.json` is the atomic pointer to one immutable generation. New generations hard-link unchanged chunks when supported and copy them otherwise, so readers never observe a mixed update.
 
 A `worldgraph.Router` opens the store and satisfies the same coordinate-routing host capability consumed by standard street modes. `pathcraft serve --chunks world/` selects that host. Existing `--file` routing remains supported.
 
