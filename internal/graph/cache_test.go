@@ -1,7 +1,9 @@
 package graph
 
 import (
+	"bytes"
 	"encoding/binary"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -163,6 +165,54 @@ func TestLoadGraphRejectsCacheVersionMismatch(t *testing.T) {
 				t.Fatal("LoadGraph() accepted mismatched cache version")
 			}
 		})
+	}
+}
+
+func TestLoadGraphRejectsContractionVersionMismatch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "graph.cache")
+	g := NewGraph()
+	g.AddNode(1, 0, 0)
+	g.Contraction = &ContractionIndex{Version: 999}
+	if err := g.Save(path); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	if _, err := LoadGraph(path); err == nil {
+		t.Fatal("LoadGraph() accepted mismatched contraction version")
+	}
+}
+
+func TestSaveCacheFailurePreservesExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "graph.cache")
+	original := NewGraph()
+	original.AddNode(1, 0, 0)
+	if err := original.Save(path); err != nil {
+		t.Fatalf("original Save() error = %v", err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(before) error = %v", err)
+	}
+
+	replacement := NewGraph()
+	replacement.AddNode(2, 0, 0)
+	renameErr := errors.New("forced rename failure")
+	if err := replacement.saveCache(path, CacheMetadata{}, func(_, _ string) error { return renameErr }); !errors.Is(err, renameErr) {
+		t.Fatalf("saveCache() error = %v, want %v", err, renameErr)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(after) error = %v", err)
+	}
+	if !bytes.Equal(after, before) {
+		t.Fatal("failed cache write changed existing cache")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir() error = %v", err)
+	}
+	if len(entries) != 1 || entries[0].Name() != filepath.Base(path) {
+		t.Fatalf("cache directory entries = %v, want only preserved cache", entries)
 	}
 }
 

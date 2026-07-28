@@ -128,6 +128,32 @@ func TestBuildDegreeTwoContractionLeavesPureCyclesUncontracted(t *testing.T) {
 	}
 }
 
+func TestBuildDegreeTwoContractionRetainsUnsafeTopology(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Graph)
+	}{
+		{name: "self loop", mutate: func(g *Graph) { g.AddEdge(2, 2, 1) }},
+		{name: "dangling reference", mutate: func(g *Graph) { g.AddEdge(2, 99, 1) }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			g := NewGraph()
+			for id := NodeID(1); id <= 3; id++ {
+				g.AddNode(id, 0, float64(id))
+			}
+			g.AddBidirectionalEdge(1, 2, 1)
+			g.AddBidirectionalEdge(2, 3, 1)
+			test.mutate(g)
+
+			index, stats := BuildDegreeTwoContraction(g)
+			if !index.Retained[2] || stats.ContractedNodes != 0 {
+				t.Fatalf("unsafe node contracted: retained=%v stats=%+v", index.Retained, stats)
+			}
+		})
+	}
+}
+
 func TestGraphMutationInvalidatesContraction(t *testing.T) {
 	g := NewGraph()
 	g.AddNode(1, 0, 0)

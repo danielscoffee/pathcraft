@@ -29,10 +29,17 @@ func TestLoadEngineRebuildsCacheWhenSourceChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadFile(source) error = %v", err)
 	}
+	sourceInfo, err := os.Stat(source)
+	if err != nil {
+		t.Fatalf("Stat(source) error = %v", err)
+	}
 	changed := strings.Replace(string(contents), "</osm>", `  <node id="999" lat="0" lon="0"/>
 </osm>`, 1)
 	if err := os.WriteFile(source, []byte(changed), 0o600); err != nil {
 		t.Fatalf("WriteFile(changed source) error = %v", err)
+	}
+	if err := os.Chtimes(source, sourceInfo.ModTime(), sourceInfo.ModTime()); err != nil {
+		t.Fatalf("Chtimes(source) error = %v", err)
 	}
 
 	secondEngine, err := loadEngine(source)
@@ -52,6 +59,48 @@ func TestLoadEngineRebuildsCacheWhenSourceChanges(t *testing.T) {
 	}
 	if secondEngine.Stats().Nodes != firstEngine.Stats().Nodes {
 		t.Fatalf("unreferenced source node changed graph stats: first=%+v second=%+v", firstEngine.Stats(), secondEngine.Stats())
+	}
+}
+
+func TestCmdPreprocessRejectsSourceAsOutput(t *testing.T) {
+	tests := []struct {
+		name   string
+		output func(t *testing.T, source string) string
+	}{
+		{name: "same path", output: func(_ *testing.T, source string) string { return source }},
+		{name: "symlink", output: func(t *testing.T, source string) string {
+			path := filepath.Join(t.TempDir(), "source-link")
+			if err := os.Symlink(source, path); err != nil {
+				t.Skipf("Symlink() unavailable: %v", err)
+			}
+			return path
+		}},
+		{name: "hard link", output: func(t *testing.T, source string) string {
+			path := filepath.Join(t.TempDir(), "source-link")
+			if err := os.Link(source, path); err != nil {
+				t.Skipf("Link() unavailable: %v", err)
+			}
+			return path
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			source := copyOSMFixture(t)
+			before, err := os.ReadFile(source)
+			if err != nil {
+				t.Fatalf("ReadFile(before) error = %v", err)
+			}
+			if err := CmdPreprocess([]string{"--file", source, "--output", test.output(t, source)}); err == nil {
+				t.Fatal("CmdPreprocess() accepted source file as output")
+			}
+			after, err := os.ReadFile(source)
+			if err != nil {
+				t.Fatalf("ReadFile(after) error = %v", err)
+			}
+			if string(after) != string(before) {
+				t.Fatal("CmdPreprocess() changed source after rejecting output")
+			}
+		})
 	}
 }
 

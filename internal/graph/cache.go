@@ -47,6 +47,10 @@ func (g *Graph) Save(path string) error {
 }
 
 func (g *Graph) SaveCache(path string, metadata CacheMetadata) error {
+	return g.saveCache(path, metadata, os.Rename)
+}
+
+func (g *Graph) saveCache(path string, metadata CacheMetadata, rename func(string, string) error) error {
 	metadata.GraphVersion = CacheVersion
 	metadata.PreprocessVersion = PreprocessVersion
 	g.CacheVersion = CacheVersion
@@ -76,7 +80,7 @@ func (g *Graph) SaveCache(path string, metadata CacheMetadata) error {
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temporaryPath, path)
+	return rename(temporaryPath, path)
 }
 
 func ReadCacheMetadata(path string) (CacheMetadata, error) {
