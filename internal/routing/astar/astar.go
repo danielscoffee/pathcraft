@@ -22,6 +22,12 @@ type Path struct {
 	TotalCost     float64
 	TotalDistance float64
 	NodesCount    int
+	ExpandedNodes int
+}
+
+type pathStep struct {
+	From graph.NodeID
+	Via  []graph.NodeID
 }
 
 func AStar(g *graph.Graph, source, target graph.NodeID, h geo.Heuristic) (Path, error) {
@@ -36,25 +42,22 @@ func AStarWithProfile(g *graph.Graph, source, target graph.NodeID, h geo.Heurist
 	if !g.HasNode(source) || !g.HasNode(target) {
 		return Path{}, ErrNodeNotFound
 	}
-
 	if source == target {
-		return Path{
-			Nodes:      []graph.NodeID{source},
-			NodesCount: 1,
-		}, nil
+		return Path{Nodes: []graph.NodeID{source}, NodesCount: 1, ExpandedNodes: 1}, nil
+	}
+	if _, ok := profile.(highwayPenaltyProfile); ok {
+		h = func(_, _ graph.Node) float64 { return 0 }
 	}
 
 	targetNode := g.Nodes[target]
 	gScore := map[graph.NodeID]float64{source: 0}
 	distanceScore := map[graph.NodeID]float64{source: 0}
-	cameFrom := make(map[graph.NodeID]graph.NodeID)
+	cameFrom := make(map[graph.NodeID]pathStep)
 
 	openSet := &priorityQueue{}
 	heap.Init(openSet)
-	heap.Push(openSet, &pqItem{
-		nodeID:   source,
-		priority: h(g.Nodes[source], targetNode),
-	})
+	heap.Push(openSet, &pqItem{nodeID: source, priority: h(g.Nodes[source], targetNode)})
+	expanded := 0
 
 	for openSet.Len() > 0 {
 		current := heap.Pop(openSet).(*pqItem)
@@ -62,8 +65,40 @@ func AStarWithProfile(g *graph.Graph, source, target graph.NodeID, h geo.Heurist
 		if current.cost != gScore[currentID] {
 			continue
 		}
+		expanded++
 		if currentID == target {
-			return reconstructPath(cameFrom, target, gScore[target], distanceScore[target]), nil
+			return reconstructPath(cameFrom, target, gScore[target], distanceScore[target], expanded), nil
+		}
+
+		relax := func(to graph.NodeID, cost, distance float64, via []graph.NodeID) {
+			tentativeG := gScore[currentID] + cost
+			existingG, visited := gScore[to]
+			if visited && tentativeG >= existingG {
+				return
+			}
+			cameFrom[to] = pathStep{From: currentID, Via: via}
+			gScore[to] = tentativeG
+			distanceScore[to] = distanceScore[currentID] + distance
+			heap.Push(openSet, &pqItem{
+				nodeID:   to,
+				cost:     tentativeG,
+				priority: tentativeG + h(g.Nodes[to], targetNode),
+			})
+		}
+
+		if index := g.Contraction; index != nil && index.Version == graph.ContractionVersion {
+			for _, arc := range index.Outgoing(currentID, source, target) {
+				chain := index.Chains[arc.Chain]
+				cost, distance, blocked, err := contractionArcCost(chain, arc.From, arc.To, profile)
+				if err != nil {
+					return Path{}, err
+				}
+				if blocked {
+					continue
+				}
+				relax(chain.Nodes[arc.To], cost, distance, chain.Nodes[arc.From+1:arc.To])
+			}
+			continue
 		}
 
 		for _, edge := range g.Neighbors(currentID) {
@@ -74,20 +109,7 @@ func AStarWithProfile(g *graph.Graph, source, target graph.NodeID, h geo.Heurist
 			if err != nil {
 				return Path{}, err
 			}
-			tentativeG := gScore[currentID] + cost
-			existingG, visited := gScore[edge.To]
-			if visited && tentativeG >= existingG {
-				continue
-			}
-
-			cameFrom[edge.To] = currentID
-			gScore[edge.To] = tentativeG
-			distanceScore[edge.To] = distanceScore[currentID] + edge.DistanceM
-			heap.Push(openSet, &pqItem{
-				nodeID:   edge.To,
-				cost:     tentativeG,
-				priority: tentativeG + h(g.Nodes[edge.To], targetNode),
-			})
+			relax(edge.To, cost, edge.DistanceM, nil)
 		}
 	}
 
@@ -121,20 +143,70 @@ func edgeRestrictedForProfile(edge graph.Edge, profile mobility.Profile) bool {
 	return false
 }
 
-func reconstructPath(cameFrom map[graph.NodeID]graph.NodeID, target graph.NodeID, totalCost, totalDistance float64) Path {
+func contractionArcCost(chain graph.ContractionChain, from, to int, profile mobility.Profile) (cost, distance float64, blocked bool, err error) {
+	if from == 0 && to == len(chain.Nodes)-1 {
+		if restrictedModesForProfile(chain.RestrictedModes, profile) {
+			return 0, 0, true, nil
+		}
+		if penaltyProfile, ok := profile.(highwayPenaltyProfile); ok {
+			for _, component := range chain.CostComponents {
+				cost += component.DistanceM * penaltyProfile.HighwayPenalty(component.Highway)
+			}
+		} else {
+			cost = chain.DistanceM
+		}
+		distance = chain.DistanceM
+		if invalidCost(cost) {
+			return 0, 0, false, ErrInvalidCost
+		}
+		return cost, distance, false, nil
+	}
+
+	for _, edge := range chain.Segments[from:to] {
+		if edgeRestrictedForProfile(edge, profile) {
+			return 0, 0, true, nil
+		}
+		edgeCost, edgeErr := edgeCost(edge, profile)
+		if edgeErr != nil {
+			return 0, 0, false, edgeErr
+		}
+		cost += edgeCost
+		distance += edge.DistanceM
+	}
+	return cost, distance, false, nil
+}
+
+func restrictedModesForProfile(modes []graph.RestrictedMode, profile mobility.Profile) bool {
+	if profile == nil {
+		return false
+	}
+	for _, mode := range modes {
+		if string(mode) == profile.Name() {
+			return true
+		}
+	}
+	return false
+}
+
+func invalidCost(cost float64) bool {
+	return cost < 0 || math.IsNaN(cost) || math.IsInf(cost, 0)
+}
+
+func reconstructPath(cameFrom map[graph.NodeID]pathStep, target graph.NodeID, totalCost, totalDistance float64, expanded int) Path {
 	path := []graph.NodeID{target}
 	current := target
 
 	for {
-		prev, ok := cameFrom[current]
+		step, ok := cameFrom[current]
 		if !ok {
 			break
 		}
-		path = append(path, prev)
-		current = prev
+		for i := len(step.Via) - 1; i >= 0; i-- {
+			path = append(path, step.Via[i])
+		}
+		path = append(path, step.From)
+		current = step.From
 	}
-
-	// Reverse to get source -> target order
 	slices.Reverse(path)
 
 	return Path{
@@ -142,6 +214,7 @@ func reconstructPath(cameFrom map[graph.NodeID]graph.NodeID, target graph.NodeID
 		TotalCost:     totalCost,
 		TotalDistance: totalDistance,
 		NodesCount:    len(path),
+		ExpandedNodes: expanded,
 	}
 }
 

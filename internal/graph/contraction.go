@@ -38,6 +38,62 @@ type ContractionStats struct {
 	Chains          int
 }
 
+type ContractionArc struct {
+	Chain int
+	From  int
+	To    int
+}
+
+// Outgoing returns contracted arcs needed for this query. Prefix, suffix, and
+// direct subchain arcs preserve arbitrary original-node endpoints.
+func (index *ContractionIndex) Outgoing(node, source, target NodeID) []ContractionArc {
+	if index == nil || index.Version != ContractionVersion {
+		return nil
+	}
+
+	arcs := make([]ContractionArc, 0, len(index.Out[node])+4)
+	add := func(arc ContractionArc) {
+		if arc.From >= arc.To {
+			return
+		}
+		for _, existing := range arcs {
+			if existing == arc {
+				return
+			}
+		}
+		arcs = append(arcs, arc)
+	}
+
+	for _, chainID := range index.Out[node] {
+		add(ContractionArc{Chain: chainID, To: len(index.Chains[chainID].Nodes) - 1})
+	}
+	if node == source {
+		for _, position := range index.Positions[source] {
+			add(ContractionArc{
+				Chain: position.Chain,
+				From:  position.Offset,
+				To:    len(index.Chains[position.Chain].Nodes) - 1,
+			})
+		}
+	}
+	for _, position := range index.Positions[target] {
+		chain := index.Chains[position.Chain]
+		if chain.Nodes[0] == node {
+			add(ContractionArc{Chain: position.Chain, To: position.Offset})
+		}
+	}
+	if node == source {
+		for _, from := range index.Positions[source] {
+			for _, to := range index.Positions[target] {
+				if from.Chain == to.Chain && from.Offset < to.Offset {
+					add(ContractionArc{Chain: from.Chain, From: from.Offset, To: to.Offset})
+				}
+			}
+		}
+	}
+	return arcs
+}
+
 // BuildDegreeTwoContraction builds directed chains without changing base graph.
 // Only unambiguous degree-two nodes contract; all original nodes remain routable.
 func BuildDegreeTwoContraction(g *Graph) (*ContractionIndex, ContractionStats) {
