@@ -9,6 +9,7 @@ import (
 
 	// Register built-in plugins so they are visible to the registry-backed
 	// pipeline command and `pathcraft plugins list`.
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/air"
 	_ "github.com/danielscoffee/pathcraft/pkg/plugins/astar"
 	_ "github.com/danielscoffee/pathcraft/pkg/plugins/bike"
 	_ "github.com/danielscoffee/pathcraft/pkg/plugins/car"
