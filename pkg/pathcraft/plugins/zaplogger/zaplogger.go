@@ -1,7 +1,7 @@
 package zaplogger
 
 import (
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/registry"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 	"go.uber.org/zap"
 )
 
@@ -11,4 +11,4 @@ func (Plugin) Name() string { return "zap" }
 
 func (Plugin) Logger() (*zap.Logger, error) { return zap.NewDevelopment() }
 
-func init() { registry.MustRegisterLogger(Plugin{}) }
+func init() { plugins.MustRegisterLogger(Plugin{}) }

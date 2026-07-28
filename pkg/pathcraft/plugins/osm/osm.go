@@ -10,7 +10,7 @@ import (
 	iosm "github.com/danielscoffee/pathcraft/internal/osm"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/osmgraph"
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/registry"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 )
 
 type Loader struct{}
@@ -29,4 +29,4 @@ func (Loader) Load(_ context.Context, source string) (core.Graph, error) {
 	return osmgraph.Wrap(g), nil
 }
 
-func init() { registry.MustRegisterLoader(Loader{}) }
+func init() { plugins.MustRegisterLoader(Loader{}) }

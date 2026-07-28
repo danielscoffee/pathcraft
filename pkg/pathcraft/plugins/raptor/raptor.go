@@ -15,7 +15,7 @@ import (
 	pcTime "github.com/danielscoffee/pathcraft/internal/time"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/gtfsgraph"
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/registry"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 )
 
 type Plugin struct{}
@@ -70,4 +70,4 @@ func (Plugin) Route(_ context.Context, g core.Graph, req core.RouteRequest) (cor
 	}, nil
 }
 
-func init() { registry.MustRegisterAlgorithm(Plugin{}) }
+func init() { plugins.MustRegisterAlgorithm(Plugin{}) }

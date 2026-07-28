@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/registry"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 )
 
 // PipelineRequest drives the load → solve → export pipeline that backs the
@@ -16,7 +16,7 @@ type PipelineRequest struct {
 	AlgorithmName string
 	ExporterName  string
 	Route         core.RouteRequest
-	Registry      *registry.Registry
+	Registry      *plugins.Registry
 }
 
 // PipelineResult bundles raw exporter output with the structured result.
@@ -28,11 +28,11 @@ type PipelineResult struct {
 }
 
 // Run executes loader → algorithm → exporter using req.Registry (or the
-// process-wide registry.Default when nil).
+// process-wide plugins.Default when nil).
 func Run(ctx context.Context, req PipelineRequest) (PipelineResult, error) {
 	reg := req.Registry
 	if reg == nil {
-		reg = registry.Default
+		reg = plugins.Default
 	}
 
 	loader, ok := reg.Loader(req.LoaderName)

@@ -1,7 +1,6 @@
-// Package registry holds compile-time plugin registrations: algorithms,
-// graph loaders, exporters, cost models, and loggers. Plugins register themselves
-// in init() and CLI/library users blank-import the plugin packages they want.
-package registry
+// Package plugins holds PathCraft's public plugin registry and shared plugin utilities.
+// Implementations register from init; applications activate them through blank imports.
+package plugins
 
 import (
 	"fmt"

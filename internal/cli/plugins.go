@@ -10,7 +10,7 @@ import (
 
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
 	pcengine "github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/registry"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 )
 
 // CmdPlugins implements: pathcraft plugins list [--json]
@@ -34,7 +34,7 @@ func cmdPluginsList(args []string) error {
 		return err
 	}
 
-	reg := registry.Default
+	reg := plugins.Default
 	data := map[string][]string{
 		"algorithms": reg.Algorithms(),
 		"loaders":    reg.Loaders(),

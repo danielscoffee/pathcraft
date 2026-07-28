@@ -9,7 +9,7 @@ import (
 	"fmt"
 
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/registry"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 )
 
 type Exporter struct{}
@@ -62,4 +62,4 @@ func (Exporter) Export(_ context.Context, result core.RouteResult, g core.Graph)
 	return json.Marshal(fc)
 }
 
-func init() { registry.MustRegisterExporter(Exporter{}) }
+func init() { plugins.MustRegisterExporter(Exporter{}) }

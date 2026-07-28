@@ -7,7 +7,7 @@ import (
 
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/osmgraph"
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/registry"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 
 	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/astar"
 	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/geojson"
@@ -17,7 +17,7 @@ import (
 func TestOSMAstarGeoJSONPipeline(t *testing.T) {
 	ctx := context.Background()
 
-	loader, ok := registry.Default.Loader("osm")
+	loader, ok := plugins.Default.Loader("osm")
 	if !ok {
 		t.Fatal("osm loader not registered")
 	}
@@ -34,7 +34,7 @@ func TestOSMAstarGeoJSONPipeline(t *testing.T) {
 		t.Skip("no connected node pair found in example.osm")
 	}
 
-	algo, _ := registry.Default.Algorithm("astar")
+	algo, _ := plugins.Default.Algorithm("astar")
 	result, err := algo.Route(ctx, g, core.RouteRequest{From: from, To: to})
 	if err != nil {
 		t.Fatalf("route: %v", err)
@@ -43,7 +43,7 @@ func TestOSMAstarGeoJSONPipeline(t *testing.T) {
 		t.Fatalf("expected non-trivial path, got %d nodes", len(result.Path))
 	}
 
-	exp, _ := registry.Default.Exporter("geojson")
+	exp, _ := plugins.Default.Exporter("geojson")
 	out, err := exp.Export(ctx, result, g)
 	if err != nil {
 		t.Fatalf("export: %v", err)

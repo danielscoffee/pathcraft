@@ -12,7 +12,7 @@ import (
 	iastar "github.com/danielscoffee/pathcraft/internal/routing/astar"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/osmgraph"
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/registry"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 )
 
 const defaultSpeedMPS = 1.4
@@ -61,4 +61,4 @@ func (Plugin) Route(_ context.Context, g core.Graph, req core.RouteRequest) (cor
 	}, nil
 }
 
-func init() { registry.MustRegisterAlgorithm(Plugin{}) }
+func init() { plugins.MustRegisterAlgorithm(Plugin{}) }

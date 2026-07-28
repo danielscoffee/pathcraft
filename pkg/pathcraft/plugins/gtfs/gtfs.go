@@ -14,7 +14,7 @@ import (
 	pcTime "github.com/danielscoffee/pathcraft/internal/time"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/gtfsgraph"
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/registry"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 )
 
 type Loader struct{}
@@ -51,4 +51,4 @@ func (Loader) Load(_ context.Context, source string) (core.Graph, error) {
 	return &gtfsgraph.Wrapper{Index: index, Transfers: transfers, Stops: stops}, nil
 }
 
-func init() { registry.MustRegisterLoader(Loader{}) }
+func init() { plugins.MustRegisterLoader(Loader{}) }
