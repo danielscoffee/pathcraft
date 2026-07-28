@@ -15,6 +15,16 @@ func (f fakeAlgo) Route(_ context.Context, _ core.Graph, _ core.RouteRequest) (c
 	return core.RouteResult{}, nil
 }
 
+type fakeMode struct{ name string }
+
+func (f fakeMode) Name() string { return f.name }
+func (f fakeMode) Manifest() core.ModeManifest {
+	return core.ModeManifest{ID: f.name, Label: f.name}
+}
+func (f fakeMode) Route(_ context.Context, _ any, _ core.ModeRequest) (core.ModeResult, error) {
+	return core.ModeResult{Mode: f.name}, nil
+}
+
 func TestRegisterAndLookup(t *testing.T) {
 	r := New()
 	if err := r.RegisterAlgorithm(fakeAlgo{name: "x"}); err != nil {
@@ -45,5 +55,33 @@ func TestAlgorithmsSorted(t *testing.T) {
 	got := r.Algorithms()
 	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
 		t.Fatalf("expected sorted [a b], got %v", got)
+	}
+}
+
+func TestModeRegistrationLookupAndSorting(t *testing.T) {
+	r := New()
+	if err := r.RegisterMode(fakeMode{name: "space"}); err != nil {
+		t.Fatalf("register space: %v", err)
+	}
+	if err := r.RegisterMode(fakeMode{name: "air"}); err != nil {
+		t.Fatalf("register air: %v", err)
+	}
+	mode, ok := r.Mode("air")
+	if !ok || mode.Manifest().Label != "air" {
+		t.Fatalf("lookup air = %#v, %v", mode, ok)
+	}
+	got := r.Modes()
+	if len(got) != 2 || got[0] != "air" || got[1] != "space" {
+		t.Fatalf("expected sorted [air space], got %v", got)
+	}
+}
+
+func TestDuplicateModeRejected(t *testing.T) {
+	r := New()
+	_ = r.RegisterMode(fakeMode{name: "air"})
+	err := r.RegisterMode(fakeMode{name: "air"})
+	var dup ErrDuplicate
+	if !errors.As(err, &dup) || dup.Kind != "mode" {
+		t.Fatalf("expected mode ErrDuplicate, got %v", err)
 	}
 }

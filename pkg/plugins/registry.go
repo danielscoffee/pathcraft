@@ -19,6 +19,7 @@ type Registry struct {
 	exporters map[string]core.Exporter
 	costs     map[string]core.CostModel
 	loggers   map[string]core.LoggerPlugin
+	modes     map[string]core.Mode
 }
 
 // New returns an empty Registry. Use this for isolated tests; production
@@ -30,6 +31,7 @@ func New() *Registry {
 		exporters: make(map[string]core.Exporter),
 		costs:     make(map[string]core.CostModel),
 		loggers:   make(map[string]core.LoggerPlugin),
+		modes:     make(map[string]core.Mode),
 	}
 }
 
@@ -98,6 +100,16 @@ func (r *Registry) RegisterLogger(l core.LoggerPlugin) error {
 	return nil
 }
 
+func (r *Registry) RegisterMode(mode core.Mode) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.modes[mode.Name()]; ok {
+		return ErrDuplicate{Kind: "mode", Name: mode.Name()}
+	}
+	r.modes[mode.Name()] = mode
+	return nil
+}
+
 func (r *Registry) Algorithm(name string) (core.Algorithm, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -133,11 +145,19 @@ func (r *Registry) Logger(name string) (core.LoggerPlugin, bool) {
 	return l, ok
 }
 
+func (r *Registry) Mode(name string) (core.Mode, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	mode, ok := r.modes[name]
+	return mode, ok
+}
+
 func (r *Registry) Algorithms() []string { return sortedKeys(r.algos, &r.mu) }
 func (r *Registry) Loaders() []string    { return sortedLoaderKeys(r.loaders, &r.mu) }
 func (r *Registry) Exporters() []string  { return sortedExporterKeys(r.exporters, &r.mu) }
 func (r *Registry) CostModels() []string { return sortedCostKeys(r.costs, &r.mu) }
 func (r *Registry) Loggers() []string    { return sortedLoggerKeys(r.loggers, &r.mu) }
+func (r *Registry) Modes() []string      { return sortedModeKeys(r.modes, &r.mu) }
 
 func sortedKeys(m map[string]core.Algorithm, mu *sync.RWMutex) []string {
 	mu.RLock()
@@ -194,6 +214,17 @@ func sortedLoggerKeys(m map[string]core.LoggerPlugin, mu *sync.RWMutex) []string
 	return out
 }
 
+func sortedModeKeys(m map[string]core.Mode, mu *sync.RWMutex) []string {
+	mu.RLock()
+	defer mu.RUnlock()
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
 // MustRegisterAlgorithm panics on duplicate. Intended for plugin init().
 func MustRegisterAlgorithm(a core.Algorithm) {
 	if err := Default.RegisterAlgorithm(a); err != nil {
@@ -225,6 +256,13 @@ func MustRegisterCostModel(c core.CostModel) {
 // MustRegisterLogger panics on duplicate. Intended for plugin init().
 func MustRegisterLogger(l core.LoggerPlugin) {
 	if err := Default.RegisterLogger(l); err != nil {
+		panic(err)
+	}
+}
+
+// MustRegisterMode panics on duplicate. Intended for plugin init().
+func MustRegisterMode(mode core.Mode) {
+	if err := Default.RegisterMode(mode); err != nil {
 		panic(err)
 	}
 }
