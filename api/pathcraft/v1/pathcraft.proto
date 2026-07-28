@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package pathcraft.v1;
+
+option go_package = "github.com/danielscoffee/pathcraft/api/pathcraft/v1;pathcraftv1";
+
+// RoutingService exposes PathCraft's coordinate street and multimodal routes.
+service RoutingService {
+  rpc Route(RouteRequest) returns (RouteResponse);
+  rpc Journey(JourneyRequest) returns (JourneyResponse);
+}
+
+enum TravelMode {
+  TRAVEL_MODE_UNSPECIFIED = 0;
+  TRAVEL_MODE_WALK = 1;
+  TRAVEL_MODE_BIKE = 2;
+  TRAVEL_MODE_CAR = 3;
+}
+
+message Coordinate {
+  double latitude = 1;
+  double longitude = 2;
+}
+
+message RouteRequest {
+  Coordinate origin = 1;
+  Coordinate destination = 2;
+  TravelMode mode = 3;
+  bool include_coordinates = 4;
+}
+
+message RouteResponse {
+  repeated int64 node_ids = 1;
+  repeated Coordinate coordinates = 2;
+  double distance_meters = 3;
+  int64 duration_seconds = 4;
+  int64 origin_node_id = 5;
+  int64 destination_node_id = 6;
+  double origin_snap_distance_meters = 7;
+  double destination_snap_distance_meters = 8;
+}
+
+message JourneyRequest {
+  Coordinate origin = 1;
+  Coordinate destination = 2;
+  string departure_time = 3;
+  int32 max_stop_count = 4;
+}
+
+message JourneyResponse {
+  string mode = 1;
+  string departure_time = 2;
+  string arrival_time = 3;
+  int64 total_duration_seconds = 4;
+  int64 transit_duration_seconds = 5;
+  double walking_distance_meters = 6;
+  repeated JourneyLeg legs = 7;
+  string origin_stop_id = 8;
+  string destination_stop_id = 9;
+}
+
+message JourneyLeg {
+  string mode = 1;
+  string from_name = 2;
+  string to_name = 3;
+  string from_stop_id = 4;
+  string to_stop_id = 5;
+  string trip_id = 6;
+  string route_id = 7;
+  string route_name = 8;
+  string route_long_name = 9;
+  string departure_time = 10;
+  string arrival_time = 11;
+  double distance_meters = 12;
+  int64 duration_seconds = 13;
+  repeated int64 node_ids = 14;
+  repeated Coordinate coordinates = 15;
+}

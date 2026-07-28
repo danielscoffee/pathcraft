@@ -47,6 +47,8 @@ func run() error {
 		return cli.CmdTransit(os.Args[2:])
 	case "journey":
 		return cli.CmdJourney(os.Args[2:])
+	case "grpc":
+		return cli.CmdGRPC(os.Args[2:])
 	case "serve":
 		return cli.CmdServer(os.Args[2:])
 	case "server":
