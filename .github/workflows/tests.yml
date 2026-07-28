@@ -21,6 +21,10 @@ jobs:
         run: go mod tidy
       - name: Test Go
         run: go test -v ./...
+      - name: Test WebAssembly binding
+        run: |
+          GOOS=js GOARCH=wasm go build -o /tmp/pathcraft.wasm ./cmd/pathcraft-wasm
+          node scripts/test-wasm.mjs /tmp/pathcraft.wasm "$(go env GOROOT)/lib/wasm/wasm_exec.js" testdata/example.osm
       - name: Install web dependencies
         run: npm ci
         working-directory: web/app
