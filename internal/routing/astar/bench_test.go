@@ -107,3 +107,58 @@ func BenchmarkAStar_Grid_ZeroHeuristic(b *testing.B) {
 		})
 	}
 }
+
+func BenchmarkAStar_Contraction_LongChain(b *testing.B) {
+	for _, contracted := range []bool{false, true} {
+		name := "base"
+		if contracted {
+			name = "contracted"
+		}
+		b.Run(name, func(b *testing.B) {
+			g := buildBenchmarkChain(10_000)
+			if contracted {
+				g.Contraction, _ = graph.BuildDegreeTwoContraction(g)
+			}
+			warmup, err := astar.AStar(g, 1, 10_000, zeroHeuristic)
+			if err != nil {
+				b.Fatalf("warmup failed: %v", err)
+			}
+			b.ReportMetric(float64(warmup.ExpandedNodes), "expanded/op")
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if _, err := astar.AStar(g, 1, 10_000, zeroHeuristic); err != nil {
+					b.Fatalf("AStar: %v", err)
+				}
+			}
+		})
+	}
+}
+
+var benchmarkContractionIndex *graph.ContractionIndex
+
+func BenchmarkBuildDegreeTwoContraction_LongChain(b *testing.B) {
+	g := buildBenchmarkChain(10_000)
+	var index *graph.ContractionIndex
+	var stats graph.ContractionStats
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		index, stats = graph.BuildDegreeTwoContraction(g)
+	}
+	b.StopTimer()
+	b.ReportMetric(float64(stats.ContractedNodes), "contracted_nodes")
+	b.ReportMetric(float64(stats.Chains), "chains")
+	benchmarkContractionIndex = index
+}
+
+func buildBenchmarkChain(nodes int) *graph.Graph {
+	g := graph.NewGraph()
+	for id := 1; id <= nodes; id++ {
+		g.AddNode(graph.NodeID(id), 0, float64(id)/100_000)
+		if id > 1 {
+			g.AddBidirectionalEdge(graph.NodeID(id-1), graph.NodeID(id), 1)
+		}
+	}
+	return g
+}

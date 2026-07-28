@@ -11,16 +11,18 @@ It ships working routing today: OSM street routes via A*, GTFS transit routes vi
 - **Time-dependent multimodal journeys**: compare direct walking against walk → scheduled transit → walk, with timed journey legs.
 - **Plugin registry**: `core.Algorithm`, `core.GraphLoader`, `core.Exporter`, and `core.CostModel` extension points.
 - **Engine configuration**: validated defaults for mode, speed, and per-highway route penalties.
-- **Multiple surfaces**: Go library, `pathcraft` CLI, HTTP endpoints, and a Leaflet routing demo.
+- **Multiple surfaces**: Go SDK, CLI, HTTP, protobuf/gRPC, browser WASM, and a Leaflet routing demo.
 - **Opt-in CORS**: exact browser origins, disabled by default.
 - **GeoJSON output**: route and graph visualization through FeatureCollections.
-- **Tests and benchmarks**: coverage for graph, OSM, GTFS, A*, RAPTOR, HTTP, engine, registry, and plugin pipeline behavior.
+- **Scale foundations**: exact directed degree-two contraction, source-safe atomic graph caches, and concurrent read-only routing.
+- **Tests and benchmarks**: coverage for graph, OSM, GTFS, A*, RAPTOR, HTTP, engine, registry, plugin pipelines, allocations, and parallel queries.
 
 ## Prerequisites
 
 - Go `1.25.12` (see `go.mod`)
 - `make`
 - `curl` only if you use `make fetch-osm`
+- Node.js 24 only for frontend and WASM smoke-test development
 
 Go dependencies are pinned in `go.mod` and `go.sum`.
 
@@ -48,6 +50,7 @@ Built-ins currently include:
 | `astar`   | algorithm | internal A* walking router        |
 | `raptor`  | algorithm | internal RAPTOR transit router    |
 | `geojson` | exporter  | GeoJSON `FeatureCollection`       |
+| `zap`     | logger    | Development structured logger     |
 
 ### Run the plugin pipeline
 
@@ -73,6 +76,7 @@ Transit RAPTOR on GTFS:
 
 ```bash
 ./bin/pathcraft parse --file testdata/example.osm
+./bin/pathcraft preprocess --file testdata/example.osm
 ./bin/pathcraft route --file testdata/example.osm --from 1 --to 6 --coords
 ./bin/pathcraft route --file testdata/example.osm \
   --from-lat -8.05428 --from-lon -34.88130 \
@@ -84,7 +88,10 @@ Transit RAPTOR on GTFS:
 ./bin/pathcraft serve --file testdata/example.osm --gtfs testdata/mini_gtfs --addr :8080
 ./bin/pathcraft serve --file testdata/example.osm --addr :8080 \
   --cors-origin https://app.example
+./bin/pathcraft grpc --file testdata/example.osm --addr 127.0.0.1:9090
 ```
+
+`pathcraft grpc` is plaintext and unauthenticated. It binds loopback by default; add trusted TLS/auth infrastructure before any untrusted-network exposure.
 
 ## Go Library Quickstart
 
@@ -121,7 +128,17 @@ func main() {
 }
 ```
 
-The `engine.Engine` facade supports direct OSM/GTFS loading, coordinate routing, transit routing, and multimodal journey search. `engine.New()` keeps walking defaults; `engine.NewWithConfig(engine.Config{...})` validates default mode, speed, and per-highway penalty multipliers. Route requests may still provide an explicit profile override.
+The `engine.Engine` facade supports direct OSM/GTFS loading, plain-XML reader loading, coordinate routing, transit routing, and multimodal journey search. `engine.New()` keeps walking defaults; `engine.NewWithConfig(engine.Config{...})` validates default mode, speed, and per-highway penalty multipliers. Route requests may still provide an explicit profile override.
+
+Full guide: [Go SDK](docs/sdk/go.md).
+
+## Ecosystem APIs
+
+- [JavaScript/WASM SDK](docs/sdk/javascript.md) — synchronous in-browser street routing from plain OSM XML.
+- [gRPC API](docs/api/grpc.md) — generated `pathcraft.v1` client/server contract for street routes and multimodal journeys.
+- [Plugin system](docs/architecture/plugin-system.md) — compile-time algorithms, loaders, exporters, cost models, and loggers.
+
+These interfaces remain pre-release. WASM does not load GTFS; gRPC has no built-in TLS or authentication.
 
 ## Interactive Demo
 
@@ -158,18 +175,23 @@ The HTTP server is a GET-only debug/demo interface, not a stable production API.
 ## Architecture
 
 ```text
+api/pathcraft/v1          protobuf contract and generated Go client/server types
 cmd/pathcraft             CLI entrypoint
+cmd/pathcraft-wasm        browser WebAssembly entrypoint
 pkg/pathcraft/core        public plugin interfaces and value types
 pkg/pathcraft/registry    compile-time plugin registry
 pkg/pathcraft/engine      public engine facade and pipeline runner
 pkg/pathcraft/plugins     built-in plugin adapters
 pkg/plugins               nearest-node spatial index plugin surface
-internal/graph            private graph model and cache format
+internal/graph            private graph, contraction index, and cache format
 internal/osm              OSM parser and graph builder
 internal/gtfs             GTFS parsers and RAPTOR-ready indexes
 internal/routing          A* and RAPTOR implementations
 internal/http             HTTP demo/debug adapter
-web/template              Leaflet demo
+internal/grpcapi          protobuf/gRPC adapter
+internal/wasmapi          JSON bridge for JavaScript/WASM
+sdk/js                    JavaScript WebAssembly loader
+web/app                   embedded React/Leaflet app
 testdata                  tracked small OSM and GTFS fixtures
 ```
 
@@ -179,6 +201,9 @@ See also:
 - [Architecture overview](docs/architecture/overview.md)
 - [Current system audit](docs/architecture/current-system.md)
 - [Plugin system](docs/architecture/plugin-system.md)
+- [Go SDK](docs/sdk/go.md)
+- [JavaScript/WASM SDK](docs/sdk/javascript.md)
+- [gRPC API](docs/api/grpc.md)
 - [Roadmap](docs/ROADMAP.md)
 
 ## Configuration
@@ -190,7 +215,7 @@ See also:
   - `GTFS_DIR` (default `testdata/mini_gtfs`)
   - `ADDR` (default `:8080`)
   - `BBOX` / `OUT` for `make fetch-osm`
-- Parsed graph caches are written as `<osm-file>.cache`; `*.cache` is ignored by git.
+- Parsed graph caches are written as `<osm-file>.cache`; source SHA-256 plus graph/preprocessing versions prevent stale reuse, writes replace atomically, and `*.cache` is ignored by git. Caches are trusted local build artifacts, not upload/network input; gob decoding precedes structural validation.
 
 ## Development
 
@@ -201,15 +226,18 @@ make clean     # remove ./bin/pathcraft
 go test ./...  # faster local test run without verbose coverage
 ```
 
-Benchmarks live next to their packages and can be run with standard Go tooling, for example:
+Benchmarks live next to their packages and use standard Go tooling:
 
 ```bash
 go test ./internal/routing/astar -bench=. -benchmem
+go test ./pkg/pathcraft/engine -run '^$' -bench='(Preprocess|Parallel)' -benchmem
 ```
+
+Contraction results and memory-profile workflow: [docs/performance.md](docs/performance.md).
 
 ## Project Status
 
-PathCraft is a prototype routing engine. Phase 0.1–0.3 library, HTTP, and timetable-routing deliverables work, but production hardening remains. Known next steps include GTFS service calendars/realtime, richer stop access, API security, deployment packaging, preprocessing, caching, and scale-oriented performance work.
+PathCraft is a prototype routing engine. Phase 0.1–1.0 library, HTTP, timetable-routing, scale-foundation, SDK, WASM, gRPC, and plugin deliverables work at documented scope, but production hardening remains. Degree-two contraction is not full contraction hierarchies; base graph remains resident, loading/hot reload is not concurrent, gRPC is local plaintext by default, and WASM street routing is synchronous. Known next steps include GTFS service calendars/realtime, richer stop access, city-scale profiling budgets, API security, and deployment packaging.
 
 ## Contributing
 

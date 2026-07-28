@@ -12,15 +12,16 @@ import (
 const defaultStopCandidates = 8
 
 type Engine struct {
-	config         Config
-	graph          *graph.Graph
-	gtfsIndex      *gtfs.StopTimeIndex
-	gtfsStops      map[gtfs.StopID]gtfs.Stop
-	gtfsTransfers  map[gtfs.StopID][]raptor.Transfer
-	gtfsTripRoutes map[gtfs.TripID]gtfs.RouteID
-	gtfsTripShapes map[gtfs.TripID]gtfs.ShapeID
-	gtfsRoutes     map[gtfs.RouteID]gtfs.Route
-	gtfsShapes     map[gtfs.ShapeID][]gtfs.ShapePoint
+	config            Config
+	graph             *graph.Graph
+	graphSourceSHA256 [32]byte
+	gtfsIndex         *gtfs.StopTimeIndex
+	gtfsStops         map[gtfs.StopID]gtfs.Stop
+	gtfsTransfers     map[gtfs.StopID][]raptor.Transfer
+	gtfsTripRoutes    map[gtfs.TripID]gtfs.RouteID
+	gtfsTripShapes    map[gtfs.TripID]gtfs.ShapeID
+	gtfsRoutes        map[gtfs.RouteID]gtfs.Route
+	gtfsShapes        map[gtfs.ShapeID][]gtfs.ShapePoint
 }
 
 func New() *Engine {
@@ -112,8 +113,10 @@ type MultimodalRouteResult struct {
 }
 
 type GraphStats struct {
-	Nodes int
-	Edges int
+	Nodes             int
+	Edges             int
+	ContractedNodes   int
+	ContractionChains int
 }
 
 type GTFSStop struct {

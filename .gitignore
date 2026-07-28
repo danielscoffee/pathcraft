@@ -38,5 +38,6 @@ examples/
 docs/screenshots/
 docs/superpowers/
 
-# Claude Code workspace
+# Agent workspaces
 .claude/
+.pi-subagents/

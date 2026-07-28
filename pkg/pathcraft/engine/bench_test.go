@@ -86,3 +86,35 @@ func BenchmarkEngine_TransitRoute_ExampleGTFS(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkEngine_Preprocess_ExampleOSM(b *testing.B) {
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		e := New()
+		if err := e.LoadOSM("../../../testdata/example.osm"); err != nil {
+			b.Fatalf("LoadOSM: %v", err)
+		}
+	}
+}
+
+func BenchmarkEngine_RouteParallel_ExampleOSM(b *testing.B) {
+	e := New()
+	if err := e.LoadOSM("../../../testdata/example.osm"); err != nil {
+		b.Fatalf("LoadOSM: %v", err)
+	}
+	req := RouteRequest{From: 1, To: 6}
+	if _, err := e.Route(req); err != nil {
+		b.Fatalf("warmup Route: %v", err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			if _, err := e.Route(req); err != nil {
+				b.Errorf("Route: %v", err)
+				return
+			}
+		}
+	})
+}

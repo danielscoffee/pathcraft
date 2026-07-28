@@ -39,12 +39,16 @@ func run() error {
 	switch os.Args[1] {
 	case "parse":
 		return cli.CmdParse(os.Args[2:])
+	case "preprocess":
+		return cli.CmdPreprocess(os.Args[2:])
 	case "route":
 		return cli.CmdRoute(os.Args[2:])
 	case "transit":
 		return cli.CmdTransit(os.Args[2:])
 	case "journey":
 		return cli.CmdJourney(os.Args[2:])
+	case "grpc":
+		return cli.CmdGRPC(os.Args[2:])
 	case "serve":
 		return cli.CmdServer(os.Args[2:])
 	case "server":

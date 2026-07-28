@@ -17,10 +17,16 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: web/app/package-lock.json
-      - name: Install Go dependencies
-        run: go mod tidy
+      - name: Verify Go dependencies
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
       - name: Test Go
         run: go test -v ./...
+      - name: Test WebAssembly binding
+        run: |
+          GOOS=js GOARCH=wasm go build -o /tmp/pathcraft.wasm ./cmd/pathcraft-wasm
+          node scripts/test-wasm.mjs /tmp/pathcraft.wasm "$(go env GOROOT)/lib/wasm/wasm_exec.js" testdata/example.osm
       - name: Install web dependencies
         run: npm ci
         working-directory: web/app

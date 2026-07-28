@@ -65,22 +65,32 @@ Deliverable:
 
 ## Phase 0.4 – Performance & Scale
 
-Goal: Serious engine.
+Goal: Establish measurable scale foundations.
 
-- [ ] Graph contraction
-- [ ] Caching strategies
-- [ ] Preprocessing pipelines
-- [ ] Parallel routing
-- [ ] Memory profiling
+- [x] Directed degree-two graph contraction with exact path expansion
+- [x] Source-hashed, versioned, atomic graph caches
+- [x] OSM parse → graph → contraction → cache preprocessing pipeline
+- [x] Concurrent read-only routing with race-tested HTTP-style queries
+- [x] Allocation benchmarks and reproducible `pprof` workflow
+
+Deliverable:
+
+- Tested performance foundations for prototype; full contraction hierarchies and horizontal scaling remain future work
 
 ---
 
 ## Phase 1.0 – Ecosystem
 
-- [ ] Go SDK documentation
-- [ ] JS bindings (WASM)
-- [ ] gRPC API
-- [ ] Plugin system
+Goal: Expose tested, language-neutral prototype integration surfaces.
+
+- [x] Go SDK documentation with runnable external-package example
+- [x] JS bindings (WASM) for in-browser street routing
+- [x] Versioned protobuf/gRPC API for street and multimodal routing
+- [x] Compile-time plugin system with built-in adapters
+
+Deliverable:
+
+- Documented Go, JavaScript/WASM, gRPC, and plugin entry points; packaging and production API hardening remain future work
 
 ---
 

@@ -6,7 +6,7 @@ and register themselves with `pkg/pathcraft/registry.Default` in `init()`.
 
 ## Goals
 
-- Make extension points visible: algorithms, graph loaders, exporters, cost models.
+- Make extension points visible: algorithms, graph loaders, exporters, cost models, loggers.
 - Keep the runtime cost of "having a plugin system" at zero.
 - Let library users pick their dependency tree by blank-importing only the
   plugins they need.
@@ -33,6 +33,7 @@ All declared in `pkg/pathcraft/core`:
 | `GraphLoader` | `Load(ctx, source string) Graph`              |
 | `Exporter`    | `Export(ctx, RouteResult, Graph) []byte`      |
 | `CostModel`   | `Cost(Edge, RouteState) float64`              |
+| `LoggerPlugin` | `Logger() (*zap.Logger, error)`              |
 
 ### Capability interfaces (optional)
 
@@ -54,7 +55,7 @@ written purely against `core.Graph`.
 ## Registry
 
 ```go
-type Registry struct { /* algos, loaders, exporters, costs */ }
+type Registry struct { /* algorithms, loaders, exporters, costs, loggers */ }
 
 func New() *Registry           // isolated, for tests
 var Default = New()            // process-wide, for plugin init()
@@ -62,7 +63,7 @@ var Default = New()            // process-wide, for plugin init()
 func (r *Registry) RegisterAlgorithm(core.Algorithm) error
 func (r *Registry) Algorithm(name string) (core.Algorithm, bool)
 func (r *Registry) Algorithms() []string  // sorted
-// ... same for Loader / Exporter / CostModel
+// ... same for Loader / Exporter / CostModel / Logger
 ```
 
 `MustRegister*` panics on duplicate and is what plugin `init()` typically calls.
@@ -105,5 +106,6 @@ import _ "yourmodule/myalgo"
 | `astar`   | algorithm  | `internal/routing/astar`     |
 | `raptor`  | algorithm  | `internal/routing/raptor`    |
 | `geojson` | exporter   | `internal/geojson`           |
+| `zap`     | logger     | `go.uber.org/zap`            |
 
 List them at runtime with `pathcraft plugins list`.

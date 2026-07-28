@@ -18,6 +18,11 @@ func TestParseTime(t *testing.T) {
 		{"25:00:00", 25 * 3600, false},
 		{"invalid", 0, true},
 		{"08:30", 0, true},
+		{"-1:00:00", 0, true},
+		{"08:-1:00", 0, true},
+		{"08:60:00", 0, true},
+		{"08:00:-1", 0, true},
+		{"08:00:60", 0, true},
 	}
 
 	for _, tt := range tests {
