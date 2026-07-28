@@ -101,8 +101,18 @@ func (e *Engine) Stats() GraphStats {
 	for _, edges := range e.graph.Edges {
 		edgeCount += len(edges)
 	}
-
-	return GraphStats{Nodes: len(e.graph.Nodes), Edges: edgeCount}
+	stats := GraphStats{Nodes: len(e.graph.Nodes), Edges: edgeCount}
+	if index := e.graph.Contraction; index != nil {
+		retained := 0
+		for _, keep := range index.Retained {
+			if keep {
+				retained++
+			}
+		}
+		stats.ContractedNodes = len(e.graph.Nodes) - retained
+		stats.ContractionChains = len(index.Chains)
+	}
+	return stats
 }
 
 func (e *Engine) NearestNode(lat, lon float64) (int64, float64, error) {

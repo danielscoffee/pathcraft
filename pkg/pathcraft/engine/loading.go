@@ -18,8 +18,15 @@ func (e *Engine) LoadOSM(path string) error {
 	if err != nil {
 		return fmt.Errorf("parsing OSM file: %w", err)
 	}
+	fingerprint, err := graph.FingerprintFile(path)
+	if err != nil {
+		return fmt.Errorf("fingerprinting OSM file: %w", err)
+	}
 
-	e.graph = osm.BuildGraph(data, nil)
+	g := osm.BuildGraph(data, nil)
+	g.Contraction, _ = graph.BuildDegreeTwoContraction(g)
+	e.graph = g
+	e.graphSourceSHA256 = fingerprint
 	return nil
 }
 
@@ -27,15 +34,16 @@ func (e *Engine) SaveGraph(path string) error {
 	if e.graph == nil {
 		return fmt.Errorf("graph not loaded")
 	}
-	return e.graph.Save(path)
+	return e.graph.SaveCache(path, graph.CacheMetadata{SourceSHA256: e.graphSourceSHA256})
 }
 
 func (e *Engine) LoadGraph(path string) error {
-	g, err := graph.LoadGraph(path)
+	g, metadata, err := graph.LoadGraphCache(path)
 	if err != nil {
 		return err
 	}
 	e.graph = g
+	e.graphSourceSHA256 = metadata.SourceSHA256
 	return nil
 }
 
