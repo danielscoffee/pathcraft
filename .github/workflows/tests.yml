@@ -17,8 +17,10 @@ jobs:
           node-version: "24"
           cache: npm
           cache-dependency-path: web/app/package-lock.json
-      - name: Install Go dependencies
-        run: go mod tidy
+      - name: Verify Go dependencies
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
       - name: Test Go
         run: go test -v ./...
       - name: Test WebAssembly binding
