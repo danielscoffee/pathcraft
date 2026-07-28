@@ -51,10 +51,7 @@ func (server *routingServer) Route(ctx context.Context, request *pathcraftv1.Rou
 	if request == nil {
 		return nil, status.Error(codes.InvalidArgument, "route request is required")
 	}
-	if err := validateCoordinate("origin", request.Origin); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-	if err := validateCoordinate("destination", request.Destination); err != nil {
+	if err := validateEndpoints(request.Origin, request.Destination); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	profile, err := profileForMode(request.Mode)
@@ -89,13 +86,11 @@ func (server *routingServer) Journey(ctx context.Context, request *pathcraftv1.J
 	if request == nil {
 		return nil, status.Error(codes.InvalidArgument, "journey request is required")
 	}
-	if err := validateCoordinate("origin", request.Origin); err != nil {
+	if err := validateEndpoints(request.Origin, request.Destination); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	if err := validateCoordinate("destination", request.Destination); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-	if _, err := pcTime.ParseTime(request.DepartureTime); err != nil {
+	departure, err := pcTime.ParseTime(request.DepartureTime)
+	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid departure time: %v", err)
 	}
 	if request.MaxStopCount < 0 || request.MaxStopCount > maxStopCount {
@@ -110,7 +105,7 @@ func (server *routingServer) Journey(ctx context.Context, request *pathcraftv1.J
 		FromLon:       request.Origin.Longitude,
 		ToLat:         request.Destination.Latitude,
 		ToLon:         request.Destination.Longitude,
-		DepartureTime: request.DepartureTime,
+		DepartureTime: departure.String(),
 		MaxStopCount:  int(request.MaxStopCount),
 	})
 	if err != nil {
@@ -123,6 +118,13 @@ func (server *routingServer) Journey(ctx context.Context, request *pathcraftv1.J
 		return nil, err
 	}
 	return journeyResponse(result), nil
+}
+
+func validateEndpoints(origin, destination *pathcraftv1.Coordinate) error {
+	if err := validateCoordinate("origin", origin); err != nil {
+		return err
+	}
+	return validateCoordinate("destination", destination)
 }
 
 func validateCoordinate(name string, coordinate *pathcraftv1.Coordinate) error {

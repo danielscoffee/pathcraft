@@ -41,3 +41,10 @@ func TestParseGRPCArgsRejectsUnknownFlag(t *testing.T) {
 		t.Fatal("parseGRPCArgs() error = nil, want unknown flag error")
 	}
 }
+
+func TestParseGRPCArgsRejectsEmptyAddress(t *testing.T) {
+	_, err := parseGRPCArgs([]string{"--file", "map.osm", "--addr", " "})
+	if err == nil || !strings.Contains(err.Error(), "--addr is required") {
+		t.Fatalf("parseGRPCArgs() error = %v, want required address", err)
+	}
+}

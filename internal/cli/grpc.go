@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/danielscoffee/pathcraft/internal/grpcapi"
 )
@@ -28,7 +29,11 @@ func parseGRPCArgs(args []string) (grpcOptions, error) {
 	if *file == "" {
 		return grpcOptions{}, fmt.Errorf("--file is required")
 	}
-	return grpcOptions{file: *file, gtfsDir: *gtfsDir, addr: *addr}, nil
+	address := strings.TrimSpace(*addr)
+	if address == "" {
+		return grpcOptions{}, fmt.Errorf("--addr is required")
+	}
+	return grpcOptions{file: *file, gtfsDir: *gtfsDir, addr: address}, nil
 }
 
 func CmdGRPC(args []string) error {
