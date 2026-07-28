@@ -192,7 +192,7 @@ See also:
   - `GTFS_DIR` (default `testdata/mini_gtfs`)
   - `ADDR` (default `:8080`)
   - `BBOX` / `OUT` for `make fetch-osm`
-- Parsed graph caches are written as `<osm-file>.cache`; source SHA-256 plus graph/preprocessing versions prevent stale reuse, writes replace atomically, and `*.cache` is ignored by git.
+- Parsed graph caches are written as `<osm-file>.cache`; source SHA-256 plus graph/preprocessing versions prevent stale reuse, writes replace atomically, and `*.cache` is ignored by git. Caches are trusted local build artifacts, not upload/network input; gob decoding precedes structural validation.
 
 ## Development
 

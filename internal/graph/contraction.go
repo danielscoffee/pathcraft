@@ -2,6 +2,8 @@ package graph
 
 import (
 	"cmp"
+	"fmt"
+	"math"
 	"slices"
 )
 
@@ -92,6 +94,112 @@ func (index *ContractionIndex) Outgoing(node, source, target NodeID) []Contracti
 		}
 	}
 	return arcs
+}
+
+func (index *ContractionIndex) validate(g *Graph) error {
+	if index.Version != ContractionVersion {
+		return fmt.Errorf("unsupported contraction version %d, want %d", index.Version, ContractionVersion)
+	}
+	for id, retained := range index.Retained {
+		if !retained {
+			return fmt.Errorf("contraction retained node %d has false marker", id)
+		}
+		if !g.HasNode(id) {
+			return fmt.Errorf("contraction retained node %d is missing", id)
+		}
+	}
+
+	outSeen := make([]bool, len(index.Chains))
+	for from, chainIDs := range index.Out {
+		if !index.Retained[from] {
+			return fmt.Errorf("contraction output node %d is not retained", from)
+		}
+		for _, chainID := range chainIDs {
+			if chainID < 0 || chainID >= len(index.Chains) {
+				return fmt.Errorf("contraction output node %d references chain %d", from, chainID)
+			}
+			if chain := index.Chains[chainID]; len(chain.Nodes) == 0 || chain.Nodes[0] != from {
+				return fmt.Errorf("contraction chain %d does not start at %d", chainID, from)
+			}
+			outSeen[chainID] = true
+		}
+	}
+
+	for node, positions := range index.Positions {
+		if !g.HasNode(node) {
+			return fmt.Errorf("contraction position node %d is missing", node)
+		}
+		for _, position := range positions {
+			if position.Chain < 0 || position.Chain >= len(index.Chains) {
+				return fmt.Errorf("contraction node %d references chain %d", node, position.Chain)
+			}
+			chain := index.Chains[position.Chain]
+			if position.Offset < 0 || position.Offset >= len(chain.Nodes) || chain.Nodes[position.Offset] != node {
+				return fmt.Errorf("contraction node %d has invalid chain %d offset %d", node, position.Chain, position.Offset)
+			}
+		}
+	}
+
+	for chainID, chain := range index.Chains {
+		if !outSeen[chainID] {
+			return fmt.Errorf("contraction chain %d is not reachable from output index", chainID)
+		}
+		if len(chain.Nodes) < 2 || len(chain.Segments) != len(chain.Nodes)-1 {
+			return fmt.Errorf("contraction chain %d has %d nodes and %d segments", chainID, len(chain.Nodes), len(chain.Segments))
+		}
+		if !index.Retained[chain.Nodes[0]] || !index.Retained[chain.Nodes[len(chain.Nodes)-1]] {
+			return fmt.Errorf("contraction chain %d endpoints are not retained", chainID)
+		}
+		distance := 0.0
+		for offset, node := range chain.Nodes {
+			if !g.HasNode(node) {
+				return fmt.Errorf("contraction chain %d node %d is missing", chainID, node)
+			}
+			if !hasContractionPosition(index.Positions[node], chainID, offset) {
+				return fmt.Errorf("contraction chain %d node %d lacks position %d", chainID, node, offset)
+			}
+			if offset == len(chain.Segments) {
+				continue
+			}
+			segment := chain.Segments[offset]
+			if segment.To != chain.Nodes[offset+1] || invalidDistance(segment.DistanceM) {
+				return fmt.Errorf("contraction chain %d has invalid segment %d", chainID, offset)
+			}
+			distance += segment.DistanceM
+		}
+		if invalidDistance(chain.DistanceM) || chain.DistanceM != distance {
+			return fmt.Errorf("contraction chain %d distance is invalid", chainID)
+		}
+		componentDistance := 0.0
+		for _, component := range chain.CostComponents {
+			if invalidDistance(component.DistanceM) {
+				return fmt.Errorf("contraction chain %d cost component is invalid", chainID)
+			}
+			componentDistance += component.DistanceM
+		}
+		if math.Abs(componentDistance-distance) > math.Max(1, distance)*1e-12 {
+			return fmt.Errorf("contraction chain %d cost components do not match distance", chainID)
+		}
+	}
+	for id := range g.Nodes {
+		if !index.Retained[id] && len(index.Positions[id]) == 0 {
+			return fmt.Errorf("contracted node %d has no chain position", id)
+		}
+	}
+	return nil
+}
+
+func hasContractionPosition(positions []ContractionPosition, chain, offset int) bool {
+	for _, position := range positions {
+		if position.Chain == chain && position.Offset == offset {
+			return true
+		}
+	}
+	return false
+}
+
+func invalidDistance(distance float64) bool {
+	return distance < 0 || math.IsNaN(distance) || math.IsInf(distance, 0)
 }
 
 // BuildDegreeTwoContraction builds directed chains without changing base graph.

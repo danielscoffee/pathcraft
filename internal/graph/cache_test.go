@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -168,6 +169,36 @@ func TestLoadGraphRejectsCacheVersionMismatch(t *testing.T) {
 	}
 }
 
+func TestLoadGraphRejectsMalformedContractionReferences(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*ContractionIndex)
+	}{
+		{name: "chain ID", mutate: func(index *ContractionIndex) { index.Out[1] = []int{len(index.Chains)} }},
+		{name: "position offset", mutate: func(index *ContractionIndex) { index.Positions[1][0].Offset = 99 }},
+		{name: "segment count", mutate: func(index *ContractionIndex) { index.Chains[0].Segments = nil }},
+		{name: "missing node", mutate: func(index *ContractionIndex) { index.Chains[0].Nodes[1] = 99 }},
+		{name: "numeric field", mutate: func(index *ContractionIndex) { index.Chains[0].Segments[0].DistanceM = math.NaN() }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "graph.cache")
+			g := NewGraph()
+			g.AddNode(1, 0, 0)
+			g.AddNode(2, 0, 1)
+			g.AddBidirectionalEdge(1, 2, 1)
+			g.Contraction, _ = BuildDegreeTwoContraction(g)
+			test.mutate(g.Contraction)
+			if err := g.Save(path); err != nil {
+				t.Fatalf("Save() error = %v", err)
+			}
+			if _, err := LoadGraph(path); err == nil {
+				t.Fatal("LoadGraph() accepted malformed contraction")
+			}
+		})
+	}
+}
+
 func TestLoadGraphRejectsContractionVersionMismatch(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "graph.cache")
 	g := NewGraph()
@@ -213,6 +244,35 @@ func TestSaveCacheFailurePreservesExistingFile(t *testing.T) {
 	}
 	if len(entries) != 1 || entries[0].Name() != filepath.Base(path) {
 		t.Fatalf("cache directory entries = %v, want only preserved cache", entries)
+	}
+}
+
+func TestSaveCacheUsesSecureModeAndPreservesExistingMode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "graph.cache")
+	g := NewGraph()
+	g.AddNode(1, 0, 0)
+	if err := g.Save(path); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat(new cache) error = %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("new cache mode = %o, want 600", got)
+	}
+	if err := os.Chmod(path, 0o640); err != nil {
+		t.Fatalf("Chmod() error = %v", err)
+	}
+	if err := g.Save(path); err != nil {
+		t.Fatalf("replacement Save() error = %v", err)
+	}
+	info, err = os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat(replacement cache) error = %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o640 {
+		t.Fatalf("replacement cache mode = %o, want preserved 640", got)
 	}
 }
 

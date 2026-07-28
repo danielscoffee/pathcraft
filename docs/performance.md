@@ -32,15 +32,15 @@ Captured 2026-07-27 on Linux/amd64, Intel i5-1135G7, Go 1.26.5. Values are media
 
 | Benchmark | Time | Bytes/op | Allocs/op | Notes |
 |---|---:|---:|---:|---|
-| A* 10,000-node chain, base | 3.827 ms | 3,428,585 | 10,258 | zero heuristic |
-| A* 10,000-node chain, contracted | 43.922 µs | 357,848 | 24 | exact 10,000-node result unpacked |
-| Build contraction, 10,000-node chain | 22.046 ms | 17,871,763 | 80,466 | 9,998 nodes, 2 directed chains |
-| Engine preprocess, toy OSM | 71.683 µs | 65,864 | 542 | parse + SHA-256 + graph + contraction |
-| Engine parallel route, toy OSM | 267.8 ns/op | 480 | 12 | aggregate `RunParallel` throughput metric |
+| A* 10,000-node chain, base | 3.895 ms | 3,428,585 | 10,258 | zero heuristic |
+| A* 10,000-node chain, contracted | 118.226 µs | 357,848 | 24 | exact 10,000-node result and segment validation |
+| Build contraction, 10,000-node chain | 21.501 ms | 17,871,731 | 80,466 | 9,998 nodes, 2 directed chains |
+| Engine preprocess, toy OSM | 74.366 µs | 65,864 | 542 | parse + SHA-256 + graph + contraction |
+| Engine parallel route, toy OSM | 284.1 ns/op | 480 | 12 | aggregate `RunParallel` throughput metric |
 
-Synthetic long-chain query improved about 87×, with 9.6× fewer allocated bytes and 427× fewer allocations. This workload is intentionally favorable to degree-two contraction. Intersection-dense graphs will gain less.
+Synthetic long-chain query improved about 33×, with 9.6× fewer allocated bytes and 427× fewer allocations. This workload is intentionally favorable to degree-two contraction. Intersection-dense graphs will gain less.
 
-One-shot memory profile reported about 17.9 MB allocated while building 10,000-node contraction and about 2.64 MB retained by index. Main temporary allocation sites were `BuildDegreeTwoContraction` and `contractionTopology`. Go profiler sampling and runtime allocations make retained numbers approximate.
+One-shot memory profile reported about 17.9 MB allocated while building 10,000-node contraction and about 2.65 MB retained by index. Main temporary allocation sites were `BuildDegreeTwoContraction` and `contractionTopology`. Go profiler sampling and runtime allocations make retained numbers approximate.
 
 ## Reading results
 

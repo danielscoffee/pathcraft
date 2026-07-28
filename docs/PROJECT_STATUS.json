@@ -30,7 +30,7 @@
     "gtfs_loading": "chunked streaming parser with string interning; ~35 MB zip fetched via make fetch-gtfs",
     "query_latency_observed": "street route solve ~20 ms; multimodal journey with real feed returns sub-second; all four modes solved in parallel per request pair",
     "example_real_result": "08:00 departure across Recife -> arrival 08:38, walk 358 m + bus with transfer, real trip IDs",
-    "phase_0_4_synthetic_profile": "10,000-node linear A* median: 3.827 ms base vs 43.922 us contracted; contraction build median 22.046 ms and 17.9 MB allocated on one documented laptop",
+    "phase_0_4_synthetic_profile": "10,000-node linear A* median: 3.895 ms base vs 118.226 us contracted; contraction build median 21.501 ms and 17.9 MB allocated on one documented laptop",
     "profiling": "standard Go benchmarks, race detector, and reproducible pprof alloc_space/inuse_space commands; synthetic numbers are not city-wide guarantees"
   },
   "quality_signals": {

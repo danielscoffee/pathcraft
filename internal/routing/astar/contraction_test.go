@@ -86,6 +86,32 @@ func TestAStarContractionUsesChainForInteriorEndpoints(t *testing.T) {
 	}
 }
 
+func TestAStarContractionRejectsMaskedNegativePenalty(t *testing.T) {
+	g := graph.NewGraph()
+	for id := graph.NodeID(1); id <= 3; id++ {
+		g.AddNode(id, 0, float64(id))
+	}
+	g.AddEdgeWithMeta(1, 2, 1, "negative", "")
+	g.AddEdgeWithMeta(2, 1, 1, "negative", "")
+	g.AddEdgeWithMeta(2, 3, 2, "positive", "")
+	g.AddEdgeWithMeta(3, 2, 2, "positive", "")
+	profile := penalizedProfile{
+		Profile: mobility.NewWalking(1),
+		penalties: map[string]float64{
+			"negative": -1,
+		},
+	}
+
+	g.Contraction = nil
+	if _, err := astar.AStarWithProfile(g, 1, 3, zeroHeuristic, profile); !errors.Is(err, astar.ErrInvalidCost) {
+		t.Fatalf("base error = %v, want ErrInvalidCost", err)
+	}
+	g.Contraction, _ = graph.BuildDegreeTwoContraction(g)
+	if _, err := astar.AStarWithProfile(g, 1, 3, zeroHeuristic, profile); !errors.Is(err, astar.ErrInvalidCost) {
+		t.Fatalf("contracted error = %v, want ErrInvalidCost", err)
+	}
+}
+
 func TestAStarCustomPenaltyUsesAdmissibleHeuristic(t *testing.T) {
 	g := graph.NewGraph()
 	g.AddNode(1, 0, 0)

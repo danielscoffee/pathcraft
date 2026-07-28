@@ -144,24 +144,6 @@ func edgeRestrictedForProfile(edge graph.Edge, profile mobility.Profile) bool {
 }
 
 func contractionArcCost(chain graph.ContractionChain, from, to int, profile mobility.Profile) (cost, distance float64, blocked bool, err error) {
-	if from == 0 && to == len(chain.Nodes)-1 {
-		if restrictedModesForProfile(chain.RestrictedModes, profile) {
-			return 0, 0, true, nil
-		}
-		if penaltyProfile, ok := profile.(highwayPenaltyProfile); ok {
-			for _, component := range chain.CostComponents {
-				cost += component.DistanceM * penaltyProfile.HighwayPenalty(component.Highway)
-			}
-		} else {
-			cost = chain.DistanceM
-		}
-		distance = chain.DistanceM
-		if invalidCost(cost) {
-			return 0, 0, false, ErrInvalidCost
-		}
-		return cost, distance, false, nil
-	}
-
 	for _, edge := range chain.Segments[from:to] {
 		if edgeRestrictedForProfile(edge, profile) {
 			return 0, 0, true, nil
@@ -174,18 +156,6 @@ func contractionArcCost(chain graph.ContractionChain, from, to int, profile mobi
 		distance += edge.DistanceM
 	}
 	return cost, distance, false, nil
-}
-
-func restrictedModesForProfile(modes []graph.RestrictedMode, profile mobility.Profile) bool {
-	if profile == nil {
-		return false
-	}
-	for _, mode := range modes {
-		if string(mode) == profile.Name() {
-			return true
-		}
-	}
-	return false
 }
 
 func invalidCost(cost float64) bool {
