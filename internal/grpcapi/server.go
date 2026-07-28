@@ -4,13 +4,15 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
 	pathcraftv1 "github.com/danielscoffee/pathcraft/api/pathcraft/v1"
-	"github.com/danielscoffee/pathcraft/internal/mobility"
 	pcTime "github.com/danielscoffee/pathcraft/internal/time"
+	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
@@ -21,17 +23,24 @@ import (
 const (
 	maxRequestBytes = 1 << 20
 	maxStopCount    = 64
-	bikeSpeedMPS    = 4.5
 )
 
 type routingServer struct {
 	pathcraftv1.UnimplementedRoutingServiceServer
-	engine *engine.Engine
+	engine   *engine.Engine
+	registry *plugins.Registry
 }
 
 func NewServer(router *engine.Engine) *grpc.Server {
+	return NewServerWithRegistry(router, plugins.Default)
+}
+
+func NewServerWithRegistry(router *engine.Engine, registry *plugins.Registry) *grpc.Server {
+	if registry == nil {
+		registry = plugins.Default
+	}
 	server := grpc.NewServer(grpc.MaxRecvMsgSize(maxRequestBytes))
-	pathcraftv1.RegisterRoutingServiceServer(server, &routingServer{engine: router})
+	pathcraftv1.RegisterRoutingServiceServer(server, &routingServer{engine: router, registry: registry})
 
 	healthServer := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(server, healthServer)
@@ -54,7 +63,7 @@ func (server *routingServer) Route(ctx context.Context, request *pathcraftv1.Rou
 	if err := validateEndpoints(request.Origin, request.Destination); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	profile, err := profileForMode(request.Mode)
+	modeName, err := modeNameForTravelMode(request.Mode)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -62,13 +71,13 @@ func (server *routingServer) Route(ctx context.Context, request *pathcraftv1.Rou
 		return nil, status.Error(codes.FailedPrecondition, "street graph not loaded")
 	}
 
-	result, err := server.engine.RouteByCoordinates(engine.CoordinateRouteRequest{
-		FromLat:            request.Origin.Latitude,
-		FromLon:            request.Origin.Longitude,
-		ToLat:              request.Destination.Latitude,
-		ToLon:              request.Destination.Longitude,
-		Profile:            profile,
-		IncludeCoordinates: request.IncludeCoordinates,
+	mode, ok := server.registry.Mode(modeName)
+	if !ok {
+		return nil, status.Errorf(codes.FailedPrecondition, "mode %q not registered", modeName)
+	}
+	result, err := mode.Route(ctx, server.engine, core.ModeRequest{
+		From: core.Position{request.Origin.Longitude, request.Origin.Latitude},
+		To:   core.Position{request.Destination.Longitude, request.Destination.Latitude},
 	})
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
@@ -76,7 +85,7 @@ func (server *routingServer) Route(ctx context.Context, request *pathcraftv1.Rou
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
-	return routeResponse(result), nil
+	return modeRouteResponse(result, request.IncludeCoordinates), nil
 }
 
 func (server *routingServer) Journey(ctx context.Context, request *pathcraftv1.JourneyRequest) (*pathcraftv1.JourneyResponse, error) {
@@ -100,13 +109,17 @@ func (server *routingServer) Journey(ctx context.Context, request *pathcraftv1.J
 		return nil, status.Error(codes.FailedPrecondition, "street graph not loaded")
 	}
 
-	result, err := server.engine.MultimodalRoute(engine.MultimodalRouteRequest{
-		FromLat:       request.Origin.Latitude,
-		FromLon:       request.Origin.Longitude,
-		ToLat:         request.Destination.Latitude,
-		ToLon:         request.Destination.Longitude,
-		DepartureTime: departure.String(),
-		MaxStopCount:  int(request.MaxStopCount),
+	mode, ok := server.registry.Mode("gtfs")
+	if !ok {
+		return nil, status.Error(codes.FailedPrecondition, "mode \"gtfs\" not registered")
+	}
+	result, err := mode.Route(ctx, server.engine, core.ModeRequest{
+		From: core.Position{request.Origin.Longitude, request.Origin.Latitude},
+		To:   core.Position{request.Destination.Longitude, request.Destination.Latitude},
+		Options: map[string]string{
+			"departure_time": departure.String(),
+			"max_stop_count": strconv.FormatInt(int64(request.MaxStopCount), 10),
+		},
 	})
 	if err != nil {
 		if strings.Contains(err.Error(), "GTFS not loaded") || strings.Contains(err.Error(), "GTFS stops with coordinates") {
@@ -117,7 +130,7 @@ func (server *routingServer) Journey(ctx context.Context, request *pathcraftv1.J
 	if err := contextError(ctx); err != nil {
 		return nil, err
 	}
-	return journeyResponse(result), nil
+	return modeJourneyResponse(result), nil
 }
 
 func validateEndpoints(origin, destination *pathcraftv1.Coordinate) error {
@@ -140,16 +153,16 @@ func validateCoordinate(name string, coordinate *pathcraftv1.Coordinate) error {
 	return nil
 }
 
-func profileForMode(mode pathcraftv1.TravelMode) (mobility.Profile, error) {
+func modeNameForTravelMode(mode pathcraftv1.TravelMode) (string, error) {
 	switch mode {
 	case pathcraftv1.TravelMode_TRAVEL_MODE_UNSPECIFIED, pathcraftv1.TravelMode_TRAVEL_MODE_WALK:
-		return mobility.NewWalking(mobility.DefaultWalkingSpeedMPS), nil
+		return "walk", nil
 	case pathcraftv1.TravelMode_TRAVEL_MODE_BIKE:
-		return mobility.NewWalking(bikeSpeedMPS), nil
+		return "bike", nil
 	case pathcraftv1.TravelMode_TRAVEL_MODE_CAR:
-		return mobility.NewDriving(mobility.DefaultDrivingSpeedMPS), nil
+		return "car", nil
 	default:
-		return nil, fmt.Errorf("unsupported travel mode %d", mode)
+		return "", fmt.Errorf("unsupported travel mode %d", mode)
 	}
 }
 
@@ -164,6 +177,89 @@ func routeResponse(result *engine.CoordinateRouteResult) *pathcraftv1.RouteRespo
 		OriginSnapDistanceMeters:      result.FromSnapDistanceM,
 		DestinationSnapDistanceMeters: result.ToSnapDistanceM,
 	}
+}
+
+func modeRouteResponse(result core.ModeResult, includeCoordinates bool) *pathcraftv1.RouteResponse {
+	nodes, _ := result.Meta["nodes"].([]int64)
+	originNodeID, _ := result.Meta["from_node_id"].(int64)
+	destinationNodeID, _ := result.Meta["to_node_id"].(int64)
+	originSnapDistance, _ := result.Meta["from_snap_distance_m"].(float64)
+	destinationSnapDistance, _ := result.Meta["to_snap_distance_m"].(float64)
+	var routeCoordinates []*pathcraftv1.Coordinate
+	if includeCoordinates {
+		for _, segment := range result.Segments {
+			for _, position := range segment.Positions {
+				if len(position) >= 2 {
+					routeCoordinates = append(routeCoordinates, &pathcraftv1.Coordinate{
+						Longitude: position[0],
+						Latitude:  position[1],
+					})
+				}
+			}
+		}
+	}
+	return &pathcraftv1.RouteResponse{
+		NodeIds:                       nodes,
+		Coordinates:                   routeCoordinates,
+		DistanceMeters:                result.DistanceMeters,
+		DurationSeconds:               result.DurationSeconds,
+		OriginNodeId:                  originNodeID,
+		DestinationNodeId:             destinationNodeID,
+		OriginSnapDistanceMeters:      originSnapDistance,
+		DestinationSnapDistanceMeters: destinationSnapDistance,
+	}
+}
+
+func modeJourneyResponse(result core.ModeResult) *pathcraftv1.JourneyResponse {
+	legs := make([]*pathcraftv1.JourneyLeg, 0, len(result.Segments))
+	var transitDuration int64
+	for _, segment := range result.Segments {
+		coordinates := make([]*pathcraftv1.Coordinate, 0, len(segment.Positions))
+		for _, position := range segment.Positions {
+			if len(position) >= 2 {
+				coordinates = append(coordinates, &pathcraftv1.Coordinate{Longitude: position[0], Latitude: position[1]})
+			}
+		}
+		legs = append(legs, &pathcraftv1.JourneyLeg{
+			Mode:            segment.Kind,
+			FromName:        modeMetaString(segment.Meta, "from"),
+			ToName:          modeMetaString(segment.Meta, "to"),
+			FromStopId:      modeMetaString(segment.Meta, "from_stop_id"),
+			ToStopId:        modeMetaString(segment.Meta, "to_stop_id"),
+			TripId:          modeMetaString(segment.Meta, "trip_id"),
+			RouteId:         modeMetaString(segment.Meta, "route_id"),
+			RouteName:       modeMetaString(segment.Meta, "route_name"),
+			RouteLongName:   modeMetaString(segment.Meta, "route_long_name"),
+			DepartureTime:   modeMetaString(segment.Meta, "departure_time"),
+			ArrivalTime:     modeMetaString(segment.Meta, "arrival_time"),
+			DistanceMeters:  segment.DistanceMeters,
+			DurationSeconds: segment.DurationSeconds,
+			Coordinates:     coordinates,
+		})
+		if segment.Kind == "transit" || segment.Kind == "transfer" {
+			transitDuration += segment.DurationSeconds
+		}
+	}
+	mode := modeMetaString(result.Meta, "journey_mode")
+	if mode == "" {
+		mode = result.Mode
+	}
+	return &pathcraftv1.JourneyResponse{
+		Mode:                   mode,
+		DepartureTime:          modeMetaString(result.Meta, "departure_time"),
+		ArrivalTime:            modeMetaString(result.Meta, "arrival_time"),
+		TotalDurationSeconds:   result.DurationSeconds,
+		TransitDurationSeconds: transitDuration,
+		WalkingDistanceMeters:  result.DistanceMeters,
+		Legs:                   legs,
+		OriginStopId:           modeMetaString(result.Meta, "origin_stop_id"),
+		DestinationStopId:      modeMetaString(result.Meta, "destination_stop_id"),
+	}
+}
+
+func modeMetaString(meta map[string]any, key string) string {
+	value, _ := meta[key].(string)
+	return value
 }
 
 func journeyResponse(result *engine.MultimodalRouteResult) *pathcraftv1.JourneyResponse {

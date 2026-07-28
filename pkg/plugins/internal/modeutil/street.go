@@ -60,8 +60,11 @@ func StreetRoute(ctx context.Context, host any, req core.ModeRequest, manifest c
 			DurationSeconds: int64(math.Ceil(result.Duration.Seconds())),
 		}},
 		Meta: map[string]any{
-			"from_node_id": result.FromNodeID,
-			"to_node_id":   result.ToNodeID,
+			"nodes":                result.Nodes,
+			"from_node_id":         result.FromNodeID,
+			"to_node_id":           result.ToNodeID,
+			"from_snap_distance_m": result.FromSnapDistanceM,
+			"to_snap_distance_m":   result.ToSnapDistanceM,
 		},
 	}, nil
 }

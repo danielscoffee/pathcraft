@@ -1,20 +1,21 @@
 package wasmapi
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"math"
 	"strings"
 
-	"github.com/danielscoffee/pathcraft/internal/mobility"
+	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 )
 
-const bikeSpeedMPS = 4.5
-
 type API struct {
-	engine *engine.Engine
+	engine   *engine.Engine
+	registry *plugins.Registry
 }
 
 type Point struct {
@@ -54,7 +55,14 @@ type envelope struct {
 }
 
 func New() *API {
-	return &API{engine: engine.New()}
+	return NewWithRegistry(plugins.Default)
+}
+
+func NewWithRegistry(registry *plugins.Registry) *API {
+	if registry == nil {
+		registry = plugins.Default
+	}
+	return &API{engine: engine.New(), registry: registry}
 }
 
 func (api *API) LoadOSM(xml string) string {
@@ -78,36 +86,46 @@ func (api *API) Route(requestJSON string) string {
 	if err := validatePoint("to", *request.To); err != nil {
 		return failure(err)
 	}
-	profile, err := profileForMode(request.Mode)
-	if err != nil {
-		return failure(err)
+	modeName := strings.ToLower(strings.TrimSpace(request.Mode))
+	if modeName == "" {
+		modeName = "walk"
 	}
-
-	result, err := api.engine.RouteByCoordinates(engine.CoordinateRouteRequest{
-		FromLat:            request.From.Lat,
-		FromLon:            request.From.Lon,
-		ToLat:              request.To.Lat,
-		ToLon:              request.To.Lon,
-		Profile:            profile,
-		IncludeCoordinates: request.IncludeCoordinates,
+	mode, ok := api.registry.Mode(modeName)
+	if !ok {
+		return failure(fmt.Errorf("unsupported mode %q", request.Mode))
+	}
+	result, err := mode.Route(context.Background(), api.engine, core.ModeRequest{
+		From: core.Position{request.From.Lon, request.From.Lat},
+		To:   core.Position{request.To.Lon, request.To.Lat},
 	})
 	if err != nil {
 		return failure(err)
 	}
 
-	coordinates := make([]Point, len(result.Coordinates))
-	for i, coordinate := range result.Coordinates {
-		coordinates[i] = Point{Lat: coordinate.Lat, Lon: coordinate.Lon}
+	coordinates := make([]Point, 0)
+	if request.IncludeCoordinates {
+		for _, segment := range result.Segments {
+			for _, position := range segment.Positions {
+				if len(position) >= 2 {
+					coordinates = append(coordinates, Point{Lat: position[1], Lon: position[0]})
+				}
+			}
+		}
 	}
+	nodes, _ := result.Meta["nodes"].([]int64)
+	fromNodeID, _ := result.Meta["from_node_id"].(int64)
+	toNodeID, _ := result.Meta["to_node_id"].(int64)
+	fromSnapDistance, _ := result.Meta["from_snap_distance_m"].(float64)
+	toSnapDistance, _ := result.Meta["to_snap_distance_m"].(float64)
 	return success(routeResponse{
-		Nodes:                  result.Nodes,
+		Nodes:                  nodes,
 		Coordinates:            coordinates,
-		DistanceMeters:         result.Distance,
-		DurationSeconds:        result.Duration.Seconds(),
-		FromNodeID:             result.FromNodeID,
-		ToNodeID:               result.ToNodeID,
-		FromSnapDistanceMeters: result.FromSnapDistanceM,
-		ToSnapDistanceMeters:   result.ToSnapDistanceM,
+		DistanceMeters:         result.DistanceMeters,
+		DurationSeconds:        float64(result.DurationSeconds),
+		FromNodeID:             fromNodeID,
+		ToNodeID:               toNodeID,
+		FromSnapDistanceMeters: fromSnapDistance,
+		ToSnapDistanceMeters:   toSnapDistance,
 	})
 }
 
@@ -148,19 +166,6 @@ func validatePoint(name string, point Point) error {
 		return fmt.Errorf("%s longitude must be finite and between -180 and 180", name)
 	}
 	return nil
-}
-
-func profileForMode(mode string) (mobility.Profile, error) {
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "", "walk":
-		return mobility.NewWalking(mobility.DefaultWalkingSpeedMPS), nil
-	case "bike":
-		return mobility.NewWalking(bikeSpeedMPS), nil
-	case "car":
-		return mobility.NewDriving(mobility.DefaultDrivingSpeedMPS), nil
-	default:
-		return nil, fmt.Errorf("unsupported mode %q", mode)
-	}
 }
 
 func success(value any) string {

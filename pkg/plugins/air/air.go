@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"strconv"
 
 	"github.com/danielscoffee/pathcraft/internal/geo"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
@@ -60,11 +59,11 @@ func (Plugin) Route(ctx context.Context, _ any, req core.ModeRequest) (core.Mode
 	if err != nil {
 		return core.ModeResult{}, err
 	}
-	cruiseAltitude, err := positiveOption(req.Options, "cruise_altitude_m", defaultCruiseAltitudeM)
+	cruiseAltitude, err := modeutil.PositiveOption(req.Options, "cruise_altitude_m", defaultCruiseAltitudeM)
 	if err != nil {
 		return core.ModeResult{}, err
 	}
-	speed, err := positiveOption(req.Options, "speed_mps", defaultSpeedMPS)
+	speed, err := modeutil.PositiveOption(req.Options, "speed_mps", defaultSpeedMPS)
 	if err != nil {
 		return core.ModeResult{}, err
 	}
@@ -110,18 +109,6 @@ func altitude(name string, position core.Position) (float64, error) {
 		return 0, fmt.Errorf("%s altitude must be finite", name)
 	}
 	return value, nil
-}
-
-func positiveOption(options map[string]string, name string, fallback float64) (float64, error) {
-	value := options[name]
-	if value == "" {
-		return fallback, nil
-	}
-	parsed, err := strconv.ParseFloat(value, 64)
-	if err != nil || parsed <= 0 || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
-		return 0, fmt.Errorf("%s must be a positive finite number", name)
-	}
-	return parsed, nil
 }
 
 func init() { plugins.MustRegisterMode(Plugin{}) }

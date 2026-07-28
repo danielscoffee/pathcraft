@@ -31,4 +31,16 @@ func TestPluginRoutesStreetCoordinates(t *testing.T) {
 	if result.DurationSeconds <= 0 || result.DistanceMeters <= 0 {
 		t.Fatalf("expected positive route metrics, got %+v", result)
 	}
+
+	faster, err := (Plugin{}).Route(context.Background(), e, core.ModeRequest{
+		From:    core.Position{-34.88130, -8.05428},
+		To:      core.Position{-34.88030, -8.05480},
+		Options: map[string]string{"speed_mps": "2.8"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if faster.DurationSeconds >= result.DurationSeconds {
+		t.Fatalf("speed override duration = %d, default = %d", faster.DurationSeconds, result.DurationSeconds)
+	}
 }

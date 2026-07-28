@@ -24,11 +24,18 @@ func (Plugin) Manifest() core.ModeManifest {
 		CRS:        "EPSG:4326",
 		Dimensions: []int{2},
 		Axes:       []string{"longitude", "latitude"},
+		Options: []core.ModeOption{
+			{Name: "speed_mps", Label: "Speed", Kind: "number", Default: "4.5"},
+		},
 	}
 }
 
 func (plugin Plugin) Route(ctx context.Context, host any, req core.ModeRequest) (core.ModeResult, error) {
-	return modeutil.StreetRoute(ctx, host, req, plugin.Manifest(), mobility.NewWalking(speedMPS))
+	speed, err := modeutil.PositiveOption(req.Options, "speed_mps", speedMPS)
+	if err != nil {
+		return core.ModeResult{}, err
+	}
+	return modeutil.StreetRoute(ctx, host, req, plugin.Manifest(), mobility.NewWalking(speed))
 }
 
 func init() { plugins.MustRegisterMode(Plugin{}) }

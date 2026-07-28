@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strconv"
 
 	"github.com/danielscoffee/pathcraft/internal/mobility"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
@@ -29,12 +30,10 @@ func (Plugin) Manifest() core.ModeManifest {
 		CRS:        "EPSG:4326",
 		Dimensions: []int{2},
 		Axes:       []string{"longitude", "latitude"},
-		Options: []core.ModeOption{{
-			Name:    "departure_time",
-			Label:   "Depart",
-			Kind:    "time",
-			Default: "05:00:00",
-		}},
+		Options: []core.ModeOption{
+			{Name: "departure_time", Label: "Depart", Kind: "time", Default: "05:00:00"},
+			{Name: "max_stop_count", Label: "Stop candidates", Kind: "number", Default: "8"},
+		},
 	}
 }
 
@@ -58,6 +57,13 @@ func (Plugin) Route(ctx context.Context, host any, req core.ModeRequest) (core.M
 	if departure == "" {
 		departure = "05:00:00"
 	}
+	maxStopCount := 0
+	if value := req.Options["max_stop_count"]; value != "" {
+		maxStopCount, err = strconv.Atoi(value)
+		if err != nil || maxStopCount < 0 {
+			return core.ModeResult{}, fmt.Errorf("max_stop_count must be a non-negative integer")
+		}
+	}
 
 	journey, err := router.MultimodalRoute(engine.MultimodalRouteRequest{
 		FromLat:        fromLat,
@@ -66,6 +72,7 @@ func (Plugin) Route(ctx context.Context, host any, req core.ModeRequest) (core.M
 		ToLon:          toLon,
 		DepartureTime:  departure,
 		WalkingProfile: mobility.NewWalking(mobility.DefaultWalkingSpeedMPS),
+		MaxStopCount:   maxStopCount,
 	})
 	if err != nil {
 		return core.ModeResult{}, err
