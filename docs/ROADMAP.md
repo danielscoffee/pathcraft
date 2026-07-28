@@ -65,13 +65,17 @@ Deliverable:
 
 ## Phase 0.4 – Performance & Scale
 
-Goal: Serious engine.
+Goal: Establish measurable scale foundations.
 
-- [ ] Graph contraction
-- [ ] Caching strategies
-- [ ] Preprocessing pipelines
-- [ ] Parallel routing
-- [ ] Memory profiling
+- [x] Directed degree-two graph contraction with exact path expansion
+- [x] Source-hashed, versioned, atomic graph caches
+- [x] OSM parse → graph → contraction → cache preprocessing pipeline
+- [x] Concurrent read-only routing with race-tested HTTP-style queries
+- [x] Allocation benchmarks and reproducible `pprof` workflow
+
+Deliverable:
+
+- Tested performance foundations for prototype; full contraction hierarchies and horizontal scaling remain future work
 
 ---
 

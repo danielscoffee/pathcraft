@@ -14,7 +14,8 @@ It ships working routing today: OSM street routes via A*, GTFS transit routes vi
 - **Multiple surfaces**: Go library, `pathcraft` CLI, HTTP endpoints, and a Leaflet routing demo.
 - **Opt-in CORS**: exact browser origins, disabled by default.
 - **GeoJSON output**: route and graph visualization through FeatureCollections.
-- **Tests and benchmarks**: coverage for graph, OSM, GTFS, A*, RAPTOR, HTTP, engine, registry, and plugin pipeline behavior.
+- **Scale foundations**: exact directed degree-two contraction, source-safe atomic graph caches, and concurrent read-only routing.
+- **Tests and benchmarks**: coverage for graph, OSM, GTFS, A*, RAPTOR, HTTP, engine, registry, plugin pipelines, allocations, and parallel queries.
 
 ## Prerequisites
 
@@ -73,6 +74,7 @@ Transit RAPTOR on GTFS:
 
 ```bash
 ./bin/pathcraft parse --file testdata/example.osm
+./bin/pathcraft preprocess --file testdata/example.osm
 ./bin/pathcraft route --file testdata/example.osm --from 1 --to 6 --coords
 ./bin/pathcraft route --file testdata/example.osm \
   --from-lat -8.05428 --from-lon -34.88130 \
@@ -164,7 +166,7 @@ pkg/pathcraft/registry    compile-time plugin registry
 pkg/pathcraft/engine      public engine facade and pipeline runner
 pkg/pathcraft/plugins     built-in plugin adapters
 pkg/plugins               nearest-node spatial index plugin surface
-internal/graph            private graph model and cache format
+internal/graph            private graph, contraction index, and cache format
 internal/osm              OSM parser and graph builder
 internal/gtfs             GTFS parsers and RAPTOR-ready indexes
 internal/routing          A* and RAPTOR implementations
@@ -190,7 +192,7 @@ See also:
   - `GTFS_DIR` (default `testdata/mini_gtfs`)
   - `ADDR` (default `:8080`)
   - `BBOX` / `OUT` for `make fetch-osm`
-- Parsed graph caches are written as `<osm-file>.cache`; `*.cache` is ignored by git.
+- Parsed graph caches are written as `<osm-file>.cache`; source SHA-256 plus graph/preprocessing versions prevent stale reuse, writes replace atomically, and `*.cache` is ignored by git.
 
 ## Development
 
@@ -201,15 +203,18 @@ make clean     # remove ./bin/pathcraft
 go test ./...  # faster local test run without verbose coverage
 ```
 
-Benchmarks live next to their packages and can be run with standard Go tooling, for example:
+Benchmarks live next to their packages and use standard Go tooling:
 
 ```bash
 go test ./internal/routing/astar -bench=. -benchmem
+go test ./pkg/pathcraft/engine -run '^$' -bench='(Preprocess|Parallel)' -benchmem
 ```
+
+Contraction results and memory-profile workflow: [docs/performance.md](docs/performance.md).
 
 ## Project Status
 
-PathCraft is a prototype routing engine. Phase 0.1–0.3 library, HTTP, and timetable-routing deliverables work, but production hardening remains. Known next steps include GTFS service calendars/realtime, richer stop access, API security, deployment packaging, preprocessing, caching, and scale-oriented performance work.
+PathCraft is a prototype routing engine. Phase 0.1–0.4 library, HTTP, timetable-routing, and measured scale-foundation deliverables work, but production hardening remains. Degree-two contraction is not full contraction hierarchies; base graph remains resident, and loading/hot reload is not concurrent. Known next steps include GTFS service calendars/realtime, richer stop access, city-scale profiling budgets, API security, and deployment packaging.
 
 ## Contributing
 

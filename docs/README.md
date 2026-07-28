@@ -5,6 +5,7 @@
 
 ## Project Status
 - [Roadmap](ROADMAP.md): Current status and future plans.
+- [Performance](performance.md): Reproducible contraction, concurrency, and memory-profile checks.
 - [Repository audit](REPO_OVERVIEW_AUDIT.md): Verified code/doc/progress review.
 
 ## AI Context

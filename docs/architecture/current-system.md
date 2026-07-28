@@ -6,11 +6,12 @@ Inventory of `internal/*` packages — these are stable engines that the new
 
 ## `internal/graph`
 
-- `Graph` (Nodes, Edges, nearestNodeIndex)
-- `NodeID int64`, `Node{Lat,Lon}`, `Edge{To,Cost,DistanceM}`
+- `Graph` (Nodes, Edges, nearestNodeIndex, optional ContractionIndex)
+- `NodeID int64`, `Node{Lat,Lon}`, metadata-bearing directed edges
 - `NewGraph`, `AddNode`, `AddEdge`, `AddBidirectionalEdge`
 - `Neighbors`, `HasNode`, `NearestNode`
-- `Save` / `LoadGraph` (gob-encoded cache)
+- deterministic directed degree-two chains with arbitrary-endpoint query arcs
+- source-hashed/versioned cache header + gob payload, atomically replaced by `Save`
 - Plays well with `pkg/plugins.NearestNodeIndex` via `SetNearestNodeIndex`.
 
 ## `internal/osm`
@@ -30,6 +31,7 @@ Inventory of `internal/*` packages — these are stable engines that the new
 - `AStar(g *graph.Graph, source, target NodeID, h geo.Heuristic) (Path, error)`
 - `Path{Nodes, TotalCost, TotalDistance, NodesCount}`
 - Heap-based open set. Operates on `*graph.Graph` directly.
+- Uses contraction chains when published, then expands every original path node; falls back to base adjacency after graph mutation.
 
 ## `internal/routing/raptor`
 
@@ -57,12 +59,13 @@ Inventory of `internal/*` packages — these are stable engines that the new
 
 ## `internal/cli`
 
-- Subcommands: `parse`, `route`, `transit`, `journey`, `serve`, plus the new `plugins` and `pipeline`.
-- `loadEngine(file)` handles cache fast-path.
+- Subcommands: `parse`, `preprocess`, `route`, `transit`, `journey`, `serve`, `plugins`, and `pipeline`.
+- `loadEngine(file)` uses cache only when source SHA-256 and cache/preprocessing versions match.
 
 ## `pkg/pathcraft/engine`
 
 - High-level `Engine` API (predates the new `pkg/pathcraft/core` layer): `LoadOSM`, `LoadGTFSDir`, `Route`, `RouteByCoordinates`, `TransitRoute`, `MultimodalRoute`, `RouteGeoJSON*`.
+- `LoadOSM` publishes parse → graph → contraction preprocessing as one immutable read-mostly graph; loaded engines support concurrent queries, not concurrent reload/mutation.
 - `NewWithConfig` validates default street mode, speed, and per-highway penalty multipliers; `New` preserves walking defaults.
 - The new `pipeline.go` (`engine.Run`) lives in the same package and drives the registry-backed loader→algorithm→exporter pipeline.
 
