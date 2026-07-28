@@ -39,6 +39,7 @@ type Graph struct {
 	CacheVersion int
 	Nodes        map[NodeID]Node
 	Edges        map[NodeID][]Edge
+	Contraction  *ContractionIndex
 
 	nearestNodeIndex plugins.NearestNodeIndex
 }
@@ -53,6 +54,7 @@ func NewGraph() *Graph {
 }
 
 func (g *Graph) AddNode(id NodeID, lat, lon float64) {
+	g.Contraction = nil
 	g.Nodes[id] = Node{ID: id, Lat: lat, Lon: lon}
 	if g.nearestNodeIndex != nil {
 		g.nearestNodeIndex.Insert(toIndexedNode(g.Nodes[id]))
@@ -73,6 +75,7 @@ func (g *Graph) AddEdgeWithMeta(from, to NodeID, distanceM float64, highway, nam
 }
 
 func (g *Graph) AddRestrictedEdgeWithMeta(from, to NodeID, distanceM float64, highway, name string, restrictedModes ...RestrictedMode) {
+	g.Contraction = nil
 	g.Edges[from] = append(g.Edges[from], Edge{
 		To:              to,
 		DistanceM:       distanceM,
