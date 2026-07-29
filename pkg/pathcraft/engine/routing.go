@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/danielscoffee/pathcraft/internal/graph"
 	"github.com/danielscoffee/pathcraft/internal/mobility"
 	"github.com/danielscoffee/pathcraft/internal/routing/astar"
+	"github.com/danielscoffee/pathcraft/internal/routing/street"
 	"github.com/danielscoffee/pathcraft/pkg/plugins"
 )
 
@@ -32,35 +34,43 @@ func (e *Engine) Route(req RouteRequest) (*RouteResult, error) {
 }
 
 func (e *Engine) RouteByCoordinates(req CoordinateRouteRequest) (*CoordinateRouteResult, error) {
-	if e.graph == nil {
-		return nil, fmt.Errorf("graph not loaded")
-	}
-	fromNodeID, fromSnapDist, err := e.NearestNode(req.FromLat, req.FromLon)
+	return e.RouteByCoordinatesContext(context.Background(), req)
+}
+
+func (e *Engine) RouteByCoordinatesContext(ctx context.Context, req CoordinateRouteRequest) (*CoordinateRouteResult, error) {
+	result, err := street.Route(ctx, e.graph, street.Request{
+		FromLat:            req.FromLat,
+		FromLon:            req.FromLon,
+		ToLat:              req.ToLat,
+		ToLon:              req.ToLon,
+		Profile:            e.routeProfile(req.Profile),
+		IncludeCoordinates: req.IncludeCoordinates,
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	toNodeID, toSnapDist, err := e.NearestNode(req.ToLat, req.ToLon)
-	if err != nil {
-		return nil, err
+	var coordinates []Coordinate
+	if len(result.Coordinates) > 0 {
+		coordinates = make([]Coordinate, len(result.Coordinates))
+		for index, coordinate := range result.Coordinates {
+			coordinates[index] = Coordinate{Lat: coordinate.Lat, Lon: coordinate.Lon}
+		}
 	}
-
-	route, err := e.routeBetweenNodes(graph.NodeID(fromNodeID), graph.NodeID(toNodeID), req.Profile, req.IncludeCoordinates)
-	if err != nil {
-		return nil, err
-	}
-
 	if req.IncludeCoordinates && req.IncludeInputInShape {
-		route.Coordinates = append([]Coordinate{{Lat: req.FromLat, Lon: req.FromLon}}, route.Coordinates...)
-		route.Coordinates = append(route.Coordinates, Coordinate{Lat: req.ToLat, Lon: req.ToLon})
+		coordinates = append([]Coordinate{{Lat: req.FromLat, Lon: req.FromLon}}, coordinates...)
+		coordinates = append(coordinates, Coordinate{Lat: req.ToLat, Lon: req.ToLon})
 	}
-
 	return &CoordinateRouteResult{
-		RouteResult:       *route,
-		FromNodeID:        fromNodeID,
-		ToNodeID:          toNodeID,
-		FromSnapDistanceM: fromSnapDist,
-		ToSnapDistanceM:   toSnapDist,
+		RouteResult: RouteResult{
+			Nodes:       result.Nodes,
+			Coordinates: coordinates,
+			Distance:    result.Distance,
+			Duration:    result.Duration,
+		},
+		FromNodeID:        result.FromNodeID,
+		ToNodeID:          result.ToNodeID,
+		FromSnapDistanceM: result.FromSnapDistanceM,
+		ToSnapDistanceM:   result.ToSnapDistanceM,
 	}, nil
 }
 
