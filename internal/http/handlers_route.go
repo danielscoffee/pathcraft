@@ -32,6 +32,20 @@ func (s *Server) handleNearest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if host, ok := s.modeHost.(nearestPositionHost); ok {
+		id, snapLat, snapLon, dist, err := host.NearestPosition(r.Context(), lat, lon)
+		if err != nil {
+			writeModeHostError(w, s.modeHost, err, http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"id": %d, "distance": %f, "lat": %f, "lon": %f}`, id, dist, snapLat, snapLon)
+		return
+	}
+	if s.engine == nil {
+		http.Error(w, "graph not loaded", http.StatusServiceUnavailable)
+		return
+	}
 	id, dist, err := s.engine.NearestNode(lat, lon)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -78,9 +92,9 @@ func (s *Server) handleRoute(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	result, err := mode.Route(r.Context(), s.engine, core.ModeRequest{From: from, To: to})
+	result, err := mode.Route(r.Context(), s.modeHost, core.ModeRequest{From: from, To: to})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		writeModeHostError(w, s.modeHost, err, http.StatusNotFound)
 		return
 	}
 
@@ -97,21 +111,21 @@ func (s *Server) legacyRoutePositions(r *http.Request) (core.Position, core.Posi
 	toLatStr := query.Get("to_lat")
 	toLonStr := query.Get("to_lon")
 	if fromLatStr != "" || fromLonStr != "" || toLatStr != "" || toLonStr != "" {
-		fromLat, err := strconv.ParseFloat(fromLatStr, 64)
+		fromLat, err := parseGeographicCoordinate("from_lat", fromLatStr, -90, 90)
 		if err != nil {
-			return nil, nil, fmt.Errorf("invalid from_lat parameter")
+			return nil, nil, err
 		}
-		fromLon, err := strconv.ParseFloat(fromLonStr, 64)
+		fromLon, err := parseGeographicCoordinate("from_lon", fromLonStr, -180, 180)
 		if err != nil {
-			return nil, nil, fmt.Errorf("invalid from_lon parameter")
+			return nil, nil, err
 		}
-		toLat, err := strconv.ParseFloat(toLatStr, 64)
+		toLat, err := parseGeographicCoordinate("to_lat", toLatStr, -90, 90)
 		if err != nil {
-			return nil, nil, fmt.Errorf("invalid to_lat parameter")
+			return nil, nil, err
 		}
-		toLon, err := strconv.ParseFloat(toLonStr, 64)
+		toLon, err := parseGeographicCoordinate("to_lon", toLonStr, -180, 180)
 		if err != nil {
-			return nil, nil, fmt.Errorf("invalid to_lon parameter")
+			return nil, nil, err
 		}
 		return core.Position{fromLon, fromLat}, core.Position{toLon, toLat}, nil
 	}
@@ -123,6 +137,9 @@ func (s *Server) legacyRoutePositions(r *http.Request) (core.Position, core.Posi
 	toID, err := strconv.ParseInt(query.Get("to"), 10, 64)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid to parameter")
+	}
+	if s.engine == nil {
+		return nil, nil, fmt.Errorf("graph not loaded")
 	}
 	g := s.engine.GetGraph()
 	if g == nil {

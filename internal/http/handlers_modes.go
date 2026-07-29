@@ -56,13 +56,13 @@ func (s *Server) handleModeRoute(w http.ResponseWriter, r *http.Request) {
 		options[key] = values[0]
 	}
 
-	result, err := mode.Route(r.Context(), s.engine, core.ModeRequest{
+	result, err := mode.Route(r.Context(), s.modeHost, core.ModeRequest{
 		From:    from,
 		To:      to,
 		Options: options,
 	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		writeModeHostError(w, s.modeHost, err, http.StatusUnprocessableEntity)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

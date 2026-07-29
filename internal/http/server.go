@@ -13,10 +13,27 @@ import (
 )
 
 func NewServer(e *engine.Engine, allowedOrigins ...string) *Server {
-	return NewServerWithRegistry(e, plugins.Default, allowedOrigins...)
+	return newServer(e, e, plugins.Default, allowedOrigins...)
 }
 
 func NewServerWithRegistry(e *engine.Engine, registry *plugins.Registry, allowedOrigins ...string) *Server {
+	return newServer(e, e, registry, allowedOrigins...)
+}
+
+func NewServerWithHost(modeHost any, allowedOrigins ...string) *Server {
+	return NewServerWithHostAndRegistry(modeHost, plugins.Default, allowedOrigins...)
+}
+
+func NewServerWithHostAndRegistry(modeHost any, registry *plugins.Registry, allowedOrigins ...string) *Server {
+	legacy, _ := modeHost.(*engine.Engine)
+	return newServer(legacy, modeHost, registry, allowedOrigins...)
+}
+
+func NewServerWithEngineAndHost(e *engine.Engine, modeHost any, registry *plugins.Registry, allowedOrigins ...string) *Server {
+	return newServer(e, modeHost, registry, allowedOrigins...)
+}
+
+func newServer(e *engine.Engine, modeHost any, registry *plugins.Registry, allowedOrigins ...string) *Server {
 	if registry == nil {
 		registry = plugins.Default
 	}
@@ -26,7 +43,7 @@ func NewServerWithRegistry(e *engine.Engine, registry *plugins.Registry, allowed
 			origins[origin] = struct{}{}
 		}
 	}
-	return &Server{engine: e, registry: registry, allowedOrigins: origins}
+	return &Server{engine: e, modeHost: modeHost, registry: registry, allowedOrigins: origins}
 }
 
 func validOrigin(origin string) bool {
@@ -50,6 +67,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/transit/trips", s.handleTransitTrips)
 	mux.HandleFunc("/transit/trip", s.handleTransitTrip)
 	mux.HandleFunc("/nearest", s.handleNearest)
+	mux.HandleFunc("/graph/chunks/{generation}/{z}/{x}/{y}", s.handleGraphChunk)
 	mux.HandleFunc("/graph", s.handleGraph)
 	mux.HandleFunc("/nodes", s.handleNodes)
 	mux.HandleFunc("/config", s.handleConfig)
@@ -138,9 +156,16 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 }
 
 func RunServer(e *engine.Engine, addr string, allowedOrigins ...string) {
-	s := NewServer(e, allowedOrigins...)
+	runServer(NewServer(e, allowedOrigins...), addr)
+}
+
+func RunServerWithHost(modeHost any, addr string, allowedOrigins ...string) {
+	runServer(NewServerWithHost(modeHost, allowedOrigins...), addr)
+}
+
+func runServer(server *Server, addr string) {
 	logging.L().Info("server starting", zap.String("addr", addr))
-	if err := newHTTPServer(addr, s.Handler()).ListenAndServe(); err != nil {
+	if err := newHTTPServer(addr, server.Handler()).ListenAndServe(); err != nil {
 		logging.L().Fatal("server stopped", zap.String("addr", addr), zap.Error(err))
 	}
 }

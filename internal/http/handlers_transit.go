@@ -10,6 +10,10 @@ import (
 )
 
 func (s *Server) handleTransitStops(w http.ResponseWriter, r *http.Request) {
+	if s.engine == nil {
+		http.Error(w, "GTFS not loaded", http.StatusServiceUnavailable)
+		return
+	}
 	stops := s.engine.GTFSStops()
 	if len(stops) == 0 {
 		http.Error(w, "GTFS stops not loaded", http.StatusServiceUnavailable)
@@ -55,6 +59,10 @@ func (s *Server) handleTransitStops(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTransitTrips(w http.ResponseWriter, r *http.Request) {
+	if s.engine == nil {
+		http.Error(w, "GTFS not loaded", http.StatusServiceUnavailable)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(map[string][]string{
 		"trip_ids": s.engine.GTFSTripIDs(),
@@ -64,6 +72,10 @@ func (s *Server) handleTransitTrips(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleTransitTrip(w http.ResponseWriter, r *http.Request) {
+	if s.engine == nil {
+		http.Error(w, "GTFS not loaded", http.StatusServiceUnavailable)
+		return
+	}
 	tripID := r.URL.Query().Get("trip_id")
 	stopTimes, err := s.engine.GTFSTripStopTimes(tripID)
 	if err != nil {
@@ -112,6 +124,10 @@ func (s *Server) handleTransitTrip(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleJourney(w http.ResponseWriter, r *http.Request) {
+	if s.engine == nil {
+		http.Error(w, "GTFS not loaded", http.StatusServiceUnavailable)
+		return
+	}
 	fromLatStr := r.URL.Query().Get("from_lat")
 	fromLonStr := r.URL.Query().Get("from_lon")
 	toLatStr := r.URL.Query().Get("to_lat")

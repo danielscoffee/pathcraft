@@ -10,6 +10,7 @@ import (
 
 type Server struct {
 	engine         *engine.Engine
+	modeHost       any
 	registry       *plugins.Registry
 	allowedOrigins map[string]struct{}
 }
