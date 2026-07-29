@@ -113,6 +113,24 @@ func TestScanWaysRejectsRepeatedReferenceFields(t *testing.T) {
 	}
 }
 
+func TestScanAcceptsPrimitiveGroupBeforeStringTable(t *testing.T) {
+	stringTable := testPBFBytesField(nil, 1, nil)
+	way := testPBFVarintField(nil, 1, 1)
+	way = testPBFBytesField(way, 8, testPBFPackedSInt64(1, 1))
+	group := testPBFBytesField(nil, 3, way)
+	block := testPBFBytesField(nil, 2, group)
+	block = testPBFBytesField(block, 1, stringTable)
+	path := writeTestPBF(t, testPBFFileBlock("OSMData", block))
+
+	count := 0
+	if err := ScanWays(context.Background(), path, func(Way) error { count++; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("way count = %d, want one", count)
+	}
+}
+
 func TestScanAcceptsBoundedZlibPBF(t *testing.T) {
 	stringTable := testPBFBytesField(nil, 1, nil)
 	way := testPBFVarintField(nil, 1, 1)

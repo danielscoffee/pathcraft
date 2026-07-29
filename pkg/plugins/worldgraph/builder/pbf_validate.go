@@ -181,23 +181,18 @@ func validatePBFPrimitiveBlock(data []byte, maxWayNodes int) error {
 	stringCount := -1
 	stringTableSeen := false
 	if err := eachPBFField(data, func(number protowire.Number, fieldType protowire.Type, bytesValue []byte, _ uint64) error {
-		switch number {
-		case 1:
-			if fieldType != protowire.BytesType || stringTableSeen {
-				return fmt.Errorf("invalid or repeated PBF string table")
-			}
-			stringTableSeen = true
-			count, err := validatePBFStringTable(bytesValue)
-			if err != nil {
-				return err
-			}
-			stringCount = count
-		case 2:
-			if fieldType != protowire.BytesType || !stringTableSeen {
-				return fmt.Errorf("invalid PBF primitive group")
-			}
-			return validatePBFPrimitiveGroup(bytesValue, stringCount, maxWayNodes)
+		if number != 1 {
+			return nil
 		}
+		if fieldType != protowire.BytesType || stringTableSeen {
+			return fmt.Errorf("invalid or repeated PBF string table")
+		}
+		stringTableSeen = true
+		count, err := validatePBFStringTable(bytesValue)
+		if err != nil {
+			return err
+		}
+		stringCount = count
 		return nil
 	}); err != nil {
 		return err
@@ -205,7 +200,15 @@ func validatePBFPrimitiveBlock(data []byte, maxWayNodes int) error {
 	if stringCount < 1 {
 		return fmt.Errorf("PBF primitive block has no string table")
 	}
-	return nil
+	return eachPBFField(data, func(number protowire.Number, fieldType protowire.Type, bytesValue []byte, _ uint64) error {
+		if number != 2 {
+			return nil
+		}
+		if fieldType != protowire.BytesType {
+			return fmt.Errorf("invalid PBF primitive group")
+		}
+		return validatePBFPrimitiveGroup(bytesValue, stringCount, maxWayNodes)
+	})
 }
 
 func validatePBFStringTable(data []byte) (int, error) {
