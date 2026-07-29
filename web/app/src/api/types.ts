@@ -2,11 +2,19 @@
 // and pkg/pathcraft/engine/types.go). Keep field names in sync with the
 // `json:` tags on the Go side.
 
+export interface GraphChunkConfig {
+  generation: string
+  zoom: number
+  min_render_zoom: number
+  url: string
+}
+
 export interface MapConfig {
   center_lat: number
   center_lon: number
   zoom: number
   tile_url: string
+  graph_chunks?: GraphChunkConfig
 }
 
 export interface ModeOption {

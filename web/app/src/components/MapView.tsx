@@ -135,6 +135,7 @@ export default function MapView({
 
       <StreetGraphLayer
         enabled={showStreets}
+        chunks={config.graph_chunks}
         onStatus={onStatus}
         onStreetTypes={onStreetTypes}
       />

@@ -1,4 +1,12 @@
-import type { MapConfig, ModeRouteResult, RouteMode, SnapResult, TripDetail } from './types'
+import { graphChunkURL } from '../lib/graphChunks.ts'
+import type {
+  GraphChunkConfig,
+  MapConfig,
+  ModeRouteResult,
+  RouteMode,
+  SnapResult,
+  TripDetail,
+} from './types'
 
 async function getJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, { signal })
@@ -38,6 +46,9 @@ export const fetchModeRoute = (
 }
 
 export const fetchStreetGraph = () => getJSON<GeoJSON.FeatureCollection>('/graph')
+
+export const fetchGraphChunk = (config: GraphChunkConfig, id: string, signal: AbortSignal) =>
+  getJSON<GeoJSON.FeatureCollection>(graphChunkURL(config, id), signal)
 
 export const fetchNodes = (bbox: string, limit: number, minDegree: number, signal: AbortSignal) =>
   getJSON<GeoJSON.FeatureCollection>(
