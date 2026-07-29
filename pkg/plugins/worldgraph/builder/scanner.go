@@ -34,6 +34,16 @@ func ScanNodes(ctx context.Context, path string, consume func([]worldgraph.Node)
 	if consume == nil {
 		return fmt.Errorf("node consumer is nil")
 	}
+	if err := validatePBF(ctx, path, DefaultMaxWayNodes); err != nil {
+		return err
+	}
+	return scanNodesUnchecked(ctx, path, consume)
+}
+
+func scanNodesUnchecked(ctx context.Context, path string, consume func([]worldgraph.Node) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -91,6 +101,16 @@ func scanWays(ctx context.Context, path string, maxWayNodes int, consume func(Wa
 	}
 	if consume == nil {
 		return fmt.Errorf("way consumer is nil")
+	}
+	if err := validatePBF(ctx, path, maxWayNodes); err != nil {
+		return err
+	}
+	return scanWaysUnchecked(ctx, path, maxWayNodes, consume)
+}
+
+func scanWaysUnchecked(ctx context.Context, path string, maxWayNodes int, consume func(Way) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 	file, err := os.Open(path)
 	if err != nil {

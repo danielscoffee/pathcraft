@@ -260,6 +260,57 @@ func TestPublishGenerationSyncsDirectoriesAroundManifestRename(t *testing.T) {
 	}
 }
 
+func TestPublishGenerationRollsBackAfterRootSyncFailure(t *testing.T) {
+	dir := t.TempDir()
+	store, err := OpenStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunks := threeNeighborChunks(t)
+	first := testManifest("generation-1", sortedChunkTiles(chunks))
+	if err := store.PublishGeneration(first, chunks); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(filepath.Join(dir, manifestFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	second := testManifest("generation-2", sortedChunkTiles(chunks))
+	syncErr := errors.New("forced root sync failure")
+	failed := false
+	ops := publishFileOps{
+		renameManifest: os.Rename,
+		syncDirectory: func(path string) error {
+			if path == dir && !failed {
+				failed = true
+				return syncErr
+			}
+			return syncDirectory(path)
+		},
+	}
+	if err := store.publishGenerationWithOps(second, chunks, ops); !errors.Is(err, syncErr) {
+		t.Fatalf("publishGenerationWithOps() error = %v, want %v", err, syncErr)
+	}
+	after, err := os.ReadFile(filepath.Join(dir, manifestFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, before) {
+		t.Fatal("root sync failure changed current manifest")
+	}
+	current, err := store.Manifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Generation != first.Generation {
+		t.Fatalf("current generation = %q, want %q", current.Generation, first.Generation)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "generations", second.Generation)); !os.IsNotExist(err) {
+		t.Fatalf("failed generation remains: %v", err)
+	}
+}
+
 func TestPublishGenerationPreservesPreviousManifestOnFailure(t *testing.T) {
 	dir := t.TempDir()
 	store, err := OpenStore(dir)

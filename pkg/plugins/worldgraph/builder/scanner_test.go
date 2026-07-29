@@ -3,16 +3,19 @@ package builder
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/danielscoffee/pathcraft/pkg/plugins/worldgraph"
 	paul "github.com/paulmach/osm"
+	"google.golang.org/protobuf/encoding/protowire"
 )
 
 const seamFixtureSHA256 = "06db561d19ca5a96873b3a820ab2ff61cd8fe503f8af74a3bde899423aca32ba"
@@ -77,6 +80,34 @@ func TestScanRejectsMalformedPBF(t *testing.T) {
 	}
 }
 
+func TestScanWaysRejectsOutOfRangeStringTableIndex(t *testing.T) {
+	stringTable := testPBFBytesField(nil, 1, nil)
+	way := testPBFVarintField(nil, 1, 1)
+	way = testPBFBytesField(way, 2, testPBFPackedVarints(9))
+	way = testPBFBytesField(way, 3, testPBFPackedVarints(0))
+	way = testPBFBytesField(way, 8, testPBFPackedSInt64(1, 1))
+	group := testPBFBytesField(nil, 3, way)
+	block := testPBFBytesField(nil, 1, stringTable)
+	block = testPBFBytesField(block, 2, group)
+	path := writeTestPBF(t, testPBFFileBlock("OSMData", block))
+
+	if err := ScanWays(context.Background(), path, func(Way) error { return nil }); err == nil {
+		t.Fatal("ScanWays() error = nil, want invalid string-table index rejection")
+	}
+}
+
+func TestScanRejectsOversizedUncompressedBlock(t *testing.T) {
+	const declaredSize = 65 << 20
+	blob := testPBFVarintField(nil, 2, declaredSize)
+	blob = testPBFBytesField(blob, 3, []byte{0})
+	path := writeTestPBF(t, testPBFRawFileBlock("OSMData", blob))
+
+	err := ScanWays(context.Background(), path, func(Way) error { return nil })
+	if err == nil || !strings.Contains(err.Error(), "uncompressed PBF block") {
+		t.Fatalf("ScanWays() error = %v, want uncompressed block limit", err)
+	}
+}
+
 func TestScanHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -110,4 +141,57 @@ func TestScanWaysRejectsExcessiveNodeCount(t *testing.T) {
 
 func seamFixturePath() string {
 	return filepath.Join("testdata", "seam.osm.pbf")
+}
+
+func writeTestPBF(t *testing.T, dataBlock []byte) string {
+	t.Helper()
+	header := testPBFBytesField(nil, 4, []byte("OsmSchema-V0.6"))
+	header = testPBFBytesField(header, 4, []byte("DenseNodes"))
+	data := append(testPBFFileBlock("OSMHeader", header), dataBlock...)
+	path := filepath.Join(t.TempDir(), "test.osm.pbf")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func testPBFFileBlock(kind string, payload []byte) []byte {
+	blob := testPBFBytesField(nil, 1, payload)
+	blob = testPBFVarintField(blob, 2, uint64(len(payload)))
+	return testPBFRawFileBlock(kind, blob)
+}
+
+func testPBFRawFileBlock(kind string, blob []byte) []byte {
+	header := testPBFBytesField(nil, 1, []byte(kind))
+	header = testPBFVarintField(header, 3, uint64(len(blob)))
+	data := make([]byte, 4)
+	binary.BigEndian.PutUint32(data, uint32(len(header)))
+	data = append(data, header...)
+	return append(data, blob...)
+}
+
+func testPBFBytesField(data []byte, number protowire.Number, value []byte) []byte {
+	data = protowire.AppendTag(data, number, protowire.BytesType)
+	return protowire.AppendBytes(data, value)
+}
+
+func testPBFVarintField(data []byte, number protowire.Number, value uint64) []byte {
+	data = protowire.AppendTag(data, number, protowire.VarintType)
+	return protowire.AppendVarint(data, value)
+}
+
+func testPBFPackedVarints(values ...uint64) []byte {
+	var data []byte
+	for _, value := range values {
+		data = protowire.AppendVarint(data, value)
+	}
+	return data
+}
+
+func testPBFPackedSInt64(values ...int64) []byte {
+	var data []byte
+	for _, value := range values {
+		data = protowire.AppendVarint(data, protowire.EncodeZigZag(value))
+	}
+	return data
 }

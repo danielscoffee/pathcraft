@@ -34,8 +34,8 @@ type scanFunctions struct {
 }
 
 var defaultScanFunctions = scanFunctions{
-	nodes: ScanNodes,
-	ways:  scanWays,
+	nodes: scanNodesUnchecked,
+	ways:  scanWaysUnchecked,
 }
 
 func Build(ctx context.Context, options Options) (worldgraph.Manifest, error) {
@@ -66,6 +66,9 @@ func build(ctx context.Context, options Options, scans scanFunctions) (worldgrap
 	}
 	if hasPrevious && previous.Zoom != options.Zoom {
 		return worldgraph.Manifest{}, fmt.Errorf("store zoom %d does not match build zoom %d", previous.Zoom, options.Zoom)
+	}
+	if err := validatePBF(ctx, options.PBFPath, options.MaxWayNodes); err != nil {
+		return worldgraph.Manifest{}, fmt.Errorf("validate PBF: %w", err)
 	}
 
 	sourceHash, err := fingerprintFile(ctx, options.PBFPath)

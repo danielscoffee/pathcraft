@@ -215,6 +215,14 @@ func (s *Store) publishGenerationFromWithOps(manifest Manifest, provide func(Til
 		return err
 	}
 	defer func() { _ = os.Remove(manifestTemp) }()
+	rollbackTemp := ""
+	if s.manifest != nil {
+		rollbackTemp, err = writeManifestTemp(s.root, *s.manifest)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = os.Remove(rollbackTemp) }()
+	}
 
 	if err := os.Rename(stage, target); err != nil {
 		return err
@@ -222,11 +230,19 @@ func (s *Store) publishGenerationFromWithOps(manifest Manifest, provide func(Til
 	if err := ops.syncDirectory(generations); err != nil {
 		return errors.Join(err, removePublishedGeneration(target, generations, ops.syncDirectory))
 	}
-	if err := ops.renameManifest(manifestTemp, filepath.Join(s.root, manifestFilename)); err != nil {
+	manifestPath := filepath.Join(s.root, manifestFilename)
+	if err := ops.renameManifest(manifestTemp, manifestPath); err != nil {
 		return errors.Join(err, removePublishedGeneration(target, generations, ops.syncDirectory))
 	}
+	if err := ops.syncDirectory(s.root); err != nil {
+		restored, rollbackErr := rollbackPublication(manifestPath, rollbackTemp, target, generations, s.root, ops)
+		if !restored {
+			s.manifest = &prepared
+		}
+		return errors.Join(err, rollbackErr)
+	}
 	s.manifest = &prepared
-	return ops.syncDirectory(s.root)
+	return nil
 }
 
 func syncTreeDirectories(root string, sync func(string) error) error {
@@ -265,6 +281,21 @@ func syncDirectory(path string) error {
 
 func removePublishedGeneration(target, generations string, sync func(string) error) error {
 	return errors.Join(os.RemoveAll(target), sync(generations))
+}
+
+func rollbackPublication(manifestPath, rollbackManifest, target, generations, root string, ops publishFileOps) (bool, error) {
+	var restoreErr error
+	if rollbackManifest == "" {
+		restoreErr = os.Remove(manifestPath)
+	} else {
+		restoreErr = ops.renameManifest(rollbackManifest, manifestPath)
+	}
+	if restoreErr != nil {
+		return false, restoreErr
+	}
+	rootSyncErr := ops.syncDirectory(root)
+	cleanupErr := removePublishedGeneration(target, generations, ops.syncDirectory)
+	return true, errors.Join(rootSyncErr, cleanupErr)
 }
 
 func writeChunkFile(path string, chunk Chunk) error {
