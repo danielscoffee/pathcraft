@@ -108,6 +108,7 @@ func CmdPipeline(args []string) error {
 	if err != nil {
 		return err
 	}
+	defer res.Close()
 
 	fmt.Fprintf(os.Stderr, "route ok: nodes=%d cost=%.2f duration=%dms visited=%d\n",
 		len(res.Result.Path), res.Result.Cost, res.Result.DurationMS, res.Result.VisitedNodes)

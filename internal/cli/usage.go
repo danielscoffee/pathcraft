@@ -11,6 +11,7 @@ func PrintUsage() {
 	Commands:
 	parse      Parse OSM file and show statistics
 	preprocess Build versioned routing cache from OSM
+	chunks     Build versioned world graph chunks from OSM PBF
 	route      Find route with a registered mode and plugin-defined positions
 	transit  Find transit route using RAPTOR algorithm
 	journey  Find a walk + transit journey from coordinates
@@ -24,7 +25,9 @@ func PrintUsage() {
 	Examples:
 	pathcraft parse --file examples/recife.osm
 	pathcraft preprocess --file examples/recife.osm
+	pathcraft chunks build --pbf region.osm.pbf --store world --region demo
 	pathcraft route --file examples/recife.osm --mode walk --from 1 --to 100
+	pathcraft route --chunks world --mode walk --from-position -34.9,-8.1 --to-position -34.8,-8.0
 	pathcraft route --file examples/recife.osm --mode car --from-lat -8.06266 --from-lon -34.87800 --to-lat -8.12903 --to-lon -34.90058 --coords
 	pathcraft transit --gtfs examples/recife_gtfs --from 452 --to 5931 --time 05:00
 	pathcraft journey --file examples/recife.osm --gtfs examples/recife_gtfs --from-lat -8.12903 --from-lon -34.90058 --to-lat -8.06266 --to-lon -34.87798 --time 05:00

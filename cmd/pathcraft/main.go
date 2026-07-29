@@ -19,6 +19,7 @@ import (
 	_ "github.com/danielscoffee/pathcraft/pkg/plugins/osm"
 	_ "github.com/danielscoffee/pathcraft/pkg/plugins/raptor"
 	_ "github.com/danielscoffee/pathcraft/pkg/plugins/walk"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/worldgraph"
 	_ "github.com/danielscoffee/pathcraft/pkg/plugins/zaplogger"
 )
 
@@ -48,6 +49,8 @@ func run() error {
 		return cli.CmdPreprocess(os.Args[2:])
 	case "route":
 		return cli.CmdRoute(os.Args[2:])
+	case "chunks":
+		return cli.CmdChunks(os.Args[2:])
 	case "transit":
 		return cli.CmdTransit(os.Args[2:])
 	case "journey":

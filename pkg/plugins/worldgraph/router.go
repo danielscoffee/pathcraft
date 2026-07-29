@@ -7,6 +7,7 @@ import (
 	"math"
 	"reflect"
 	"sort"
+	"sync"
 	"sync/atomic"
 
 	"github.com/danielscoffee/pathcraft/internal/geo"
@@ -33,12 +34,15 @@ type RouterOptions struct {
 }
 
 type Router struct {
-	store    *Store
-	manifest Manifest
-	covered  map[TileID]struct{}
-	cache    *chunkCache
-	options  RouterOptions
-	closed   atomic.Bool
+	store      *Store
+	manifest   Manifest
+	covered    map[TileID]struct{}
+	cache      *chunkCache
+	options    RouterOptions
+	graphMu    sync.Mutex
+	nodeOwners map[int64]TileID
+	scanIndex  int
+	closed     atomic.Bool
 }
 
 func OpenRouter(storePath string, options RouterOptions) (*Router, error) {
@@ -69,6 +73,7 @@ func OpenRouter(storePath string, options RouterOptions) (*Router, error) {
 	return &Router{
 		store: store, manifest: manifest, covered: covered,
 		cache: newChunkCache(options.CacheBytes), options: options,
+		nodeOwners: make(map[int64]TileID),
 	}, nil
 }
 

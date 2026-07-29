@@ -13,6 +13,7 @@ import (
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
 	"github.com/danielscoffee/pathcraft/pkg/plugins"
+	"github.com/danielscoffee/pathcraft/pkg/plugins/worldgraph"
 )
 
 func normalizeClockTime(value string) string {
@@ -24,8 +25,9 @@ func normalizeClockTime(value string) string {
 }
 
 func CmdRoute(args []string) error {
-	fs := flag.NewFlagSet("route", flag.ExitOnError)
+	fs := flag.NewFlagSet("route", flag.ContinueOnError)
 	file := fs.String("file", "", "OSM file when the selected plugin needs a street graph")
+	chunks := fs.String("chunks", "", "World graph chunk store")
 	from := fs.Int64("from", 0, "Source node ID")
 	to := fs.Int64("to", 0, "Target node ID")
 	fromLat := fs.Float64("from-lat", 0, "Source latitude")
@@ -42,22 +44,52 @@ func CmdRoute(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("unexpected arguments: %v", fs.Args())
+	}
+	setFlags := make(map[string]bool)
+	fs.Visit(func(value *flag.Flag) { setFlags[value.Name] = true })
+	coordinateFlags := []string{"from-lat", "from-lon", "to-lat", "to-lon"}
+	coordinatesSet, allCoordinatesSet := false, true
+	for _, name := range coordinateFlags {
+		coordinatesSet = coordinatesSet || setFlags[name]
+		allCoordinatesSet = allCoordinatesSet && setFlags[name]
+	}
+	if coordinatesSet && !allCoordinatesSet {
+		return fmt.Errorf("--from-lat, --from-lon, --to-lat, and --to-lon are required together")
+	}
 
 	modeID := strings.ToLower(strings.TrimSpace(*modeName))
 	mode, ok := plugins.Default.Mode(modeID)
 	if !ok {
 		return fmt.Errorf("routing mode %q not registered", modeID)
 	}
+	if streetModeRequiresHost(modeID) {
+		if (*file == "") == (*chunks == "") {
+			return fmt.Errorf("mode %s requires exactly one of --file or --chunks", modeID)
+		}
+	} else if *file != "" || *chunks != "" {
+		return fmt.Errorf("mode %s does not use --file or --chunks", modeID)
+	}
 
-	router := engine.New()
-	var err error
+	var legacyRouter *engine.Engine
+	var host any
 	if *file != "" {
-		router, err = loadEngine(*file)
+		var err error
+		legacyRouter, err = loadEngine(*file)
 		if err != nil {
 			return err
 		}
+		host = legacyRouter
+	} else if *chunks != "" {
+		chunkRouter, err := worldgraph.OpenRouter(*chunks, worldgraph.RouterOptions{})
+		if err != nil {
+			return err
+		}
+		defer chunkRouter.Close()
+		host = chunkRouter
 	}
-	fromPoint, toPoint, err := cliRoutePositions(router, *fromPosition, *toPosition, *from, *to, *fromLon, *fromLat, *toLon, *toLat)
+	fromPoint, toPoint, err := cliRoutePositions(legacyRouter, *fromPosition, *toPosition, *from, *to, coordinatesSet, *fromLon, *fromLat, *toLon, *toLat)
 	if err != nil {
 		return err
 	}
@@ -70,10 +102,8 @@ func CmdRoute(args []string) error {
 	}
 
 	started := time.Now()
-	result, err := mode.Route(context.Background(), router, core.ModeRequest{
-		From:    fromPoint,
-		To:      toPoint,
-		Options: options,
+	result, err := mode.Route(context.Background(), host, core.ModeRequest{
+		From: fromPoint, To: toPoint, Options: options,
 	})
 	if err != nil {
 		return fmt.Errorf("routing: %w", err)
@@ -105,7 +135,11 @@ func CmdRoute(args []string) error {
 	return nil
 }
 
-func cliRoutePositions(router *engine.Engine, fromPosition, toPosition string, fromID, toID int64, fromLon, fromLat, toLon, toLat float64) (core.Position, core.Position, error) {
+func streetModeRequiresHost(modeID string) bool {
+	return modeID == "walk" || modeID == "bike" || modeID == "car"
+}
+
+func cliRoutePositions(router *engine.Engine, fromPosition, toPosition string, fromID, toID int64, coordinatesSet bool, fromLon, fromLat, toLon, toLat float64) (core.Position, core.Position, error) {
 	if fromPosition != "" || toPosition != "" {
 		from, err := parseCLIPosition("from", fromPosition)
 		if err != nil {
@@ -114,14 +148,14 @@ func cliRoutePositions(router *engine.Engine, fromPosition, toPosition string, f
 		to, err := parseCLIPosition("to", toPosition)
 		return from, to, err
 	}
-	if fromLat != 0 || fromLon != 0 || toLat != 0 || toLon != 0 {
-		if fromLat == 0 || fromLon == 0 || toLat == 0 || toLon == 0 {
-			return nil, nil, fmt.Errorf("--from-lat, --from-lon, --to-lat, and --to-lon are required together")
-		}
+	if coordinatesSet {
 		return core.Position{fromLon, fromLat}, core.Position{toLon, toLat}, nil
 	}
 	if fromID == 0 || toID == 0 {
 		return nil, nil, fmt.Errorf("provide --from-position/--to-position, coordinates, or node IDs")
+	}
+	if router == nil {
+		return nil, nil, fmt.Errorf("selected node IDs require a loaded legacy graph")
 	}
 	g := router.GetGraph()
 	if g == nil {

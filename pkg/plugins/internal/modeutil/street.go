@@ -11,7 +11,7 @@ import (
 )
 
 type StreetHost interface {
-	RouteByCoordinates(engine.CoordinateRouteRequest) (*engine.CoordinateRouteResult, error)
+	RouteByCoordinatesContext(context.Context, engine.CoordinateRouteRequest) (*engine.CoordinateRouteResult, error)
 }
 
 func StreetRoute(ctx context.Context, host any, req core.ModeRequest, manifest core.ModeManifest, profile mobility.Profile) (core.ModeResult, error) {
@@ -31,7 +31,7 @@ func StreetRoute(ctx context.Context, host any, req core.ModeRequest, manifest c
 		return core.ModeResult{}, err
 	}
 
-	result, err := router.RouteByCoordinates(engine.CoordinateRouteRequest{
+	result, err := router.RouteByCoordinatesContext(ctx, engine.CoordinateRouteRequest{
 		FromLat:            fromLat,
 		FromLon:            fromLon,
 		ToLat:              toLat,
