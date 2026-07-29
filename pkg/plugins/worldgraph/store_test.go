@@ -27,6 +27,14 @@ func TestChunkRoundTrip(t *testing.T) {
 	}
 }
 
+func TestChunkRejectsIncorrectEdgeOwner(t *testing.T) {
+	chunk := testChunk(t, 12.5683, 55.6761, "region-a")
+	chunk.Edges[0].Owner.X++
+	if err := EncodeChunk(&bytes.Buffer{}, chunk); !errors.Is(err, ErrInvalidChunk) {
+		t.Fatalf("EncodeChunk() error = %v, want ErrInvalidChunk", err)
+	}
+}
+
 func TestChunkRejectsChecksumMismatch(t *testing.T) {
 	chunk := testChunk(t, 12.5683, 55.6761, "region-a")
 	var encoded bytes.Buffer
@@ -94,12 +102,89 @@ func TestStoreDistinguishesUncoveredMissingAndCorrupt(t *testing.T) {
 		t.Fatalf("corrupt LoadChunk() error = %v, want ErrCorruptChunk", err)
 	}
 
+	invalidProvenance := tiles[0]
+	path = publishedChunkPath(dir, manifest.Generation, invalidProvenance)
+	chunk := chunks[invalidProvenance]
+	chunk.Edges[0].Sources = []string{"other-region"}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeChunkFile(path, chunk); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.LoadChunk(invalidProvenance); !errors.Is(err, ErrCorruptChunk) {
+		t.Fatalf("invalid-provenance LoadChunk() error = %v, want ErrCorruptChunk", err)
+	}
+
 	info, err := os.Stat(publishedChunkPath(dir, manifest.Generation, tiles[0]))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("chunk mode = %o, want 600", got)
+	}
+}
+
+func TestPublishGenerationRejectsInvalidProvenance(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Manifest, map[TileID]Chunk)
+	}{
+		{
+			name: "no regions",
+			mutate: func(manifest *Manifest, _ map[TileID]Chunk) {
+				manifest.Regions = nil
+			},
+		},
+		{
+			name: "global tile without region",
+			mutate: func(manifest *Manifest, _ map[TileID]Chunk) {
+				manifest.Regions[0].Tiles = manifest.Regions[0].Tiles[:1]
+			},
+		},
+		{
+			name: "edge source absent from manifest",
+			mutate: func(_ *Manifest, chunks map[TileID]Chunk) {
+				for tile, chunk := range chunks {
+					chunk.Edges[0].Sources = []string{"other-region"}
+					chunks[tile] = chunk
+					break
+				}
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			store, err := OpenStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			chunks := threeNeighborChunks(t)
+			manifest := testManifest("generation-1", sortedChunkTiles(chunks))
+			test.mutate(&manifest, chunks)
+			if err := store.PublishGeneration(manifest, chunks); err == nil {
+				t.Fatal("PublishGeneration() error = nil, want provenance rejection")
+			}
+		})
+	}
+}
+
+func TestPublishGenerationRequiresChangedChunksWhenProvenanceChanges(t *testing.T) {
+	store, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunks := threeNeighborChunks(t)
+	tiles := sortedChunkTiles(chunks)
+	first := testManifest("generation-1", tiles)
+	if err := store.PublishGeneration(first, chunks); err != nil {
+		t.Fatal(err)
+	}
+	second := testManifest("generation-2", tiles)
+	second.Regions[0].SourceSHA256 = strings.Repeat("b", 64)
+	if err := store.PublishGeneration(second, nil); err == nil {
+		t.Fatal("PublishGeneration() error = nil, want changed-chunk requirement")
 	}
 }
 

@@ -93,6 +93,9 @@ func (s *Store) LoadChunk(tile TileID) (*Chunk, error) {
 	if chunk.Tile != tile {
 		return nil, fmt.Errorf("%w: file for %+v contains %+v", ErrCorruptChunk, tile, chunk.Tile)
 	}
+	if err := validateChunkProvenance(*chunk, manifest); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrCorruptChunk, err)
+	}
 	return chunk, nil
 }
 
@@ -151,6 +154,9 @@ func (s *Store) publishGeneration(manifest Manifest, chunks map[TileID]Chunk, re
 			return err
 		}
 		if chunk, changed := chunks[tile]; changed {
+			if err := validateChunkProvenance(chunk, prepared); err != nil {
+				return err
+			}
 			if err := writeChunkFile(destination, chunk); err != nil {
 				return err
 			}
@@ -158,6 +164,9 @@ func (s *Store) publishGeneration(manifest Manifest, chunks map[TileID]Chunk, re
 		}
 		if s.manifest == nil || !manifestHasTile(*s.manifest, tile) {
 			return fmt.Errorf("chunk %+v has no new or previous payload", tile)
+		}
+		if !sameTileProvenance(*s.manifest, prepared, tile) {
+			return fmt.Errorf("chunk %+v provenance changed without a new payload", tile)
 		}
 		source := filepath.Join(s.root, "generations", s.manifest.Generation, tilePath(tile))
 		if err := os.Link(source, destination); err != nil {
@@ -306,6 +315,47 @@ func readManifestFile(path string) (Manifest, error) {
 		return Manifest{}, err
 	}
 	return normalizeManifest(manifest)
+}
+
+func validateChunkProvenance(chunk Chunk, manifest Manifest) error {
+	regions := make(map[string]struct{})
+	for _, region := range manifest.Regions {
+		if containsTile(region.Tiles, chunk.Tile) {
+			regions[region.Name] = struct{}{}
+		}
+	}
+	for _, edge := range chunk.Edges {
+		for _, source := range edge.Sources {
+			if _, exists := regions[source]; !exists {
+				return fmt.Errorf("%w: edge %+v source %q does not cover tile %+v", ErrInvalidChunk, edge.ID, source, chunk.Tile)
+			}
+		}
+	}
+	return nil
+}
+
+func sameTileProvenance(previous, next Manifest, tile TileID) bool {
+	previousRegions := tileProvenance(previous, tile)
+	nextRegions := tileProvenance(next, tile)
+	if len(previousRegions) != len(nextRegions) {
+		return false
+	}
+	for i := range previousRegions {
+		if previousRegions[i] != nextRegions[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func tileProvenance(manifest Manifest, tile TileID) []string {
+	regions := make([]string, 0, len(manifest.Regions))
+	for _, region := range manifest.Regions {
+		if containsTile(region.Tiles, tile) {
+			regions = append(regions, region.Name+"\x00"+region.SourceSHA256)
+		}
+	}
+	return regions
 }
 
 func cloneManifest(manifest Manifest) Manifest {

@@ -105,6 +105,7 @@ func validateManifest(manifest Manifest) error {
 	}
 
 	regions := make(map[string]struct{}, len(manifest.Regions))
+	claimedTiles := make(map[TileID]struct{}, len(manifest.Tiles))
 	for _, region := range manifest.Regions {
 		if strings.TrimSpace(region.Name) == "" {
 			return fmt.Errorf("manifest contains unnamed region")
@@ -126,7 +127,11 @@ func validateManifest(manifest Manifest) error {
 				return fmt.Errorf("region %q contains duplicate tile %+v", region.Name, tile)
 			}
 			regionTiles[tile] = struct{}{}
+			claimedTiles[tile] = struct{}{}
 		}
+	}
+	if len(claimedTiles) != len(membership) {
+		return fmt.Errorf("manifest contains tiles with no region provenance")
 	}
 	return nil
 }
@@ -146,10 +151,14 @@ func safeGeneration(generation string) bool {
 }
 
 func manifestHasTile(manifest Manifest, tile TileID) bool {
-	index := sort.Search(len(manifest.Tiles), func(i int) bool {
-		return !tileLess(manifest.Tiles[i], tile)
+	return containsTile(manifest.Tiles, tile)
+}
+
+func containsTile(tiles []TileID, tile TileID) bool {
+	index := sort.Search(len(tiles), func(i int) bool {
+		return !tileLess(tiles[i], tile)
 	})
-	return index < len(manifest.Tiles) && manifest.Tiles[index] == tile
+	return index < len(tiles) && tiles[index] == tile
 }
 
 func sortTiles(tiles []TileID) {

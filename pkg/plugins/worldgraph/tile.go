@@ -74,6 +74,9 @@ func Corridor(from, to TileID, halo int) ([]TileID, error) {
 	if halo < 0 {
 		return nil, fmt.Errorf("halo must not be negative")
 	}
+	if halo > n {
+		return nil, fmt.Errorf("halo %d exceeds tile grid size %d", halo, n)
+	}
 
 	minX, maxX := min(from.X, to.X), max(from.X, to.X)
 	xs := make([]int, 0, maxX-minX+1)
@@ -93,8 +96,9 @@ func Corridor(from, to TileID, halo int) ([]TileID, error) {
 	tiles := make(map[TileID]struct{})
 	minY := max(0, min(from.Y, to.Y)-halo)
 	maxY := min(n-1, max(from.Y, to.Y)+halo)
+	xRadius := min(halo, n/2)
 	for _, x := range xs {
-		for dx := -halo; dx <= halo; dx++ {
+		for dx := -xRadius; dx <= xRadius; dx++ {
 			wrappedX := wrap(x+dx, n)
 			for y := minY; y <= maxY; y++ {
 				tiles[TileID{Z: from.Z, X: wrappedX, Y: y}] = struct{}{}
@@ -119,6 +123,10 @@ func Expand(tiles []TileID, rings, maxTiles int) ([]TileID, error) {
 	if err != nil {
 		return nil, err
 	}
+	if rings > n {
+		return nil, fmt.Errorf("rings %d exceed tile grid size %d", rings, n)
+	}
+	xRadius := min(rings, n/2)
 	result := make(map[TileID]struct{})
 	for _, tile := range tiles {
 		if err := validateTile(tile, n); err != nil {
@@ -127,12 +135,10 @@ func Expand(tiles []TileID, rings, maxTiles int) ([]TileID, error) {
 		if tile.Z != tiles[0].Z {
 			return nil, fmt.Errorf("tiles must use one zoom")
 		}
-		for dx := -rings; dx <= rings; dx++ {
-			for dy := -rings; dy <= rings; dy++ {
-				y := tile.Y + dy
-				if y < 0 || y >= n {
-					continue
-				}
+		minY := max(0, tile.Y-rings)
+		maxY := min(n-1, tile.Y+rings)
+		for dx := -xRadius; dx <= xRadius; dx++ {
+			for y := minY; y <= maxY; y++ {
 				result[TileID{Z: tile.Z, X: wrap(tile.X+dx, n), Y: y}] = struct{}{}
 				if len(result) > maxTiles {
 					return nil, fmt.Errorf("tile expansion exceeds limit %d", maxTiles)

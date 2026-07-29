@@ -86,7 +86,7 @@ func (chunk *Chunk) validate() error {
 		return fmt.Errorf("%w: %v", ErrInvalidChunk, err)
 	}
 
-	nodes := make(map[int64]struct{}, len(chunk.Nodes))
+	nodes := make(map[int64]Node, len(chunk.Nodes))
 	for _, node := range chunk.Nodes {
 		if _, exists := nodes[node.ID]; exists {
 			return fmt.Errorf("%w: duplicate node %d", ErrInvalidChunk, node.ID)
@@ -104,7 +104,7 @@ func (chunk *Chunk) validate() error {
 		if err != nil || owner != node.Owner {
 			return fmt.Errorf("%w: node %d has incorrect owner", ErrInvalidChunk, node.ID)
 		}
-		nodes[node.ID] = struct{}{}
+		nodes[node.ID] = node
 	}
 
 	edges := make(map[EdgeID]struct{}, len(chunk.Edges))
@@ -112,10 +112,12 @@ func (chunk *Chunk) validate() error {
 		if _, exists := edges[edge.ID]; exists {
 			return fmt.Errorf("%w: duplicate edge %+v", ErrInvalidChunk, edge.ID)
 		}
-		if _, exists := nodes[edge.ID.From]; !exists {
+		from, fromExists := nodes[edge.ID.From]
+		if !fromExists {
 			return fmt.Errorf("%w: edge %+v source node is missing", ErrInvalidChunk, edge.ID)
 		}
-		if _, exists := nodes[edge.ID.To]; !exists {
+		to, toExists := nodes[edge.ID.To]
+		if !toExists {
 			return fmt.Errorf("%w: edge %+v target node is missing", ErrInvalidChunk, edge.ID)
 		}
 		if edge.ID.From == edge.ID.To || !finite(edge.DistanceMeters) || edge.DistanceMeters < 0 {
@@ -126,6 +128,10 @@ func (chunk *Chunk) validate() error {
 		}
 		if err := validateTile(edge.Owner, n); err != nil {
 			return fmt.Errorf("%w: edge %+v owner: %v", ErrInvalidChunk, edge.ID, err)
+		}
+		expectedOwner, err := edgeMidpointTile(from, to, chunk.Tile.Z)
+		if err != nil || edge.Owner != expectedOwner {
+			return fmt.Errorf("%w: edge %+v has incorrect owner", ErrInvalidChunk, edge.ID)
 		}
 		if len(edge.Sources) == 0 {
 			return fmt.Errorf("%w: edge %+v has no sources", ErrInvalidChunk, edge.ID)
@@ -143,6 +149,18 @@ func (chunk *Chunk) validate() error {
 		edges[edge.ID] = struct{}{}
 	}
 	return nil
+}
+
+func edgeMidpointTile(from, to Node, zoom int) (TileID, error) {
+	deltaLon := to.Lon - from.Lon
+	if math.Abs(deltaLon) > 180 {
+		if deltaLon > 0 {
+			deltaLon -= 360
+		} else {
+			deltaLon += 360
+		}
+	}
+	return TileForPosition(from.Lon+deltaLon/2, (from.Lat+to.Lat)/2, zoom)
 }
 
 func finite(value float64) bool {

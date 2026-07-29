@@ -114,4 +114,12 @@ func TestTileRingClampsYAndWrapsX(t *testing.T) {
 	if _, err := Expand([]TileID{{Z: 2, X: 0, Y: 0}}, 1, 5); err == nil {
 		t.Fatal("Expand() error = nil, want maxTiles rejection")
 	}
+
+	world := TileID{Z: 0, X: 0, Y: 0}
+	if _, err := Expand([]TileID{world}, 2, 1); err == nil {
+		t.Fatal("Expand() error = nil, want oversized ring rejection")
+	}
+	if _, err := Corridor(world, world, 2); err == nil {
+		t.Fatal("Corridor() error = nil, want oversized halo rejection")
+	}
 }
