@@ -62,6 +62,58 @@ Node-ID routing uses `Route(engine.RouteRequest{From: ..., To: ...})`. `RouteGeo
 
 Routing-mode defaults belong to registered mode plugins. Invalid speeds and penalties fail in `NewWithConfig`.
 
+## Versioned regional world graphs
+
+Stream an OSM PBF into a local generation store, then pass its router to
+existing street modes:
+
+```go
+ctx := context.Background()
+manifest, err := builder.Build(ctx, builder.Options{
+    PBFPath:   "region.osm.pbf",
+    StorePath: "world",
+    Region:    "demo",
+    Zoom:      12,
+})
+if err != nil {
+    panic(err)
+}
+
+router, err := worldgraph.OpenRouter("world", worldgraph.RouterOptions{})
+if err != nil {
+    panic(err)
+}
+defer router.Close()
+
+mode, ok := plugins.Default.Mode("car") // blank-import pkg/plugins/car
+if !ok {
+    panic("car mode not registered")
+}
+route, err := mode.Route(ctx, router, core.ModeRequest{
+    From: core.Position{12.5683, 55.6761},
+    To:   core.Position{12.5685, 55.6762},
+})
+if err != nil {
+    panic(err)
+}
+fmt.Println(manifest.Generation, route.DistanceMeters)
+```
+
+Imports are `pkg/plugins/worldgraph`, `pkg/plugins/worldgraph/builder`, and the
+desired mode package. `worldgraph.Loader` also registers as the `worldgraph`
+`core.GraphLoader`; transparent coordinate routing through `Router` is the
+intended bounded path.
+
+Defaults: zoom 12, Web Mercator latitude `±85.05112878°`, one-tile halo, 256
+route tiles, three expansions, and 512 MiB decoded cache. Override
+`RouterOptions` for measured local needs. Stores use checksummed immutable
+generations and atomic manifest replacement; open routers remain pinned while
+same-name region replacement removes stale provenance. Missing coverage/files,
+corruption, area caps, no path, and cancellation return errors without
+partial/direct fallback. Chunk stores are trusted local artifacts, not upload
+payloads; retain OpenStreetMap attribution. This is local/regional routing,
+not a planet-scale hierarchy.
+
 ## Transit and multimodal routing
 
 Load a GTFS directory beside the street graph:
@@ -151,6 +203,10 @@ result, err := engine.Run(context.Background(), engine.PipelineRequest{
     ExporterName:  "geojson",
     Route:         core.RouteRequest{From: "1", To: "6"},
 })
+if err != nil {
+    panic(err)
+}
+defer result.Close() // successful calls transfer ownership of the loaded graph
 ```
 
 Custom plugins are ordinary linked Go packages implementing interfaces from `pkg/pathcraft/core` and registering with `pkg/plugins`. High-level `core.Mode` plugins accept N-dimensional positions and return generic route segments, so custom domains do not require transport or UI changes. See [Plugin system](../architecture/plugin-system.md). PathCraft does not load plugins dynamically.

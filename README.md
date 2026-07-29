@@ -6,7 +6,7 @@ It ships working routing today: OSM street routes via A*, GTFS transit routes vi
 
 ## Features
 
-- **Walking routing**: parse OSM XML / `.osm.gz`, build a walkable graph, and route by node ID or coordinates.
+- **Street routing**: parse OSM XML / `.osm.gz` for one-file graphs, or stream OSM PBF into versioned XYZ chunks for bounded local/regional routing.
 - **Transit routing**: ingest GTFS `stop_times.txt`, `trips.txt`, optional `transfers.txt`, and optional `stops.txt`; query earliest arrivals with RAPTOR.
 - **Time-dependent multimodal journeys**: compare direct walking against walk → scheduled transit → walk, with timed journey legs.
 - **Plugin registry**: `core.Mode`, `core.Algorithm`, `core.GraphLoader`, `core.Exporter`, and `core.CostModel` extension points under `pkg/plugins`.
@@ -46,6 +46,7 @@ Built-ins currently include:
 | Name      | Kind      | Wraps / source                    |
 |-----------|-----------|-----------------------------------|
 | `osm`     | loader    | OSM XML / `.osm.gz` parser        |
+| `worldgraph` | loader | Versioned local XYZ chunk store   |
 | `gtfs`    | loader    | GTFS directory                    |
 | `astar`   | algorithm | internal A* walking router        |
 | `raptor`  | algorithm | internal RAPTOR transit router    |
@@ -101,6 +102,41 @@ Transit RAPTOR on GTFS:
   --opt cruise_altitude_m=1500 --coords
 ```
 
+### Versioned world graph chunks
+
+Build a local store from an OSM PBF extract, route with existing mode IDs,
+then serve viewport-driven graph chunks:
+
+```bash
+./bin/pathcraft chunks build --pbf region.osm.pbf --store world --region demo
+./bin/pathcraft route --chunks world --mode walk \
+  --from-position '12.5683,55.6761' --to-position '12.5685,55.6762'
+./bin/pathcraft serve --chunks world --addr 127.0.0.1:8080
+```
+
+`make demo-chunks PBF=region.osm.pbf REGION=demo STORE=world` is the
+same thin build-and-serve flow. Defaults are routing zoom 12, one-tile initial
+halo, 256 route tiles, three expansions, and a 512 MiB decoded cache.
+Longitude wraps at the antimeridian; latitude is limited to Web Mercator
+`±85.05112878°`.
+
+Each build publishes a new immutable generation. Reimporting the same region
+replaces its prior provenance and removes deleted roads; already-open routers
+remain pinned to their generation. Uncovered origins, destinations, or
+required corridor tiles return an error—there is no straight-line or partial
+route fallback. Historical generations are retained; no built-in garbage
+collector removes them, so operators must clean only generations no active
+reader or manifest needs. This MVP targets bounded local/regional trips, not
+arbitrary intercontinental routing or a continental hierarchy.
+
+Generated `.pcg` stores are trusted local artifacts, never HTTP uploads. The
+PBF importer applies framing, decompression, structural, coordinate, and
+way-size limits before decoding, but still runs as an explicit local build
+step. Keep OpenStreetMap attribution visible when rendering derived data:
+© OpenStreetMap contributors, under the ODbL. The HTTP server is
+unauthenticated and binds loopback by default; explicit non-loopback exposure
+needs a trusted reverse proxy, authentication, TLS, and rate limits.
+
 `pathcraft grpc` is plaintext and unauthenticated. It binds loopback by default; add trusted TLS/auth infrastructure before any untrusted-network exposure.
 
 ## Go Library Quickstart
@@ -133,6 +169,7 @@ func main() {
     if err != nil {
         panic(err)
     }
+    defer res.Close()
     fmt.Printf("path nodes: %d, cost: %.1f\n", len(res.Result.Path), res.Result.Cost)
     fmt.Println(string(res.Output))
 }
@@ -173,7 +210,8 @@ Full guide: [docs/tutorials/demo.md](docs/tutorials/demo.md).
 The HTTP server is a GET-only debug/demo interface, not a stable production API. CORS is disabled by default; `--cors-origin` accepts comma-separated exact HTTP(S) origins and enables browser preflight without credentials. Wildcard, opaque, and path-bearing origins are ignored.
 
 - `GET /health`, `GET /status`
-- `GET /graph` — loaded walking graph as GeoJSON lines
+- `GET /graph` — loaded one-file walking graph as GeoJSON lines
+- `GET /graph/chunks/{generation}/{z}/{x}/{y}` — immutable owned-edge GeoJSON for a covered world chunk
 - `GET /nodes?bbox=minLon,minLat,maxLon,maxLat&limit=200&min_degree=3` — graph nodes as GeoJSON points
 - `GET /nearest?lat=...&lon=...` — nearest graph node and snap distance
 - `GET /modes` — manifests for every registered routing mode
@@ -192,7 +230,7 @@ cmd/pathcraft             CLI entrypoint
 cmd/pathcraft-wasm        browser WebAssembly entrypoint
 pkg/pathcraft/core        dimension-neutral plugin interfaces and value types
 pkg/pathcraft/engine      public engine facade and pipeline runner
-pkg/plugins               registry, standard plugins, and nearest-node index surface
+pkg/plugins               registry, standard plugins, nearest-node index, and worldgraph chunk runtime/builder
 internal/graph            private graph, contraction index, and cache format
 internal/osm              OSM parser and graph builder
 internal/gtfs             GTFS parsers and RAPTOR-ready indexes
@@ -219,13 +257,14 @@ See also:
 ## Configuration
 
 - `engine.Config` sets primitive walking speed in m/s and OSM-highway penalty multipliers (`>= 1`); registered mode plugins own mode defaults/policy.
-- CLI flags configure OSM file paths, GTFS directories, node/coordinate endpoints, departure time, walking speed, server address, and optional exact CORS origins.
+- CLI flags configure OSM/PBF inputs, world chunk stores/cache/route caps, GTFS directories, endpoints, server address, and optional exact CORS origins.
 - `Makefile` variables:
   - `OSM_FILE` (default `testdata/example.osm`)
   - `GTFS_DIR` (default `testdata/mini_gtfs`)
   - `ADDR` (default `127.0.0.1:8080`)
   - `BBOX` / `OUT` for `make fetch-osm`
-- Parsed graph caches are written as `<osm-file>.cache`; source SHA-256 plus graph/preprocessing versions prevent stale reuse, writes replace atomically, and `*.cache` is ignored by git. Caches are trusted local build artifacts, not upload/network input; gob decoding precedes structural validation.
+  - `PBF` / `REGION` / `STORE` / `CHUNK_ZOOM` for `make demo-chunks`
+- Parsed graph caches are written as `<osm-file>.cache`; world stores publish `manifest.json` plus immutable `generations/<generation>/<z>/<x>/<y>.pcg`. Both are trusted local artifacts, not upload/network input; versions, checksums, provenance, and atomic manifest replacement reject mixed or stale generations.
 
 ## Development
 
@@ -247,7 +286,7 @@ Contraction results and memory-profile workflow: [docs/performance.md](docs/perf
 
 ## Project Status
 
-PathCraft is a prototype routing engine. Phase 0.1–1.0 library, HTTP, timetable-routing, scale-foundation, SDK, WASM, gRPC, and plugin deliverables work at documented scope, but production hardening remains. Degree-two contraction is not full contraction hierarchies; base graph remains resident, loading/hot reload is not concurrent, gRPC is local plaintext by default, and WASM street routing is synchronous. Known next steps include GTFS service calendars/realtime, richer stop access, city-scale profiling budgets, API security, and deployment packaging.
+PathCraft is a prototype routing engine. Library, HTTP, timetable-routing, SDK, WASM, gRPC, plugins, and versioned regional graph chunks work at documented scope, but production hardening remains. Chunk routing is bounded corridor A*, not a planet-scale hierarchy; one-file graphs remain resident, gRPC is local plaintext by default, and WASM street routing is synchronous. Known next steps include GTFS calendars/realtime, richer stop access, regional profiling, API security, and deployment packaging.
 
 ## Contributing
 

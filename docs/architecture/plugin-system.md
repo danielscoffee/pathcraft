@@ -11,7 +11,7 @@ A plugin must not need changes to core merely because its domain is road, rail, 
 ## Registered capabilities
 
 | Interface | Responsibility |
-|---|---|
+| --- | --- |
 | `core.Graph` | Generic node/edge access |
 | `core.Algorithm` | Route over a graph |
 | `core.GraphLoader` | Load a graph source |
@@ -36,7 +36,11 @@ type Mode interface {
 
 `ModeManifest` declares ID, label, icon key, color, CRS, supported dimensions, axis names, and options. `ModeRequest` contains plugin-defined `From`/`To` positions plus string options. `ModeResult` contains generic styled route segments whose positions retain every dimension.
 
-Core deliberately treats `host` as opaque. A built-in street mode asserts the minimal engine capability it needs; a self-contained mode such as `air` ignores host; a custom application may pass its own runtime. This escape hatch prevents core from accumulating OSM, GTFS, aircraft, spacecraft, HTTP, or rendering dependencies.
+Core deliberately treats `host` as opaque. Built-in street modes assert one
+private, context-aware coordinate-routing capability implemented by both
+`engine.Engine` and `worldgraph.Router`; a self-contained mode such as `air`
+ignores host. This prevents core from accumulating OSM, GTFS, XYZ, aircraft,
+spacecraft, HTTP, or rendering dependencies.
 
 ## Registry
 
@@ -100,15 +104,27 @@ The registry-backed HTTP adapter then exposes it from `GET /modes` and dispatche
 ## Built-in plugins
 
 | Names | Kind |
-|---|---|
-| `osm`, `gtfs` | loaders |
+| --- | --- |
+| `osm`, `gtfs`, `worldgraph` | loaders |
 | `astar`, `raptor` | algorithms |
 | `geojson` | exporter |
 | `zap` | logger |
-| `walk`, `bike`, `car`, `gtfs` | routing modes backed by `engine.Engine` |
+| `walk`, `bike`, `car` | street modes backed by either engine or world chunk host |
+| `gtfs` | multimodal mode backed by `engine.Engine` |
 | `air` | self-contained 2D/3D reference routing mode |
 
-Built-ins live under `pkg/plugins/<name>`. `air` proves route contracts preserve altitude; it is a direct-route example, not a production flight planner or restricted-airspace model.
+Built-ins live under `pkg/plugins/<name>`. `worldgraph.Loader` opens a versioned
+local chunk store through `core.GraphLoader`; its router supplies transparent
+coordinate routing to existing street modes. CLI/HTTP adapters select that
+host with `--chunks`—there are no `world-walk` aliases. Generic node-neighbor
+lookup is lazy; bounded coordinate routing is the intended worldwide path.
+`air` preserves altitude as a direct-route example, not a flight planner.
+
+World chunk files are immutable, checksummed local artifacts. Region imports
+publish a manifest atomically, pin active readers, and report missing coverage
+instead of inventing partial/direct geometry. Defaults cap corridors at 256
+tiles and decoded cache at 512 MiB; intercontinental hierarchy is outside this
+MVP.
 
 ## Native capability escape hatches
 
@@ -118,7 +134,7 @@ Bundled OSM and GTFS graph adapters expose narrow `Native` interfaces so A* and 
 
 - Runtime Go `.so` loading
 - Remote plugin execution
-- Hot reload
+- In-place hot reload (worldgraph uses immutable generation replacement)
 - Plugin marketplace or trust sandbox
 
 Those can be layered later without changing the compile-time registry.

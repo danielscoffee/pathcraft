@@ -45,7 +45,7 @@ flowchart TB
 
     Plugins["Plugin Registry<br/>Modes · Algorithms · Loaders · Exporters"]
 
-    Engine["Engine Facade<br/>Data · Primitive routing operations"]
+    Engine["Routing Hosts<br/>Engine facade · World chunk router"]
 
     Core["Core Contracts<br/>Graphs · N-dimensional routes"]
 
@@ -80,7 +80,7 @@ Private core logic (not exported).
 - `mobility/`
   - Mobility is the domain of transit entities
 - `osm/`
-  - OSM parsing → graph adapter
+  - OSM XML parsing → graph adapter
 - `gtfs/`
   - GTFS parsing (public transit)
 - `geojson/`
@@ -96,7 +96,10 @@ Private core logic (not exported).
 
 ### `/pkg/plugins`
 
-Public compile-time registry and built-in implementations. Applications activate plugins through imports; adapters discover registered manifests/capabilities.
+Public compile-time registry and built-in implementations. Applications
+activate plugins through imports; adapters discover registered capabilities.
+`worldgraph` streams OSM PBF into immutable regional XYZ generations and
+routes over bounded request-local graph unions without loading a planet graph.
 
 ### `/pkg/pathcraft/engine`
 
@@ -113,7 +116,25 @@ Responsibilities:
   - `RouteGeoJSON()`
   - `Stats()`
 
-The engine **orchestrates**, it does not compute.
+The engine **orchestrates**, it does not compute. Standard street modes depend
+only on a private context-aware coordinate-routing capability. Both
+`engine.Engine` and `worldgraph.Router` satisfy that host contract without
+adding geography to `core.Mode`.
+
+### Versioned world graph runtime
+
+Regional PBF builds produce `manifest.json` plus immutable
+`generations/<generation>/<z>/<x>/<y>.pcg`. Edges have one owner tile and
+endpoint/owner seam copies; render responses emit owners only. Runtime requests
+compute wrapped corridors, load a one-tile halo through a decoded-byte LRU,
+deduplicate a request-local graph, and expand only after no path.
+
+Defaults are zoom 12, Web Mercator `±85.05112878°`, 256 route tiles, three
+expansions, and 512 MiB decoded cache. This is a local/regional MVP, not a
+continental hierarchy. Missing coverage and corrupt/missing expected chunks
+fail explicitly; no fallback geometry is fabricated. Generations publish
+atomically, and active readers stay pinned while region replacement removes
+deleted provenance.
 
 ---
 
@@ -169,6 +190,7 @@ This prevents HTTP/CLI concerns from leaking into algorithms.
 - Driving (A* with access rules and configurable highway penalties)
 - Transit (RAPTOR)
 - Multimodal (timed Walk + Transit)
+- Regional chunk-hosted walking, cycling, and driving through existing IDs
 
 Each mode implements `core.Mode`, registers through `pkg/plugins`, declares its coordinate dimensions/options/presentation, and returns generic route segments. The built-in `air` mode demonstrates altitude-preserving 3D output without adding air concepts to core.
 
@@ -177,6 +199,7 @@ Each mode implements `core.Mode`, registers through `pkg/plugins`, declares its 
 ## 6. Non-Goals
 
 - Real-time traffic (out of scope)
+- Planet-scale/intercontinental routing (outside bounded chunk corridors)
 - UI-first design
 - Tight coupling to OSM tags
 
