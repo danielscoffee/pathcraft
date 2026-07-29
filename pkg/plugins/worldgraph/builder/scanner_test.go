@@ -1,6 +1,8 @@
 package builder
 
 import (
+	"bytes"
+	"compress/zlib"
 	"context"
 	"crypto/sha256"
 	"encoding/binary"
@@ -96,6 +98,39 @@ func TestScanWaysRejectsOutOfRangeStringTableIndex(t *testing.T) {
 	}
 }
 
+func TestScanWaysRejectsRepeatedReferenceFields(t *testing.T) {
+	stringTable := testPBFBytesField(nil, 1, nil)
+	way := testPBFVarintField(nil, 1, 1)
+	way = testPBFBytesField(way, 8, testPBFPackedSInt64(1))
+	way = testPBFBytesField(way, 8, testPBFPackedSInt64(1, 1))
+	group := testPBFBytesField(nil, 3, way)
+	block := testPBFBytesField(nil, 1, stringTable)
+	block = testPBFBytesField(block, 2, group)
+	path := writeTestPBF(t, testPBFFileBlock("OSMData", block))
+
+	if err := ScanWays(context.Background(), path, func(Way) error { return nil }); err == nil {
+		t.Fatal("ScanWays() error = nil, want repeated reference rejection")
+	}
+}
+
+func TestScanAcceptsBoundedZlibPBF(t *testing.T) {
+	stringTable := testPBFBytesField(nil, 1, nil)
+	way := testPBFVarintField(nil, 1, 1)
+	way = testPBFBytesField(way, 8, testPBFPackedSInt64(1, 1))
+	group := testPBFBytesField(nil, 3, way)
+	block := testPBFBytesField(nil, 1, stringTable)
+	block = testPBFBytesField(block, 2, group)
+	path := writeTestPBF(t, testPBFZlibFileBlock("OSMData", block))
+
+	count := 0
+	if err := ScanWays(context.Background(), path, func(Way) error { count++; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("way count = %d, want one", count)
+	}
+}
+
 func TestScanRejectsOversizedUncompressedBlock(t *testing.T) {
 	const declaredSize = 65 << 20
 	blob := testPBFVarintField(nil, 2, declaredSize)
@@ -158,6 +193,20 @@ func writeTestPBF(t *testing.T, dataBlock []byte) string {
 func testPBFFileBlock(kind string, payload []byte) []byte {
 	blob := testPBFBytesField(nil, 1, payload)
 	blob = testPBFVarintField(blob, 2, uint64(len(payload)))
+	return testPBFRawFileBlock(kind, blob)
+}
+
+func testPBFZlibFileBlock(kind string, payload []byte) []byte {
+	var compressed bytes.Buffer
+	writer := zlib.NewWriter(&compressed)
+	if _, err := writer.Write(payload); err != nil {
+		panic(err)
+	}
+	if err := writer.Close(); err != nil {
+		panic(err)
+	}
+	blob := testPBFVarintField(nil, 2, uint64(len(payload)))
+	blob = testPBFBytesField(blob, 3, compressed.Bytes())
 	return testPBFRawFileBlock(kind, blob)
 }
 

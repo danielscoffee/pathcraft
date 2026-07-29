@@ -179,23 +179,24 @@ func decodeBoundedPBFBlob(data []byte) ([]byte, error) {
 
 func validatePBFPrimitiveBlock(data []byte, maxWayNodes int) error {
 	stringCount := -1
-	var groups [][]byte
+	stringTableSeen := false
 	if err := eachPBFField(data, func(number protowire.Number, fieldType protowire.Type, bytesValue []byte, _ uint64) error {
 		switch number {
 		case 1:
-			if fieldType != protowire.BytesType {
-				return fmt.Errorf("invalid PBF string table")
+			if fieldType != protowire.BytesType || stringTableSeen {
+				return fmt.Errorf("invalid or repeated PBF string table")
 			}
+			stringTableSeen = true
 			count, err := validatePBFStringTable(bytesValue)
 			if err != nil {
 				return err
 			}
 			stringCount = count
 		case 2:
-			if fieldType != protowire.BytesType {
+			if fieldType != protowire.BytesType || !stringTableSeen {
 				return fmt.Errorf("invalid PBF primitive group")
 			}
-			groups = append(groups, bytesValue)
+			return validatePBFPrimitiveGroup(bytesValue, stringCount, maxWayNodes)
 		}
 		return nil
 	}); err != nil {
@@ -203,11 +204,6 @@ func validatePBFPrimitiveBlock(data []byte, maxWayNodes int) error {
 	}
 	if stringCount < 1 {
 		return fmt.Errorf("PBF primitive block has no string table")
-	}
-	for _, group := range groups {
-		if err := validatePBFPrimitiveGroup(group, stringCount, maxWayNodes); err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -233,14 +229,16 @@ func validatePBFStringTable(data []byte) (int, error) {
 }
 
 func validatePBFPrimitiveGroup(data []byte, stringCount, maxWayNodes int) error {
+	denseSeen := false
 	return eachPBFField(data, func(number protowire.Number, fieldType protowire.Type, bytesValue []byte, _ uint64) error {
 		switch number {
 		case 1:
 			return fmt.Errorf("non-dense PBF nodes are unsupported")
 		case 2:
-			if fieldType != protowire.BytesType {
-				return fmt.Errorf("invalid dense PBF nodes")
+			if fieldType != protowire.BytesType || denseSeen {
+				return fmt.Errorf("invalid or repeated dense PBF nodes")
 			}
+			denseSeen = true
 			return validatePBFDenseNodes(bytesValue, stringCount)
 		case 3:
 			if fieldType != protowire.BytesType {
@@ -254,59 +252,70 @@ func validatePBFPrimitiveGroup(data []byte, stringCount, maxWayNodes int) error 
 }
 
 func validatePBFDenseNodes(data []byte, stringCount int) error {
-	var idFields, latFields, lonFields, keyValueFields [][]byte
-	var denseInfo []byte
+	var idsData, latsData, lonsData, tagsData []byte
+	idsSeen, latsSeen, lonsSeen, infoSeen, tagsSeen := false, false, false, false, false
 	if err := eachPBFField(data, func(number protowire.Number, fieldType protowire.Type, bytesValue []byte, _ uint64) error {
-		if fieldType != protowire.BytesType {
-			return nil
-		}
 		switch number {
 		case 1:
-			idFields = append(idFields, bytesValue)
+			if err := capturePBFBytesField("dense node IDs", fieldType, bytesValue, &idsData, &idsSeen); err != nil {
+				return err
+			}
 		case 5:
-			denseInfo = bytesValue
+			if fieldType != protowire.BytesType || infoSeen {
+				return fmt.Errorf("invalid or repeated dense PBF info")
+			}
+			infoSeen = true
+			if err := validatePBFDenseInfo(bytesValue, stringCount); err != nil {
+				return err
+			}
 		case 8:
-			latFields = append(latFields, bytesValue)
+			if err := capturePBFBytesField("dense node latitudes", fieldType, bytesValue, &latsData, &latsSeen); err != nil {
+				return err
+			}
 		case 9:
-			lonFields = append(lonFields, bytesValue)
+			if err := capturePBFBytesField("dense node longitudes", fieldType, bytesValue, &lonsData, &lonsSeen); err != nil {
+				return err
+			}
 		case 10:
-			keyValueFields = append(keyValueFields, bytesValue)
+			if err := capturePBFBytesField("dense node tags", fieldType, bytesValue, &tagsData, &tagsSeen); err != nil {
+				return err
+			}
 		}
 		return nil
 	}); err != nil {
 		return err
 	}
-	ids, err := countPackedPBFVarints(idFields)
+	ids, err := countPackedPBFVarints(idsData)
 	if err != nil {
 		return err
 	}
-	lats, err := countPackedPBFVarints(latFields)
+	lats, err := countPackedPBFVarints(latsData)
 	if err != nil {
 		return err
 	}
-	lons, err := countPackedPBFVarints(lonFields)
+	lons, err := countPackedPBFVarints(lonsData)
 	if err != nil {
 		return err
 	}
-	if len(idFields) == 0 || len(latFields) == 0 || len(lonFields) == 0 || ids != lats || ids != lons {
+	if !idsSeen || !latsSeen || !lonsSeen || ids != lats || ids != lons {
 		return fmt.Errorf("dense PBF node columns have mismatched lengths")
 	}
-	if denseInfo != nil {
-		if err := validatePBFDenseInfo(denseInfo, stringCount); err != nil {
-			return err
-		}
-	}
-	if len(keyValueFields) > 0 {
-		return validatePBFDenseTags(keyValueFields, ids, stringCount)
+	if tagsSeen {
+		return validatePBFDenseTags(tagsData, ids, stringCount)
 	}
 	return nil
 }
 
 func validatePBFDenseInfo(data []byte, stringCount int) error {
+	userIDsSeen := false
 	return eachPBFField(data, func(number protowire.Number, fieldType protowire.Type, bytesValue []byte, _ uint64) error {
-		if number != 5 || fieldType != protowire.BytesType {
+		if number != 5 {
 			return nil
 		}
+		if fieldType != protowire.BytesType || userIDsSeen {
+			return fmt.Errorf("invalid or repeated dense PBF user IDs")
+		}
+		userIDsSeen = true
 		userID := int64(0)
 		return eachPackedPBFVarint(bytesValue, func(value uint64) error {
 			delta := protowire.DecodeZigZag(value)
@@ -322,27 +331,25 @@ func validatePBFDenseInfo(data []byte, stringCount int) error {
 	})
 }
 
-func validatePBFDenseTags(fields [][]byte, nodeCount, stringCount int) error {
+func validatePBFDenseTags(data []byte, nodeCount, stringCount int) error {
 	delimiters := 0
 	expectingKey := true
-	for _, field := range fields {
-		if err := eachPackedPBFVarint(field, func(value uint64) error {
-			if value > math.MaxInt32 {
-				return fmt.Errorf("dense PBF tag index is out of range")
-			}
-			index := int32(value)
-			if expectingKey && index == 0 {
-				delimiters++
-				return nil
-			}
-			if index < 0 || int(index) >= stringCount {
-				return fmt.Errorf("dense PBF tag string index %d is out of range", index)
-			}
-			expectingKey = !expectingKey
-			return nil
-		}); err != nil {
-			return err
+	if err := eachPackedPBFVarint(data, func(value uint64) error {
+		if value > math.MaxInt32 {
+			return fmt.Errorf("dense PBF tag index is out of range")
 		}
+		index := int32(value)
+		if expectingKey && index == 0 {
+			delimiters++
+			return nil
+		}
+		if index < 0 || int(index) >= stringCount {
+			return fmt.Errorf("dense PBF tag string index %d is out of range", index)
+		}
+		expectingKey = !expectingKey
+		return nil
+	}); err != nil {
+		return err
 	}
 	if !expectingKey || delimiters != nodeCount {
 		return fmt.Errorf("dense PBF tag stream is malformed")
@@ -351,64 +358,70 @@ func validatePBFDenseTags(fields [][]byte, nodeCount, stringCount int) error {
 }
 
 func validatePBFWay(data []byte, stringCount, maxWayNodes int) error {
-	var keyFields, valueFields, refFields, latFields, lonFields [][]byte
-	var infoFields [][]byte
+	var keysData, valuesData, refsData, latsData, lonsData []byte
+	keysSeen, valuesSeen, infoSeen, refsSeen, latsSeen, lonsSeen := false, false, false, false, false, false
 	if err := eachPBFField(data, func(number protowire.Number, fieldType protowire.Type, bytesValue []byte, _ uint64) error {
-		if fieldType != protowire.BytesType {
-			return nil
-		}
 		switch number {
 		case 2:
-			keyFields = append(keyFields, bytesValue)
+			return capturePBFBytesField("way tag keys", fieldType, bytesValue, &keysData, &keysSeen)
 		case 3:
-			valueFields = append(valueFields, bytesValue)
+			return capturePBFBytesField("way tag values", fieldType, bytesValue, &valuesData, &valuesSeen)
 		case 4:
-			infoFields = append(infoFields, bytesValue)
+			if fieldType != protowire.BytesType || infoSeen {
+				return fmt.Errorf("invalid or repeated PBF way info")
+			}
+			infoSeen = true
+			return validatePBFInfo(bytesValue, stringCount)
 		case 8:
-			refFields = append(refFields, bytesValue)
+			return capturePBFBytesField("way references", fieldType, bytesValue, &refsData, &refsSeen)
 		case 9:
-			latFields = append(latFields, bytesValue)
+			return capturePBFBytesField("way latitudes", fieldType, bytesValue, &latsData, &latsSeen)
 		case 10:
-			lonFields = append(lonFields, bytesValue)
+			return capturePBFBytesField("way longitudes", fieldType, bytesValue, &lonsData, &lonsSeen)
+		default:
+			return nil
 		}
-		return nil
 	}); err != nil {
 		return err
 	}
-	keys, err := validatePBFStringIndexes(keyFields, stringCount)
+	keys, err := validatePBFStringIndexes(keysData, stringCount)
 	if err != nil {
 		return err
 	}
-	values, err := validatePBFStringIndexes(valueFields, stringCount)
+	values, err := validatePBFStringIndexes(valuesData, stringCount)
 	if err != nil {
 		return err
 	}
-	if (len(keyFields) == 0) != (len(valueFields) == 0) || keys != values {
+	if keysSeen != valuesSeen || keys != values {
 		return fmt.Errorf("PBF way tag columns have mismatched lengths")
 	}
-	for _, info := range infoFields {
-		if err := validatePBFInfo(info, stringCount); err != nil {
-			return err
-		}
-	}
-	refs, err := countPackedPBFVarints(refFields)
+	refs, err := countPackedPBFVarints(refsData)
 	if err != nil {
 		return err
 	}
 	if refs > maxWayNodes {
 		return fmt.Errorf("%w: way has %d nodes, limit %d", ErrWayNodeLimit, refs, maxWayNodes)
 	}
-	latCount, err := countPackedPBFVarints(latFields)
+	latCount, err := countPackedPBFVarints(latsData)
 	if err != nil {
 		return err
 	}
-	lonCount, err := countPackedPBFVarints(lonFields)
+	lonCount, err := countPackedPBFVarints(lonsData)
 	if err != nil {
 		return err
 	}
-	if len(latFields) > 0 && latCount != refs || len(lonFields) > 0 && lonCount != refs {
+	if latsSeen && latCount != refs || lonsSeen && lonCount != refs {
 		return fmt.Errorf("PBF way coordinate columns have mismatched lengths")
 	}
+	return nil
+}
+
+func capturePBFBytesField(name string, fieldType protowire.Type, value []byte, target *[]byte, seen *bool) error {
+	if fieldType != protowire.BytesType || *seen {
+		return fmt.Errorf("invalid or repeated PBF %s", name)
+	}
+	*seen = true
+	*target = value
 	return nil
 }
 
@@ -423,31 +436,27 @@ func validatePBFInfo(data []byte, stringCount int) error {
 	})
 }
 
-func validatePBFStringIndexes(fields [][]byte, stringCount int) (int, error) {
+func validatePBFStringIndexes(data []byte, stringCount int) (int, error) {
 	count := 0
-	for _, field := range fields {
-		if err := eachPackedPBFVarint(field, func(value uint64) error {
-			if value > math.MaxUint32 || value >= uint64(stringCount) {
-				return fmt.Errorf("PBF string-table index %d is out of range", value)
-			}
-			count++
-			return nil
-		}); err != nil {
-			return 0, err
+	if err := eachPackedPBFVarint(data, func(value uint64) error {
+		if value > math.MaxUint32 || value >= uint64(stringCount) {
+			return fmt.Errorf("PBF string-table index %d is out of range", value)
 		}
+		count++
+		return nil
+	}); err != nil {
+		return 0, err
 	}
 	return count, nil
 }
 
-func countPackedPBFVarints(fields [][]byte) (int, error) {
+func countPackedPBFVarints(data []byte) (int, error) {
 	count := 0
-	for _, field := range fields {
-		if err := eachPackedPBFVarint(field, func(uint64) error {
-			count++
-			return nil
-		}); err != nil {
-			return 0, err
-		}
+	if err := eachPackedPBFVarint(data, func(uint64) error {
+		count++
+		return nil
+	}); err != nil {
+		return 0, err
 	}
 	return count, nil
 }
