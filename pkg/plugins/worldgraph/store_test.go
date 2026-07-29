@@ -27,6 +27,26 @@ func TestChunkRoundTrip(t *testing.T) {
 	}
 }
 
+func TestEdgeMidpointTileWrapsAntimeridian(t *testing.T) {
+	from := Node{Lon: 179, Lat: 0}
+	to := Node{Lon: -179, Lat: 0}
+	want, err := TileForPosition(180, 0, DefaultZoom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forward, err := edgeMidpointTile(from, to, DefaultZoom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reverse, err := edgeMidpointTile(to, from, DefaultZoom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forward != want || reverse != want {
+		t.Fatalf("antimeridian midpoint tiles = %+v, %+v, want %+v", forward, reverse, want)
+	}
+}
+
 func TestChunkRejectsIncorrectEdgeOwner(t *testing.T) {
 	chunk := testChunk(t, 12.5683, 55.6761, "region-a")
 	chunk.Edges[0].Owner.X++

@@ -116,10 +116,25 @@ func TestTileRingClampsYAndWrapsX(t *testing.T) {
 	}
 
 	world := TileID{Z: 0, X: 0, Y: 0}
-	if _, err := Expand([]TileID{world}, 2, 1); err == nil {
-		t.Fatal("Expand() error = nil, want oversized ring rejection")
+	duplicates := make([]TileID, 1_000)
+	for i := range duplicates {
+		duplicates[i] = world
 	}
-	if _, err := Corridor(world, world, 2); err == nil {
-		t.Fatal("Corridor() error = nil, want oversized halo rejection")
+	if got, err := Expand(duplicates, 2, 1); err != nil || !reflect.DeepEqual(got, []TileID{world}) {
+		t.Fatalf("Expand(duplicates) = %+v, %v, want one world tile", got, err)
+	}
+	if got, err := Corridor(world, world, 2); err != nil || !reflect.DeepEqual(got, []TileID{world}) {
+		t.Fatalf("Corridor(world) = %+v, %v, want one world tile", got, err)
+	}
+}
+
+func TestCorridorRejectsAreaBeforeEnumeration(t *testing.T) {
+	_, err := Corridor(
+		TileID{Z: 5, X: 0, Y: 0},
+		TileID{Z: 5, X: 16, Y: 16},
+		0,
+	)
+	if err == nil {
+		t.Fatal("Corridor() error = nil, want bounded-area rejection")
 	}
 }

@@ -7,9 +7,10 @@ import (
 )
 
 const (
-	DefaultZoom         = 12
-	MaxMercatorLatitude = 85.05112878
-	maxTileZoom         = 30
+	DefaultZoom          = 12
+	MaxMercatorLatitude  = 85.05112878
+	maxTileZoom          = 30
+	defaultRouteMaxTiles = 256
 )
 
 type TileID struct {
@@ -67,6 +68,10 @@ func (id TileID) Bounds() Bounds {
 }
 
 func Corridor(from, to TileID, halo int) ([]TileID, error) {
+	return corridor(from, to, halo, defaultRouteMaxTiles)
+}
+
+func corridor(from, to TileID, halo, maxTiles int) ([]TileID, error) {
 	n, err := validatePair(from, to)
 	if err != nil {
 		return nil, err
@@ -74,13 +79,29 @@ func Corridor(from, to TileID, halo int) ([]TileID, error) {
 	if halo < 0 {
 		return nil, fmt.Errorf("halo must not be negative")
 	}
-	if halo > n {
-		return nil, fmt.Errorf("halo %d exceeds tile grid size %d", halo, n)
+	if maxTiles <= 0 {
+		return nil, fmt.Errorf("maxTiles must be positive")
 	}
 
+	halo = min(halo, n)
 	minX, maxX := min(from.X, to.X), max(from.X, to.X)
-	xs := make([]int, 0, maxX-minX+1)
-	if maxX-minX <= n-(maxX-minX) {
+	span := maxX - minX
+	wrapped := span > n-span
+	xCount := span + 1
+	if wrapped {
+		xCount = n - span + 1
+	}
+	xRadius := min(halo, n/2)
+	expandedXCount := min(n, xCount+2*xRadius)
+	minY := max(0, min(from.Y, to.Y)-halo)
+	maxY := min(n-1, max(from.Y, to.Y)+halo)
+	candidateCount := int64(expandedXCount) * int64(maxY-minY+1)
+	if candidateCount > int64(maxTiles) {
+		return nil, fmt.Errorf("tile corridor exceeds limit %d", maxTiles)
+	}
+
+	xs := make([]int, 0, xCount)
+	if !wrapped {
 		for x := minX; x <= maxX; x++ {
 			xs = append(xs, x)
 		}
@@ -93,10 +114,7 @@ func Corridor(from, to TileID, halo int) ([]TileID, error) {
 		}
 	}
 
-	tiles := make(map[TileID]struct{})
-	minY := max(0, min(from.Y, to.Y)-halo)
-	maxY := min(n-1, max(from.Y, to.Y)+halo)
-	xRadius := min(halo, n/2)
+	tiles := make(map[TileID]struct{}, int(candidateCount))
 	for _, x := range xs {
 		for dx := -xRadius; dx <= xRadius; dx++ {
 			wrappedX := wrap(x+dx, n)
@@ -123,26 +141,52 @@ func Expand(tiles []TileID, rings, maxTiles int) ([]TileID, error) {
 	if err != nil {
 		return nil, err
 	}
-	if rings > n {
-		return nil, fmt.Errorf("rings %d exceed tile grid size %d", rings, n)
+	type tileStep struct {
+		tile TileID
+		step int
 	}
-	xRadius := min(rings, n/2)
-	result := make(map[TileID]struct{})
+	result := make(map[TileID]struct{}, min(len(tiles), maxTiles))
+	queue := make([]tileStep, 0, min(len(tiles), maxTiles))
 	for _, tile := range tiles {
-		if err := validateTile(tile, n); err != nil {
-			return nil, err
-		}
 		if tile.Z != tiles[0].Z {
 			return nil, fmt.Errorf("tiles must use one zoom")
 		}
-		minY := max(0, tile.Y-rings)
-		maxY := min(n-1, tile.Y+rings)
-		for dx := -xRadius; dx <= xRadius; dx++ {
-			for y := minY; y <= maxY; y++ {
-				result[TileID{Z: tile.Z, X: wrap(tile.X+dx, n), Y: y}] = struct{}{}
-				if len(result) > maxTiles {
+		if err := validateTile(tile, n); err != nil {
+			return nil, err
+		}
+		if _, exists := result[tile]; exists {
+			continue
+		}
+		if len(result) == maxTiles {
+			return nil, fmt.Errorf("tile expansion exceeds limit %d", maxTiles)
+		}
+		result[tile] = struct{}{}
+		queue = append(queue, tileStep{tile: tile})
+	}
+
+	for head := 0; head < len(queue); head++ {
+		current := queue[head]
+		if current.step >= rings {
+			continue
+		}
+		for dx := -1; dx <= 1; dx++ {
+			for dy := -1; dy <= 1; dy++ {
+				if dx == 0 && dy == 0 {
+					continue
+				}
+				y := current.tile.Y + dy
+				if y < 0 || y >= n {
+					continue
+				}
+				neighbor := TileID{Z: current.tile.Z, X: wrap(current.tile.X+dx, n), Y: y}
+				if _, exists := result[neighbor]; exists {
+					continue
+				}
+				if len(result) == maxTiles {
 					return nil, fmt.Errorf("tile expansion exceeds limit %d", maxTiles)
 				}
+				result[neighbor] = struct{}{}
+				queue = append(queue, tileStep{tile: neighbor, step: current.step + 1})
 			}
 		}
 	}
