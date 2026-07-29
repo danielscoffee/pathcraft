@@ -34,11 +34,11 @@ func TestEdgeMidpointTileWrapsAntimeridian(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	forward, err := edgeMidpointTile(from, to, DefaultZoom)
+	forward, err := TileForEdge(from, to, DefaultZoom)
 	if err != nil {
 		t.Fatal(err)
 	}
-	reverse, err := edgeMidpointTile(to, from, DefaultZoom)
+	reverse, err := TileForEdge(to, from, DefaultZoom)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,6 +205,58 @@ func TestPublishGenerationRequiresChangedChunksWhenProvenanceChanges(t *testing.
 	second.Regions[0].SourceSHA256 = strings.Repeat("b", 64)
 	if err := store.PublishGeneration(second, nil); err == nil {
 		t.Fatal("PublishGeneration() error = nil, want changed-chunk requirement")
+	}
+}
+
+func TestPublishGenerationStreamsChangedChunks(t *testing.T) {
+	store, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunks := threeNeighborChunks(t)
+	manifest := testManifest("generation-1", sortedChunkTiles(chunks))
+	calls := 0
+	if err := store.PublishGenerationFrom(manifest, func(tile TileID) (Chunk, bool, error) {
+		calls++
+		chunk, ok := chunks[tile]
+		return chunk, ok, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if calls != len(manifest.Tiles) {
+		t.Fatalf("chunk provider calls = %d, want %d", calls, len(manifest.Tiles))
+	}
+}
+
+func TestPublishGenerationSyncsDirectoriesAroundManifestRename(t *testing.T) {
+	dir := t.TempDir()
+	store, err := OpenStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunks := threeNeighborChunks(t)
+	manifest := testManifest("generation-1", sortedChunkTiles(chunks))
+	var events []string
+	ops := publishFileOps{
+		renameManifest: func(from, to string) error {
+			events = append(events, "rename")
+			return os.Rename(from, to)
+		},
+		syncDirectory: func(path string) error {
+			switch path {
+			case filepath.Join(dir, "generations"):
+				events = append(events, "sync-generations")
+			case dir:
+				events = append(events, "sync-root")
+			}
+			return nil
+		},
+	}
+	if err := store.publishGenerationWithOps(manifest, chunks, ops); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"sync-generations", "rename", "sync-root"}; !reflect.DeepEqual(events, want) {
+		t.Fatalf("publication events = %v, want %v", events, want)
 	}
 }
 

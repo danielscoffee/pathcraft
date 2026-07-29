@@ -129,7 +129,7 @@ func (chunk *Chunk) validate() error {
 		if err := validateTile(edge.Owner, n); err != nil {
 			return fmt.Errorf("%w: edge %+v owner: %v", ErrInvalidChunk, edge.ID, err)
 		}
-		expectedOwner, err := edgeMidpointTile(from, to, chunk.Tile.Z)
+		expectedOwner, err := TileForEdge(from, to, chunk.Tile.Z)
 		if err != nil || edge.Owner != expectedOwner {
 			return fmt.Errorf("%w: edge %+v has incorrect owner", ErrInvalidChunk, edge.ID)
 		}
@@ -151,7 +151,7 @@ func (chunk *Chunk) validate() error {
 	return nil
 }
 
-func edgeMidpointTile(from, to Node, zoom int) (TileID, error) {
+func TileForEdge(from, to Node, zoom int) (TileID, error) {
 	deltaLon := to.Lon - from.Lon
 	if math.Abs(deltaLon) > 180 {
 		if deltaLon > 0 {

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"sync"
 )
@@ -99,13 +100,45 @@ func (s *Store) LoadChunk(tile TileID) (*Chunk, error) {
 	return chunk, nil
 }
 
+type publishFileOps struct {
+	renameManifest func(string, string) error
+	syncDirectory  func(string) error
+}
+
 func (s *Store) PublishGeneration(manifest Manifest, chunks map[TileID]Chunk) error {
-	return s.publishGeneration(manifest, chunks, os.Rename)
+	if err := validateChunkMap(manifest, chunks); err != nil {
+		return err
+	}
+	return s.PublishGenerationFrom(manifest, chunkMapProvider(chunks))
+}
+
+func (s *Store) PublishGenerationFrom(manifest Manifest, provide func(TileID) (Chunk, bool, error)) error {
+	return s.publishGenerationFromWithOps(manifest, provide, publishFileOps{
+		renameManifest: os.Rename,
+		syncDirectory:  syncDirectory,
+	})
 }
 
 func (s *Store) publishGeneration(manifest Manifest, chunks map[TileID]Chunk, renameManifest func(string, string) error) error {
-	if renameManifest == nil {
-		return fmt.Errorf("manifest rename function is nil")
+	if err := validateChunkMap(manifest, chunks); err != nil {
+		return err
+	}
+	return s.publishGenerationFromWithOps(manifest, chunkMapProvider(chunks), publishFileOps{
+		renameManifest: renameManifest,
+		syncDirectory:  syncDirectory,
+	})
+}
+
+func (s *Store) publishGenerationWithOps(manifest Manifest, chunks map[TileID]Chunk, ops publishFileOps) error {
+	if err := validateChunkMap(manifest, chunks); err != nil {
+		return err
+	}
+	return s.publishGenerationFromWithOps(manifest, chunkMapProvider(chunks), ops)
+}
+
+func (s *Store) publishGenerationFromWithOps(manifest Manifest, provide func(TileID) (Chunk, bool, error), ops publishFileOps) error {
+	if provide == nil || ops.renameManifest == nil || ops.syncDirectory == nil {
+		return fmt.Errorf("publish operation is nil")
 	}
 	prepared, err := prepareManifest(manifest)
 	if err != nil {
@@ -114,15 +147,6 @@ func (s *Store) publishGeneration(manifest Manifest, chunks map[TileID]Chunk, re
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	for tile, chunk := range chunks {
-		if !manifestHasTile(prepared, tile) {
-			return fmt.Errorf("chunk %+v is not listed in manifest", tile)
-		}
-		if chunk.Tile != tile {
-			return fmt.Errorf("chunk key %+v does not match payload tile %+v", tile, chunk.Tile)
-		}
-	}
 
 	if err := os.MkdirAll(s.root, 0o700); err != nil {
 		return err
@@ -153,7 +177,14 @@ func (s *Store) publishGeneration(manifest Manifest, chunks map[TileID]Chunk, re
 		if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
 			return err
 		}
-		if chunk, changed := chunks[tile]; changed {
+		chunk, changed, err := provide(tile)
+		if err != nil {
+			return err
+		}
+		if changed {
+			if chunk.Tile != tile {
+				return fmt.Errorf("chunk key %+v does not match payload tile %+v", tile, chunk.Tile)
+			}
 			if err := validateChunkProvenance(chunk, prepared); err != nil {
 				return err
 			}
@@ -176,6 +207,9 @@ func (s *Store) publishGeneration(manifest Manifest, chunks map[TileID]Chunk, re
 		}
 	}
 
+	if err := syncTreeDirectories(stage, ops.syncDirectory); err != nil {
+		return err
+	}
 	manifestTemp, err := writeManifestTemp(s.root, prepared)
 	if err != nil {
 		return err
@@ -185,14 +219,52 @@ func (s *Store) publishGeneration(manifest Manifest, chunks map[TileID]Chunk, re
 	if err := os.Rename(stage, target); err != nil {
 		return err
 	}
-	if err := renameManifest(manifestTemp, filepath.Join(s.root, manifestFilename)); err != nil {
-		if cleanupErr := os.RemoveAll(target); cleanupErr != nil {
-			return errors.Join(err, cleanupErr)
-		}
-		return err
+	if err := ops.syncDirectory(generations); err != nil {
+		return errors.Join(err, removePublishedGeneration(target, generations, ops.syncDirectory))
+	}
+	if err := ops.renameManifest(manifestTemp, filepath.Join(s.root, manifestFilename)); err != nil {
+		return errors.Join(err, removePublishedGeneration(target, generations, ops.syncDirectory))
 	}
 	s.manifest = &prepared
+	return ops.syncDirectory(s.root)
+}
+
+func syncTreeDirectories(root string, sync func(string) error) error {
+	var directories []string
+	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			directories = append(directories, path)
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+	sort.Slice(directories, func(i, j int) bool { return len(directories[i]) > len(directories[j]) })
+	for _, directory := range directories {
+		if err := sync(directory); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func syncDirectory(path string) error {
+	directory, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	if err := directory.Sync(); err != nil {
+		_ = directory.Close()
+		return err
+	}
+	return directory.Close()
+}
+
+func removePublishedGeneration(target, generations string, sync func(string) error) error {
+	return errors.Join(os.RemoveAll(target), sync(generations))
 }
 
 func writeChunkFile(path string, chunk Chunk) error {
@@ -315,6 +387,29 @@ func readManifestFile(path string) (Manifest, error) {
 		return Manifest{}, err
 	}
 	return normalizeManifest(manifest)
+}
+
+func validateChunkMap(manifest Manifest, chunks map[TileID]Chunk) error {
+	listed := make(map[TileID]struct{}, len(manifest.Tiles))
+	for _, tile := range manifest.Tiles {
+		listed[tile] = struct{}{}
+	}
+	for tile, chunk := range chunks {
+		if _, exists := listed[tile]; !exists {
+			return fmt.Errorf("chunk %+v is not listed in manifest", tile)
+		}
+		if chunk.Tile != tile {
+			return fmt.Errorf("chunk key %+v does not match payload tile %+v", tile, chunk.Tile)
+		}
+	}
+	return nil
+}
+
+func chunkMapProvider(chunks map[TileID]Chunk) func(TileID) (Chunk, bool, error) {
+	return func(tile TileID) (Chunk, bool, error) {
+		chunk, ok := chunks[tile]
+		return chunk, ok, nil
+	}
 }
 
 func validateChunkProvenance(chunk Chunk, manifest Manifest) error {
