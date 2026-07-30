@@ -1,4 +1,0 @@
-trip_id,arrival_time,departure_time,stop_id,stop_sequence
-SHUTTLE_1,05:05:00,05:05:00,START_STOP,1
-SHUTTLE_1,05:10:00,05:10:00,MID_STOP,2
-SHUTTLE_1,05:15:00,05:15:00,END_STOP,3
