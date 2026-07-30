@@ -1,4 +1,4 @@
-OSM_FILE ?= testdata/example.osm
+OSM_FILE ?= examples/recife.osm
 GTFS_DIR ?= testdata/mini_gtfs
 ADDR     ?= :8080
 
