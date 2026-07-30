@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchConfig, fetchModes } from './api/client'
 import type { MapConfig, RouteMode, TripDetail } from './api/types'
 import DirectionsCard from './components/DirectionsCard'
@@ -6,7 +6,8 @@ import LayersMenu from './components/LayersMenu'
 import MapView from './components/MapView'
 import ModeTabs from './components/ModeTabs'
 import RouteSummary from './components/RouteSummary'
-import { useRouting, type SolvedRoute, type Status } from './hooks/useRouting'
+import { useRouting, type ModeOptions, type SolvedRoute, type Status } from './hooks/useRouting'
+import { defaultModeOptions, supportsGeographicMap } from './lib/modeResult'
 
 // Recife fallbacks, mirroring the server-side defaults in handlers_config.go.
 const FALLBACK_CONFIG: MapConfig = {
@@ -16,26 +17,19 @@ const FALLBACK_CONFIG: MapConfig = {
   tile_url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
 }
 
-const FALLBACK_MODES: RouteMode[] = [
-  { id: 'walk', label: 'Walk', kind: 'standard', endpoint: '/route' },
-  { id: 'bus', label: 'Bus / GTFS', kind: 'gtfs', endpoint: '/journey' },
-  { id: 'car', label: 'Car', kind: 'standard', endpoint: '/route' },
-  { id: 'bike', label: 'Bike', kind: 'standard', endpoint: '/route' },
-]
-
 export default function App() {
   const [config, setConfig] = useState<MapConfig | null>(null)
-  const [modes, setModes] = useState<RouteMode[]>(FALLBACK_MODES)
-  const [modeID, setModeID] = useState('walk')
-  const [busTime, setBusTime] = useState('05:00:00')
+  const [modes, setModes] = useState<RouteMode[]>([])
+  const [modeID, setModeID] = useState('')
+  const [modeOptions, setModeOptions] = useState<ModeOptions>({})
   const [showStreets, setShowStreets] = useState(false)
   const [showNodes, setShowNodes] = useState(false)
   const [showStops, setShowStops] = useState(false)
   const [streetTypes, setStreetTypes] = useState<string[]>([])
   const [trip, setTrip] = useState<TripDetail | null>(null)
 
-  const routing = useRouting(modes, busTime)
-  const { setStatus, reset, resolveGTFS } = routing
+  const routing = useRouting(modes, modeOptions)
+  const { setStatus, reset, resolveMode } = routing
 
   const activeMode = modes.find((m) => m.id === modeID) ?? modes[0]
   const activeResult = routing.results[activeMode?.id ?? '']
@@ -46,7 +40,6 @@ export default function App() {
     return {
       geojson: activeResult.geojson,
       modeID: activeMode.id,
-      journey: activeResult.journey,
       generation: routing.generation,
     }
   }, [activeMode, activeResult, routing.generation])
@@ -57,22 +50,26 @@ export default function App() {
       .catch(() => setConfig(FALLBACK_CONFIG))
     fetchModes()
       .then((loaded) => {
-        setModes(loaded)
-        setModeID((current) => (loaded.some((m) => m.id === current) ? current : loaded[0].id))
+        const supported = loaded.filter(supportsGeographicMap)
+        if (supported.length === 0) throw new Error('no modes support this map renderer')
+        setModes(supported)
+        setModeOptions(Object.fromEntries(supported.map((mode) => [mode.id, defaultModeOptions(mode)])))
+        setModeID((current) =>
+          supported.some((mode) => mode.id === current) ? current : supported[0].id,
+        )
       })
-      .catch(() =>
-        setStatus({ text: 'Mode catalog unavailable; using built-in modes.', tone: 'info' }),
-      )
+      .catch(() => setStatus({ text: 'Mode catalog unavailable.', tone: 'err' }))
   }, [setStatus])
 
-  // Departure time changes re-solve GTFS modes only; tab switches are cached.
-  const resolveGTFSRef = useRef(resolveGTFS)
-  useEffect(() => {
-    resolveGTFSRef.current = resolveGTFS
-  }, [resolveGTFS])
-  useEffect(() => {
-    resolveGTFSRef.current()
-  }, [busTime])
+  const onModeOption = useCallback(
+    (name: string, value: string) => {
+      if (!activeMode) return
+      const options = { ...(modeOptions[activeMode.id] ?? {}), [name]: value }
+      setModeOptions((previous) => ({ ...previous, [activeMode.id]: options }))
+      resolveMode(activeMode.id, options)
+    },
+    [activeMode, modeOptions, resolveMode],
+  )
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -126,8 +123,8 @@ export default function App() {
           <RouteSummary
             mode={activeMode}
             result={activeResult}
-            busTime={busTime}
-            onBusTime={setBusTime}
+            options={modeOptions[activeMode.id] ?? {}}
+            onOption={onModeOption}
           />
         )}
       </DirectionsCard>

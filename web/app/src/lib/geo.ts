@@ -19,13 +19,6 @@ export function lineLengthMeters(coords: GeoJSON.Position[]): number {
   return total
 }
 
-const MODE_SPEED_MPS: Record<string, number> = { walk: 1.4, car: 8.3, bike: 4.5 }
-
-export function estimateMinutes(modeID: string, distanceMeters: number): number {
-  const speed = MODE_SPEED_MPS[modeID] ?? MODE_SPEED_MPS.walk
-  return distanceMeters / speed / 60
-}
-
 /** "05:00" → "05:00:00"; values already carrying seconds pass through. */
 export function normalizeClockTime(value: string): string {
   return /^\d{2}:\d{2}$/.test(value) ? `${value}:00` : value

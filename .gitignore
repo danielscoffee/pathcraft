@@ -35,6 +35,7 @@ web/app/dist/*
 
 # Local data and generated artifacts (test fixtures live in testdata/)
 examples/
+/world/
 docs/screenshots/
 docs/superpowers/
 

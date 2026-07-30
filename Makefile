@@ -1,6 +1,10 @@
 OSM_FILE ?= examples/recife.osm
 GTFS_DIR ?= testdata/mini_gtfs
-ADDR     ?= :8080
+ADDR       ?= 127.0.0.1:8080
+PBF        ?=
+REGION     ?= demo
+STORE      ?= world
+CHUNK_ZOOM ?= 12
 
 test:
 	@go test ./... -v -cover
@@ -18,11 +22,20 @@ release: web build
 clean:
 	@rm -f ./bin/pathcraft
 
-# Run the interactive routing demo (React app at http://localhost$(ADDR)/).
+# Run the interactive routing demo (React app at http://$(ADDR)/).
 # Starts without transit when GTFS_DIR is missing; mini_gtfs ships in-repo.
 demo: web build
-	@echo "Open http://localhost$(ADDR)/"
+	@echo "Open http://$(ADDR)/"
 	@set --; [ ! -d "$(GTFS_DIR)" ] || set -- --gtfs "$(GTFS_DIR)"; exec ./bin/pathcraft serve --file "$(OSM_FILE)" "$$@" --addr "$(ADDR)"
+
+# Build one immutable regional generation, then serve viewport chunks.
+demo-chunks:
+	@test -n "$(PBF)" || { echo "PBF is required: make demo-chunks PBF=region.osm.pbf [REGION=demo STORE=world]" >&2; exit 2; }
+	@$(MAKE) --no-print-directory web
+	@$(MAKE) --no-print-directory build
+	@./bin/pathcraft chunks build --pbf "$(PBF)" --store "$(STORE)" --region "$(REGION)" --zoom "$(CHUNK_ZOOM)"
+	@echo "Open http://$(ADDR)/"
+	@exec ./bin/pathcraft serve --chunks "$(STORE)" --addr "$(ADDR)"
 
 # Frontend dev server with hot reload, proxying API calls to ADDR.
 dev-web:
@@ -46,4 +59,4 @@ fetch-gtfs:
 	@unzip -o -q /tmp/pathcraft_gtfs.zip -d $(GTFS_DIR)
 	@echo "Extracted $$(ls $(GTFS_DIR) | wc -l) files"
 
-.PHONY: test web build release clean demo dev-web fetch-osm fetch-gtfs
+.PHONY: test web build release clean demo demo-chunks dev-web fetch-osm fetch-gtfs

@@ -1,4 +1,12 @@
-import type { Journey, MapConfig, RouteMode, SnapResult, TripDetail } from './types'
+import { graphChunkURL } from '../lib/graphChunks.ts'
+import type {
+  GraphChunkConfig,
+  MapConfig,
+  ModeRouteResult,
+  RouteMode,
+  SnapResult,
+  TripDetail,
+} from './types'
 
 async function getJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, { signal })
@@ -22,18 +30,25 @@ export const fetchModes = async (): Promise<RouteMode[]> => {
 export const fetchNearest = (lat: number, lon: number) =>
   getJSON<SnapResult>(`/nearest?lat=${lat}&lon=${lon}`)
 
-const coordQuery = (from: SnapResult, to: SnapResult) =>
-  `from_lat=${from.lat}&from_lon=${from.lon}&to_lat=${to.lat}&to_lon=${to.lon}`
-
-export const fetchRoute = (endpoint: string, modeID: string, from: SnapResult, to: SnapResult) =>
-  getJSON<GeoJSON.FeatureCollection>(
-    `${endpoint}?${coordQuery(from, to)}&mode=${encodeURIComponent(modeID)}`,
-  )
-
-export const fetchJourney = (endpoint: string, from: SnapResult, to: SnapResult, time: string) =>
-  getJSON<Journey>(`${endpoint}?${coordQuery(from, to)}&time=${encodeURIComponent(time)}`)
+export const fetchModeRoute = (
+  modeID: string,
+  from: SnapResult,
+  to: SnapResult,
+  options: Record<string, string> = {},
+) => {
+  const query = new URLSearchParams({
+    mode: modeID,
+    from: `${from.lon},${from.lat}`,
+    to: `${to.lon},${to.lat}`,
+    ...options,
+  })
+  return getJSON<ModeRouteResult>(`/mode-route?${query}`)
+}
 
 export const fetchStreetGraph = () => getJSON<GeoJSON.FeatureCollection>('/graph')
+
+export const fetchGraphChunk = (config: GraphChunkConfig, id: string, signal: AbortSignal) =>
+  getJSON<GeoJSON.FeatureCollection>(graphChunkURL(config, id), signal)
 
 export const fetchNodes = (bbox: string, limit: number, minDegree: number, signal: AbortSignal) =>
   getJSON<GeoJSON.FeatureCollection>(

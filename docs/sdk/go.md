@@ -12,41 +12,40 @@ Use the Go version declared in PathCraft's `go.mod` or newer.
 
 ## Street routing
 
-Load OSM from a file and route between coordinates:
+Load OSM from a file and route through a registered mode:
 
 ```go
 package main
 
 import (
+    "context"
     "fmt"
 
+    "github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
     "github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
+    "github.com/danielscoffee/pathcraft/pkg/plugins"
+    _ "github.com/danielscoffee/pathcraft/pkg/plugins/bike"
 )
 
 func main() {
-    router, err := engine.NewWithConfig(engine.Config{
-        Mode:     engine.ModeBike,
-        SpeedMPS: 4.5,
-    })
-    if err != nil {
-        panic(err)
-    }
+    router := engine.New()
     if err := router.LoadOSM("city.osm.gz"); err != nil {
         panic(err)
     }
 
-    route, err := router.RouteByCoordinates(engine.CoordinateRouteRequest{
-        FromLat:            -8.05428,
-        FromLon:            -34.88130,
-        ToLat:              -8.05520,
-        ToLon:              -34.87970,
-        IncludeCoordinates: true,
+    mode, ok := plugins.Default.Mode("bike")
+    if !ok {
+        panic("bike mode not registered")
+    }
+    route, err := mode.Route(context.Background(), router, core.ModeRequest{
+        From: core.Position{-34.88130, -8.05428},
+        To:   core.Position{-34.87970, -8.05520},
     })
     if err != nil {
         panic(err)
     }
 
-    fmt.Printf("%.0f m in %s\n", route.Distance, route.Duration)
+    fmt.Printf("%.0f m in %d seconds\n", route.DistanceMeters, route.DurationSeconds)
 }
 ```
 
@@ -56,13 +55,64 @@ Node-ID routing uses `Route(engine.RouteRequest{From: ..., To: ...})`. `RouteGeo
 
 ### Configuration
 
-`engine.Config` controls default street behavior:
+`engine.Config` controls low-level street primitives:
 
-- `Mode`: `engine.ModeWalk`, `engine.ModeBike`, or `engine.ModeCar`;
-- `SpeedMPS`: positive route speed; zero chooses mode default;
+- `SpeedMPS`: positive default walking speed; zero uses `1.4` m/s;
 - `HighwayPenalties`: multipliers of at least `1` keyed by OSM highway type.
 
-Requests with no explicit profile use engine defaults. Invalid modes, speeds, and penalties fail in `NewWithConfig`.
+Routing-mode defaults belong to registered mode plugins. Invalid speeds and penalties fail in `NewWithConfig`.
+
+## Versioned regional world graphs
+
+Stream an OSM PBF into a local generation store, then pass its router to
+existing street modes:
+
+```go
+ctx := context.Background()
+manifest, err := builder.Build(ctx, builder.Options{
+    PBFPath:   "region.osm.pbf",
+    StorePath: "world",
+    Region:    "demo",
+    Zoom:      12,
+})
+if err != nil {
+    panic(err)
+}
+
+router, err := worldgraph.OpenRouter("world", worldgraph.RouterOptions{})
+if err != nil {
+    panic(err)
+}
+defer router.Close()
+
+mode, ok := plugins.Default.Mode("car") // blank-import pkg/plugins/car
+if !ok {
+    panic("car mode not registered")
+}
+route, err := mode.Route(ctx, router, core.ModeRequest{
+    From: core.Position{12.5683, 55.6761},
+    To:   core.Position{12.5685, 55.6762},
+})
+if err != nil {
+    panic(err)
+}
+fmt.Println(manifest.Generation, route.DistanceMeters)
+```
+
+Imports are `pkg/plugins/worldgraph`, `pkg/plugins/worldgraph/builder`, and the
+desired mode package. `worldgraph.Loader` also registers as the `worldgraph`
+`core.GraphLoader`; transparent coordinate routing through `Router` is the
+intended bounded path.
+
+Defaults: zoom 12, Web Mercator latitude `±85.05112878°`, one-tile halo, 256
+route tiles, three expansions, and 512 MiB decoded cache. Override
+`RouterOptions` for measured local needs. Stores use checksummed immutable
+generations and atomic manifest replacement; open routers remain pinned while
+same-name region replacement removes stale provenance. Missing coverage/files,
+corruption, area caps, no path, and cancellation return errors without
+partial/direct fallback. Chunk stores are trusted local artifacts, not upload
+payloads; retain OpenStreetMap attribution. This is local/regional routing,
+not a planet-scale hierarchy.
 
 ## Transit and multimodal routing
 
@@ -141,9 +191,9 @@ import (
     "github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
     "github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
 
-    _ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/astar"
-    _ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/geojson"
-    _ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/osm"
+    _ "github.com/danielscoffee/pathcraft/pkg/plugins/astar"
+    _ "github.com/danielscoffee/pathcraft/pkg/plugins/geojson"
+    _ "github.com/danielscoffee/pathcraft/pkg/plugins/osm"
 )
 
 result, err := engine.Run(context.Background(), engine.PipelineRequest{
@@ -153,9 +203,13 @@ result, err := engine.Run(context.Background(), engine.PipelineRequest{
     ExporterName:  "geojson",
     Route:         core.RouteRequest{From: "1", To: "6"},
 })
+if err != nil {
+    panic(err)
+}
+defer result.Close() // successful calls transfer ownership of the loaded graph
 ```
 
-Custom plugins are ordinary linked Go packages implementing interfaces from `pkg/pathcraft/core` and registering with `pkg/pathcraft/registry`. See [Plugin system](../architecture/plugin-system.md). PathCraft does not load plugins dynamically.
+Custom plugins are ordinary linked Go packages implementing interfaces from `pkg/pathcraft/core` and registering with `pkg/plugins`. High-level `core.Mode` plugins accept N-dimensional positions and return generic route segments, so custom domains do not require transport or UI changes. See [Plugin system](../architecture/plugin-system.md). PathCraft does not load plugins dynamically.
 
 ## API reference and runnable example
 

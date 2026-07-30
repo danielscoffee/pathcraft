@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/danielscoffee/pathcraft/internal/mobility"
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
+	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 )
 
 func CmdJourney(args []string) error {
@@ -30,24 +33,28 @@ func CmdJourney(args []string) error {
 		return fmt.Errorf("--from-lat, --from-lon, --to-lat, and --to-lon are required")
 	}
 
-	e, err := loadEngine(*file)
+	router, err := loadEngine(*file)
 	if err != nil {
 		return err
 	}
-	if err := e.LoadGTFSDir(*gtfsDir); err != nil {
+	if err := router.LoadGTFSDir(*gtfsDir); err != nil {
 		return err
+	}
+	mode, ok := plugins.Default.Mode("gtfs")
+	if !ok {
+		return fmt.Errorf("routing mode %q not registered", "gtfs")
 	}
 
 	normalizedDepTime := normalizeClockTime(*depTime)
-	fmt.Printf("Searching multimodal journey from (%.6f, %.6f) to (%.6f, %.6f) at %s...\n", *fromLat, *fromLon, *toLat, *toLon, normalizedDepTime)
-	start := time.Now()
-	res, err := e.MultimodalRoute(engine.MultimodalRouteRequest{
-		FromLat:        *fromLat,
-		FromLon:        *fromLon,
-		ToLat:          *toLat,
-		ToLon:          *toLon,
-		DepartureTime:  normalizedDepTime,
-		WalkingProfile: mobility.NewWalking(*speed),
+	fmt.Printf("Searching journey from (%.6f, %.6f) to (%.6f, %.6f) at %s...\n", *fromLat, *fromLon, *toLat, *toLon, normalizedDepTime)
+	started := time.Now()
+	result, err := mode.Route(context.Background(), router, core.ModeRequest{
+		From: core.Position{*fromLon, *fromLat},
+		To:   core.Position{*toLon, *toLat},
+		Options: map[string]string{
+			"departure_time":    normalizedDepTime,
+			"walking_speed_mps": strconv.FormatFloat(*speed, 'g', -1, 64),
+		},
 	})
 	if err != nil {
 		return err
@@ -55,39 +62,24 @@ func CmdJourney(args []string) error {
 
 	fmt.Println()
 	fmt.Println("=== Journey Found ===")
-	fmt.Printf("  Mode:      %s\n", res.Mode)
-	fmt.Printf("  Departure: %s\n", res.DepartureTime)
-	fmt.Printf("  Arrival:   %s\n", res.ArrivalTime)
-	fmt.Printf("  Duration:  %.1f min\n", res.TotalDuration.Minutes())
-	fmt.Printf("  Walking:   %.0f m\n", res.WalkingDistanceM)
-	fmt.Printf("  Search:    %v\n", time.Since(start))
-
-	if res.OriginStopID != "" || res.DestinationStopID != "" {
-		fmt.Printf("  Transit:   %s -> %s\n", res.OriginStopID, res.DestinationStopID)
-	}
+	fmt.Printf("  Mode:      %s\n", result.Mode)
+	fmt.Printf("  Departure: %v\n", result.Meta["departure_time"])
+	fmt.Printf("  Arrival:   %v\n", result.Meta["arrival_time"])
+	fmt.Printf("  Duration:  %.1f min\n", float64(result.DurationSeconds)/60)
+	fmt.Printf("  Walking:   %.0f m\n", result.DistanceMeters)
+	fmt.Printf("  Search:    %v\n", time.Since(started))
 
 	fmt.Println()
 	fmt.Println("=== Legs ===")
-	for i, leg := range res.Legs {
-		switch leg.Mode {
-		case "walk":
-			fmt.Printf("  %d. Walk: %s -> %s (%.0f m, %.1f min)\n", i+1, leg.FromName, leg.ToName, leg.DistanceM, leg.Duration.Minutes())
-		case "transfer":
-			fmt.Printf("  %d. Transfer: %s -> %s (%.0f m, %.1f min)\n", i+1, leg.FromName, leg.ToName, leg.DistanceM, leg.Duration.Minutes())
-		default:
-			line := leg.RouteName
-			if line == "" {
-				line = leg.RouteID
-			}
-			if line == "" {
-				line = leg.TripID
-			}
-			if leg.RouteLongName != "" {
-				line += " — " + leg.RouteLongName
-			}
-			fmt.Printf("  %d. Bus %s: %s -> %s\n", i+1, line, leg.FromName, leg.ToName)
-		}
+	for i, segment := range result.Segments {
+		fmt.Printf("  %d. %s: %v -> %v (%.0f m, %.1f min)\n",
+			i+1,
+			segment.Label,
+			segment.Meta["from"],
+			segment.Meta["to"],
+			segment.DistanceMeters,
+			float64(segment.DurationSeconds)/60,
+		)
 	}
-
 	return nil
 }

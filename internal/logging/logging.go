@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/registry"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 	"go.uber.org/zap"
 )
 
@@ -17,7 +17,7 @@ func Init(name string) error {
 	if name == "" {
 		name = "zap"
 	}
-	plugin, ok := registry.Default.Logger(name)
+	plugin, ok := plugins.Default.Logger(name)
 	if !ok {
 		return fmt.Errorf("unknown logger plugin: %s", name)
 	}

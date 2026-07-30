@@ -1,6 +1,8 @@
 package astar_test
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/danielscoffee/pathcraft/internal/graph"
@@ -65,6 +67,39 @@ func TestAStar_SimplePathExists(t *testing.T) {
 	}
 	if path.Nodes[len(path.Nodes)-1] != 9 {
 		t.Errorf("expected path to end at 9, got %d", path.Nodes[len(path.Nodes)-1])
+	}
+}
+
+func TestAStarWithProfileContextHonorsPreCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := astar.AStarWithProfileContext(ctx, buildTestGraph(), 1, 9, zeroHeuristic, mobility.NewWalking(1.4))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("AStarWithProfileContext() error = %v, want context.Canceled", err)
+	}
+}
+
+func TestAStarWithProfileContextCancelsDuringSearch(t *testing.T) {
+	const nodes = 2_000
+	g := graph.NewGraph()
+	for id := graph.NodeID(1); id <= nodes; id++ {
+		g.AddNode(id, 0, float64(id)/10_000)
+		if id > 1 {
+			g.AddBidirectionalEdge(id-1, id, 1)
+		}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	heuristicCalls := 0
+	heuristic := func(_, _ graph.Node) float64 {
+		heuristicCalls++
+		if heuristicCalls == 100 {
+			cancel()
+		}
+		return 0
+	}
+	_, err := astar.AStarWithProfileContext(ctx, g, 1, nodes, heuristic, mobility.NewWalking(1.4))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("AStarWithProfileContext() error = %v, want context.Canceled", err)
 	}
 }
 

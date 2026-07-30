@@ -1,22 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { fetchJourney, fetchNearest, fetchRoute } from '../api/client'
-import type { Journey, RouteMode, SnapResult } from '../api/types'
-import { estimateMinutes, lineLengthMeters, normalizeClockTime } from '../lib/geo'
-import { journeyToGeoJSON, totalCoordinateCount } from '../lib/journey'
+import { fetchModeRoute, fetchNearest } from '../api/client'
+import type { ModeRouteResult, RouteMode, SnapResult } from '../api/types'
+import { normalizeClockTime } from '../lib/geo'
+import { modeResultToGeoJSON, totalPositionCount } from '../lib/modeResult'
 
 export type StatusTone = 'info' | 'ok' | 'err'
+export type ModeOptions = Record<string, Record<string, string>>
 
 export interface Status {
   text: string
   tone: StatusTone
 }
 
-/** Outcome of solving one mode between the current A/B pair. */
+/** Outcome of solving one registered mode between the current A/B pair. */
 export interface ModeResult {
   ok: boolean
   geojson?: GeoJSON.FeatureCollection
-  /** Present for GTFS modes. */
-  journey?: Journey
+  route?: ModeRouteResult
   durationSeconds?: number
   distanceMeters?: number
   nodeCount?: number
@@ -27,49 +27,39 @@ export interface ModeResult {
 export interface SolvedRoute {
   geojson: GeoJSON.FeatureCollection
   modeID: string
-  journey?: Journey
   /** Bumps once per solve round so the map can remount/refit. */
   generation: number
 }
 
 async function solveMode(
   mode: RouteMode,
-  a: SnapResult,
-  b: SnapResult,
-  busTime: string,
+  from: SnapResult,
+  to: SnapResult,
+  options: Record<string, string>,
 ): Promise<ModeResult> {
-  const t0 = performance.now()
+  const started = performance.now()
   try {
-    if (mode.kind === 'gtfs') {
-      const time = normalizeClockTime(busTime || '05:00:00')
-      const journey = await fetchJourney(mode.endpoint || '/journey', a, b, time)
-      const geojson = journeyToGeoJSON(journey)
-      return {
-        ok: true,
-        geojson,
-        journey,
-        durationSeconds: journey.total_duration_seconds ?? 0,
-        distanceMeters: journey.walking_distance_meters,
-        nodeCount: totalCoordinateCount(geojson),
-        solveMs: performance.now() - t0,
+    const serializedOptions = { ...options }
+    for (const option of mode.options ?? []) {
+      const value = serializedOptions[option.name] ?? option.default
+      if (value !== undefined) {
+        serializedOptions[option.name] = option.kind === 'time' ? normalizeClockTime(value) : value
       }
     }
-    const geojson = await fetchRoute(mode.endpoint || '/route', mode.id, a, b)
-    const first = geojson.features?.[0]
-    const coords = first && first.geometry.type === 'LineString' ? first.geometry.coordinates : []
-    const distanceMeters = lineLengthMeters(coords)
+    const route = await fetchModeRoute(mode.id, from, to, serializedOptions)
     return {
       ok: true,
-      geojson,
-      durationSeconds: estimateMinutes(mode.id, distanceMeters) * 60,
-      distanceMeters,
-      nodeCount: coords.length,
-      solveMs: performance.now() - t0,
+      geojson: modeResultToGeoJSON(route),
+      route,
+      durationSeconds: route.duration_seconds ?? 0,
+      distanceMeters: route.distance_meters ?? 0,
+      nodeCount: totalPositionCount(route),
+      solveMs: performance.now() - started,
     }
   } catch (err) {
     return {
       ok: false,
-      solveMs: performance.now() - t0,
+      solveMs: performance.now() - started,
       error: err instanceof Error ? err.message : String(err),
     }
   }
@@ -89,12 +79,8 @@ export function solveModesProgressively(
   )
 }
 
-/**
- * Google-Maps-style directions state: two snapped endpoints, and on every
- * complete pair ALL modes solve in parallel so mode tabs can show ETAs and
- * switching tabs is instant (no refetch).
- */
-export function useRouting(modes: RouteMode[], busTime: string) {
+/** Every complete A/B pair resolves registered modes in parallel. */
+export function useRouting(modes: RouteMode[], modeOptions: ModeOptions) {
   const [from, setFrom] = useState<SnapResult | null>(null)
   const [to, setTo] = useState<SnapResult | null>(null)
   const [results, setResults] = useState<Record<string, ModeResult>>({})
@@ -103,44 +89,60 @@ export function useRouting(modes: RouteMode[], busTime: string) {
   const [status, setStatus] = useState<Status>({ text: 'Click the map to set A.', tone: 'info' })
 
   const modesRef = useRef(modes)
-  const busTimeRef = useRef(busTime)
+  const optionsRef = useRef(modeOptions)
   useEffect(() => {
     modesRef.current = modes
-    busTimeRef.current = busTime
-  }, [modes, busTime])
+    optionsRef.current = modeOptions
+  }, [modes, modeOptions])
 
   // Guards against late results from a superseded solve round.
   const round = useRef(0)
 
-  const solveAll = useCallback(async (a: SnapResult, b: SnapResult, onlyGTFS = false) => {
-    const activeModes = modesRef.current.filter((m) => !onlyGTFS || m.kind === 'gtfs')
-    if (activeModes.length === 0) return
-    const thisRound = ++round.current
+  const solveAll = useCallback(
+    async (
+      a: SnapResult,
+      b: SnapResult,
+      onlyModeID = '',
+      optionOverride?: Record<string, string>,
+    ) => {
+      const activeModes = modesRef.current.filter((mode) => !onlyModeID || mode.id === onlyModeID)
+      if (activeModes.length === 0) return
+      const thisRound = ++round.current
 
-    setSolving(true)
-    if (!onlyGTFS) setResults({})
-    setStatus({ text: 'Routing all modes…', tone: 'info' })
-    const settled = await solveModesProgressively(
-      activeModes,
-      (mode) => solveMode(mode, a, b, busTimeRef.current),
-      (id, result) => {
-        if (thisRound === round.current) {
-          setResults((prev) => ({ ...prev, [id]: result }))
-        }
-      },
-    )
-    if (thisRound !== round.current) return // a newer round superseded this one
+      setSolving(true)
+      if (!onlyModeID) setResults({})
+      setStatus({ text: onlyModeID ? `Routing ${onlyModeID}…` : 'Routing all modes…', tone: 'info' })
+      const settled = await solveModesProgressively(
+        activeModes,
+        (mode) =>
+          solveMode(
+            mode,
+            a,
+            b,
+            mode.id === onlyModeID && optionOverride
+              ? optionOverride
+              : (optionsRef.current[mode.id] ?? {}),
+          ),
+        (id, result) => {
+          if (thisRound === round.current) {
+            setResults((previous) => ({ ...previous, [id]: result }))
+          }
+        },
+      )
+      if (thisRound !== round.current) return
 
-    setGeneration((g) => g + 1)
-    setSolving(false)
+      setGeneration((value) => value + 1)
+      setSolving(false)
 
-    const okCount = settled.filter(([, r]) => r.ok).length
-    setStatus(
-      okCount === 0
-        ? { text: `No route found: ${settled[0][1].error ?? 'unknown error'}`, tone: 'err' }
-        : { text: `${okCount}/${settled.length} modes solved.`, tone: 'ok' },
-    )
-  }, [])
+      const okCount = settled.filter(([, result]) => result.ok).length
+      setStatus(
+        okCount === 0
+          ? { text: `No route found: ${settled[0][1].error ?? 'unknown error'}`, tone: 'err' }
+          : { text: `${okCount}/${settled.length} modes solved.`, tone: 'ok' },
+      )
+    },
+    [],
+  )
 
   const reset = useCallback((announce = true) => {
     round.current++
@@ -190,10 +192,12 @@ export function useRouting(modes: RouteMode[], busTime: string) {
     [from, to, reset, solveAll],
   )
 
-  /** Re-solve GTFS modes when the departure time changes. */
-  const resolveGTFS = useCallback(() => {
-    if (from && to) void solveAll(from, to, true)
-  }, [from, to, solveAll])
+  const resolveMode = useCallback(
+    (modeID: string, options?: Record<string, string>) => {
+      if (from && to) void solveAll(from, to, modeID, options)
+    },
+    [from, to, solveAll],
+  )
 
   return {
     from,
@@ -207,6 +211,6 @@ export function useRouting(modes: RouteMode[], busTime: string) {
     clearPoint,
     swap,
     reset,
-    resolveGTFS,
+    resolveMode,
   }
 }

@@ -15,7 +15,6 @@ func TestNewWithConfigRejectsInvalidValues(t *testing.T) {
 		name   string
 		config Config
 	}{
-		{name: "mode", config: Config{Mode: "plane"}},
 		{name: "negative speed", config: Config{SpeedMPS: -1}},
 		{name: "non-finite speed", config: Config{SpeedMPS: math.Inf(1)}},
 		{name: "empty highway", config: Config{HighwayPenalties: map[string]float64{" ": 2}}},
@@ -32,33 +31,19 @@ func TestNewWithConfigRejectsInvalidValues(t *testing.T) {
 	}
 }
 
-func TestConfigUsesModeDefaultSpeed(t *testing.T) {
-	tests := []struct {
-		mode        Mode
-		wantSpeed   float64
-		wantProfile string
-	}{
-		{mode: ModeWalk, wantSpeed: mobility.DefaultWalkingSpeedMPS, wantProfile: "walking"},
-		{mode: ModeBike, wantSpeed: defaultBikeSpeedMPS, wantProfile: "walking"},
-		{mode: ModeCar, wantSpeed: mobility.DefaultDrivingSpeedMPS, wantProfile: "driving"},
+func TestConfigUsesPrimitiveWalkingDefault(t *testing.T) {
+	e, err := NewWithConfig(Config{})
+	if err != nil {
+		t.Fatalf("NewWithConfig() error = %v", err)
 	}
-
-	for _, test := range tests {
-		t.Run(string(test.mode), func(t *testing.T) {
-			e, err := NewWithConfig(Config{Mode: test.mode})
-			if err != nil {
-				t.Fatalf("NewWithConfig() error = %v", err)
-			}
-			profile := e.routeProfile(nil)
-			if profile.Speed() != test.wantSpeed || profile.Name() != test.wantProfile {
-				t.Fatalf("profile = %s at %v m/s, want %s at %v", profile.Name(), profile.Speed(), test.wantProfile, test.wantSpeed)
-			}
-		})
+	profile := e.routeProfile(nil)
+	if profile.Speed() != mobility.DefaultWalkingSpeedMPS || profile.Name() != "walking" {
+		t.Fatalf("profile = %s at %v m/s", profile.Name(), profile.Speed())
 	}
 }
 
 func TestConfiguredDefaultsRouteWithoutInternalProfile(t *testing.T) {
-	e, err := NewWithConfig(Config{Mode: ModeWalk, SpeedMPS: 2})
+	e, err := NewWithConfig(Config{SpeedMPS: 2})
 	if err != nil {
 		t.Fatalf("NewWithConfig() error = %v", err)
 	}
@@ -80,18 +65,15 @@ func TestConfiguredDefaultsRouteWithoutInternalProfile(t *testing.T) {
 	}
 }
 
-func TestConfiguredModeControlsAccess(t *testing.T) {
-	e, err := NewWithConfig(Config{Mode: ModeCar})
-	if err != nil {
-		t.Fatalf("NewWithConfig() error = %v", err)
-	}
+func TestExplicitProfileControlsAccess(t *testing.T) {
+	e := New()
 	g := graph.NewGraph()
 	g.AddNode(1, 0, 0)
 	g.AddNode(2, 0, 0.001)
 	g.AddRestrictedEdgeWithMeta(1, 2, 100, "footway", "Walk Only", graph.RestrictedDriving)
 	e.graph = g
 
-	if _, err := e.Route(RouteRequest{From: 1, To: 2}); err == nil || !strings.Contains(err.Error(), "no path") {
+	if _, err := e.Route(RouteRequest{From: 1, To: 2, Profile: mobility.NewDriving(mobility.DefaultDrivingSpeedMPS)}); err == nil || !strings.Contains(err.Error(), "no path") {
 		t.Fatalf("Route() error = %v, want no path", err)
 	}
 }
@@ -99,7 +81,6 @@ func TestConfiguredModeControlsAccess(t *testing.T) {
 func TestConfiguredHighwayPenaltyChangesRouteButNotDistance(t *testing.T) {
 	penalties := map[string]float64{" PRIMARY ": 2}
 	e, err := NewWithConfig(Config{
-		Mode:             ModeWalk,
 		SpeedMPS:         2,
 		HighwayPenalties: penalties,
 	})

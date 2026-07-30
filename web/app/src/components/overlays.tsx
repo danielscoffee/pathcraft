@@ -1,9 +1,15 @@
 import { useEffect, useRef } from 'react'
 import { useMap } from 'react-leaflet'
 import L from 'leaflet'
-import { fetchNodes, fetchStreetGraph, fetchTransitStops } from '../api/client'
-import type { RouteLayerProps, TripDetail } from '../api/types'
+import { fetchGraphChunk, fetchNodes, fetchStreetGraph, fetchTransitStops } from '../api/client'
+import type { GraphChunkConfig, RouteLayerProps, TripDetail } from '../api/types'
 import type { Status } from '../hooks/useRouting'
+import {
+  GraphChunkManager,
+  graphChunkLoadStatus,
+  pruneGraphChunkFailures,
+  visibleChunkIDs,
+} from '../lib/graphChunks.ts'
 import { highwayStyle } from '../lib/mapStyle'
 import { popupContent } from '../lib/popup'
 
@@ -16,64 +22,148 @@ interface OverlayProps {
   onStatus: (status: Status) => void
 }
 
-/** Debug overlay: the full routable street graph, colored by highway type. */
+function createStreetLayer(data: GeoJSON.FeatureCollection) {
+  return L.geoJSON(data, {
+    style: (feature) => {
+      const style = highwayStyle((feature?.properties as RouteLayerProps)?.highway)
+      return { color: style.color, weight: style.weight, opacity: 0.7 }
+    },
+    onEachFeature: (feature, layer) => {
+      const props = (feature.properties ?? {}) as RouteLayerProps
+      const tip = document.createElement('span')
+      tip.textContent = `${props.name || '(unnamed)'} — ${props.highway || 'unknown'}`
+      layer.bindTooltip(tip, { sticky: true, direction: 'top' })
+    },
+  })
+}
+
+/** Debug overlay: viewport graph chunks, with full-graph fallback for legacy servers. */
 export function StreetGraphLayer({
   enabled,
+  chunks,
   onStatus,
   onStreetTypes,
-}: OverlayProps & { onStreetTypes: (types: string[]) => void }) {
+}: OverlayProps & {
+  chunks?: GraphChunkConfig
+  onStreetTypes: (types: string[]) => void
+}) {
   const map = useMap()
-  const cache = useRef<GeoJSON.FeatureCollection | null>(null)
-  const layer = useRef<L.GeoJSON | null>(null)
+  const legacyCache = useRef<GeoJSON.FeatureCollection | null>(null)
+  const legacyLayer = useRef<L.GeoJSON | null>(null)
+  const chunkLayers = useRef(new Map<string, L.GeoJSON>())
 
   useEffect(() => {
+    const layers = chunkLayers.current
     if (!enabled) {
-      layer.current?.remove()
-      layer.current = null
+      legacyLayer.current?.remove()
+      legacyLayer.current = null
+      for (const layer of layers.values()) layer.remove()
+      layers.clear()
       onStreetTypes([])
       return
     }
 
-    let cancelled = false
-    const load = cache.current
-      ? Promise.resolve(cache.current)
-      : fetchStreetGraph().then((data) => (cache.current = data))
+    if (!chunks) {
+      let cancelled = false
+      const load = legacyCache.current
+        ? Promise.resolve(legacyCache.current)
+        : fetchStreetGraph().then((data) => (legacyCache.current = data))
 
-    onStatus({ text: 'Loading street graph…', tone: 'info' })
-    load
-      .then((data) => {
-        if (cancelled) return
-        layer.current = L.geoJSON(data, {
-          style: (feature) => {
-            const style = highwayStyle((feature?.properties as RouteLayerProps)?.highway)
-            return { color: style.color, weight: style.weight, opacity: 0.7 }
-          },
-          onEachFeature: (feature, lyr) => {
-            const props = (feature.properties ?? {}) as RouteLayerProps
-            const tip = document.createElement('span')
-            tip.textContent = `${props.name || '(unnamed)'} — ${props.highway || 'unknown'}`
-            lyr.bindTooltip(tip, { sticky: true, direction: 'top' })
-          },
-        }).addTo(map)
+      onStatus({ text: 'Loading street graph…', tone: 'info' })
+      load
+        .then((data) => {
+          if (cancelled) return
+          legacyLayer.current = createStreetLayer(data).addTo(map)
+          const types = new Set<string>()
+          for (const feature of data.features) {
+            const highway = (feature.properties as RouteLayerProps)?.highway
+            if (highway) types.add(highway)
+          }
+          onStreetTypes([...types].sort((left, right) => left.localeCompare(right)))
+          onStatus({ text: `Street graph: ${data.features.length} edges shown.`, tone: 'info' })
+        })
+        .catch((error: Error) => {
+          if (!cancelled) onStatus({ text: `Graph load failed: ${error.message}`, tone: 'err' })
+        })
 
-        const seen = new Set<string>()
-        for (const f of data.features) {
-          const hw = (f.properties as RouteLayerProps)?.highway
-          if (hw) seen.add(hw)
-        }
-        onStreetTypes([...seen])
-        onStatus({ text: `Street graph: ${data.features.length} edges shown.`, tone: 'info' })
-      })
-      .catch((err: Error) => {
-        if (!cancelled) onStatus({ text: `Graph load failed: ${err.message}`, tone: 'err' })
-      })
-
-    return () => {
-      cancelled = true
-      layer.current?.remove()
-      layer.current = null
+      return () => {
+        cancelled = true
+        legacyLayer.current?.remove()
+        legacyLayer.current = null
+      }
     }
-  }, [enabled, map, onStatus, onStreetTypes])
+
+    const visibleData = new Map<string, GeoJSON.FeatureCollection>()
+    const failures = new Map<string, Error>()
+    const updateSummary = () => {
+      const types = new Set<string>()
+      let edges = 0
+      for (const data of visibleData.values()) {
+        edges += data.features.length
+        for (const feature of data.features) {
+          const highway = (feature.properties as RouteLayerProps)?.highway
+          if (highway) types.add(highway)
+        }
+      }
+      onStreetTypes([...types].sort((left, right) => left.localeCompare(right)))
+      onStatus(graphChunkLoadStatus(edges, failures.size))
+    }
+    const manager = new GraphChunkManager<GeoJSON.FeatureCollection>({
+      load: fetchGraphChunk,
+      publish: (id, data) => {
+        layers.get(id)?.remove()
+        layers.set(id, createStreetLayer(data).addTo(map))
+        visibleData.set(id, data)
+        failures.delete(id)
+        updateSummary()
+      },
+      remove: (id) => {
+        layers.get(id)?.remove()
+        layers.delete(id)
+        visibleData.delete(id)
+        failures.delete(id)
+        updateSummary()
+      },
+      error: (error, id) => {
+        failures.set(id, error)
+        updateSummary()
+      },
+    })
+    const refresh = () => {
+      const bounds = map.getBounds()
+      const mapZoom = map.getZoom()
+      const viewportBounds = {
+        west: bounds.getWest(),
+        south: bounds.getSouth(),
+        east: bounds.getEast(),
+        north: bounds.getNorth(),
+      }
+      const desired = new Set(
+        mapZoom < chunks.min_render_zoom ? [] : visibleChunkIDs(viewportBounds, chunks.zoom),
+      )
+      const failuresChanged = pruneGraphChunkFailures(failures, desired)
+      manager.update({ config: chunks, enabled: true, bounds: viewportBounds, mapZoom })
+      if (mapZoom < chunks.min_render_zoom) {
+        onStatus({ text: `Zoom in (≥ ${chunks.min_render_zoom}) to render streets.`, tone: 'info' })
+      } else if (failures.size > 0) {
+        updateSummary()
+      } else if (layers.size === 0) {
+        onStatus({ text: 'Loading street graph…', tone: 'info' })
+      } else if (failuresChanged) {
+        updateSummary()
+      }
+    }
+
+    refresh()
+    map.on('moveend zoomend', refresh)
+    return () => {
+      map.off('moveend zoomend', refresh)
+      manager.dispose()
+      for (const layer of layers.values()) layer.remove()
+      layers.clear()
+      onStreetTypes([])
+    }
+  }, [chunks, enabled, map, onStatus, onStreetTypes])
 
   return null
 }

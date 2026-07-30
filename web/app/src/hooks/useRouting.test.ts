@@ -3,8 +3,8 @@ import type { RouteMode } from '../api/types'
 import { solveModesProgressively, type ModeResult } from './useRouting'
 
 const modes: RouteMode[] = [
-  { id: 'walk', label: 'Walk', kind: 'standard', endpoint: '/route' },
-  { id: 'bus', label: 'Bus', kind: 'gtfs', endpoint: '/journey' },
+  { id: 'walk', label: 'Walk' },
+  { id: 'space', label: 'Space', dimensions: [3] },
 ]
 
 describe('solveModesProgressively', () => {
@@ -30,10 +30,10 @@ describe('solveModesProgressively', () => {
     expect(published).toEqual(['walk'])
     expect(finished).toBe(false)
 
-    resolvers.bus({ ok: true, solveMs: 9_800 })
+    resolvers.space({ ok: true, solveMs: 9_800 })
     await solving
 
-    expect(published).toEqual(['walk', 'bus'])
+    expect(published).toEqual(['walk', 'space'])
     expect(finished).toBe(true)
   })
 })

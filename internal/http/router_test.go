@@ -92,10 +92,9 @@ func TestServer_Modes(t *testing.T) {
 
 	var body struct {
 		Modes []struct {
-			ID       string `json:"id"`
-			Label    string `json:"label"`
-			Kind     string `json:"kind"`
-			Endpoint string `json:"endpoint"`
+			ID         string `json:"id"`
+			Label      string `json:"label"`
+			Dimensions []int  `json:"dimensions"`
 		} `json:"modes"`
 	}
 	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
@@ -103,24 +102,63 @@ func TestServer_Modes(t *testing.T) {
 	}
 
 	expected := []struct {
-		id       string
-		label    string
-		kind     string
-		endpoint string
+		id         string
+		label      string
+		dimensions int
 	}{
-		{id: "walk", label: "Walk", kind: "standard", endpoint: "/route"},
-		{id: "bus", label: "Bus / GTFS", kind: "gtfs", endpoint: "/journey"},
-		{id: "car", label: "Car", kind: "standard", endpoint: "/route"},
-		{id: "bike", label: "Bike", kind: "standard", endpoint: "/route"},
+		{id: "air", label: "Air", dimensions: 2},
+		{id: "bike", label: "Bike", dimensions: 1},
+		{id: "car", label: "Car", dimensions: 1},
+		{id: "gtfs", label: "Bus / GTFS", dimensions: 1},
+		{id: "walk", label: "Walk", dimensions: 1},
 	}
 	if len(body.Modes) != len(expected) {
 		t.Fatalf("expected %d modes, got %d", len(expected), len(body.Modes))
 	}
 	for i, want := range expected {
 		got := body.Modes[i]
-		if got.ID != want.id || got.Label != want.label || got.Kind != want.kind || got.Endpoint != want.endpoint {
+		if got.ID != want.id || got.Label != want.label || len(got.Dimensions) != want.dimensions {
 			t.Fatalf("mode %d mismatch: got %+v want %+v", i, got, want)
 		}
+	}
+}
+
+func TestParseGeographicCoordinateRejectsUnsafeValues(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+		min   float64
+		max   float64
+	}{
+		{name: "not finite", value: "NaN", min: -90, max: 90},
+		{name: "latitude overflow", value: "91", min: -90, max: 90},
+		{name: "longitude overflow", value: "181", min: -180, max: 180},
+		{name: "huge finite value", value: "1e308", min: -90, max: 90},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := parseGeographicCoordinate(test.name, test.value, test.min, test.max); err == nil {
+				t.Fatalf("parseGeographicCoordinate(%q) error = nil", test.value)
+			}
+		})
+	}
+}
+
+func TestServer_NearestRejectsUnsafeCoordinates(t *testing.T) {
+	handler := NewServer(newTestEngine(t)).Handler()
+	for _, query := range []string{
+		"lat=NaN&lon=0",
+		"lat=91&lon=0",
+		"lat=0&lon=181",
+		"lat=1e308&lon=0",
+	} {
+		t.Run(query, func(t *testing.T) {
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/nearest?"+query, nil))
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400; body=%s", rr.Code, rr.Body.String())
+			}
+		})
 	}
 }
 

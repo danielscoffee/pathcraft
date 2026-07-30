@@ -1,7 +1,6 @@
 package http
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
@@ -9,17 +8,42 @@ import (
 
 	"github.com/danielscoffee/pathcraft/internal/logging"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 	"go.uber.org/zap"
 )
 
 func NewServer(e *engine.Engine, allowedOrigins ...string) *Server {
+	return newServer(e, e, plugins.Default, allowedOrigins...)
+}
+
+func NewServerWithRegistry(e *engine.Engine, registry *plugins.Registry, allowedOrigins ...string) *Server {
+	return newServer(e, e, registry, allowedOrigins...)
+}
+
+func NewServerWithHost(modeHost any, allowedOrigins ...string) *Server {
+	return NewServerWithHostAndRegistry(modeHost, plugins.Default, allowedOrigins...)
+}
+
+func NewServerWithHostAndRegistry(modeHost any, registry *plugins.Registry, allowedOrigins ...string) *Server {
+	legacy, _ := modeHost.(*engine.Engine)
+	return newServer(legacy, modeHost, registry, allowedOrigins...)
+}
+
+func NewServerWithEngineAndHost(e *engine.Engine, modeHost any, registry *plugins.Registry, allowedOrigins ...string) *Server {
+	return newServer(e, modeHost, registry, allowedOrigins...)
+}
+
+func newServer(e *engine.Engine, modeHost any, registry *plugins.Registry, allowedOrigins ...string) *Server {
+	if registry == nil {
+		registry = plugins.Default
+	}
 	origins := make(map[string]struct{}, len(allowedOrigins))
 	for _, origin := range allowedOrigins {
 		if origin = strings.TrimSpace(origin); validOrigin(origin) {
 			origins[origin] = struct{}{}
 		}
 	}
-	return &Server{engine: e, allowedOrigins: origins}
+	return &Server{engine: e, modeHost: modeHost, registry: registry, allowedOrigins: origins}
 }
 
 func validOrigin(origin string) bool {
@@ -37,11 +61,13 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/journey", s.handleJourney)
 	mux.HandleFunc("/modes", s.handleModes)
+	mux.HandleFunc("/mode-route", s.handleModeRoute)
 	mux.HandleFunc("/route", s.handleRoute)
 	mux.HandleFunc("/transit/stops", s.handleTransitStops)
 	mux.HandleFunc("/transit/trips", s.handleTransitTrips)
 	mux.HandleFunc("/transit/trip", s.handleTransitTrip)
 	mux.HandleFunc("/nearest", s.handleNearest)
+	mux.HandleFunc("/graph/chunks/{generation}/{z}/{x}/{y}", s.handleGraphChunk)
 	mux.HandleFunc("/graph", s.handleGraph)
 	mux.HandleFunc("/nodes", s.handleNodes)
 	mux.HandleFunc("/config", s.handleConfig)
@@ -120,18 +146,6 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) handleModes(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(modeResponse{Modes: []routeMode{
-		{ID: "walk", Label: "Walk", Kind: "standard", Endpoint: "/route"},
-		{ID: "bus", Label: "Bus / GTFS", Kind: "gtfs", Endpoint: "/journey"},
-		{ID: "car", Label: "Car", Kind: "standard", Endpoint: "/route"},
-		{ID: "bike", Label: "Bike", Kind: "standard", Endpoint: "/route"},
-	}}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
 func newHTTPServer(addr string, handler http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
@@ -142,9 +156,16 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 }
 
 func RunServer(e *engine.Engine, addr string, allowedOrigins ...string) {
-	s := NewServer(e, allowedOrigins...)
+	runServer(NewServer(e, allowedOrigins...), addr)
+}
+
+func RunServerWithHost(modeHost any, addr string, allowedOrigins ...string) {
+	runServer(NewServerWithHost(modeHost, allowedOrigins...), addr)
+}
+
+func runServer(server *Server, addr string) {
 	logging.L().Info("server starting", zap.String("addr", addr))
-	if err := newHTTPServer(addr, s.Handler()).ListenAndServe(); err != nil {
+	if err := newHTTPServer(addr, server.Handler()).ListenAndServe(); err != nil {
 		logging.L().Fatal("server stopped", zap.String("addr", addr), zap.Error(err))
 	}
 }

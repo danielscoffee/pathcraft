@@ -1,23 +1,22 @@
 package http
 
-import "github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
+import (
+	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
+	"github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
+)
 
 // WARN: THIS ROUTER IS MORE TO DEBUG AND TEST THE GEOJSON OUTPUTS AND BASIC ROUTING THAN A PRODUCTION FEAT
 
 type Server struct {
 	engine         *engine.Engine
+	modeHost       any
+	registry       *plugins.Registry
 	allowedOrigins map[string]struct{}
 }
 
 type modeResponse struct {
-	Modes []routeMode `json:"modes"`
-}
-
-type routeMode struct {
-	ID       string `json:"id"`
-	Label    string `json:"label"`
-	Kind     string `json:"kind"`
-	Endpoint string `json:"endpoint"`
+	Modes []core.ModeManifest `json:"modes"`
 }
 
 type journeyLegResponse struct {

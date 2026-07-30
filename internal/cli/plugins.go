@@ -10,7 +10,7 @@ import (
 
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
 	pcengine "github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
-	"github.com/danielscoffee/pathcraft/pkg/pathcraft/registry"
+	"github.com/danielscoffee/pathcraft/pkg/plugins"
 )
 
 // CmdPlugins implements: pathcraft plugins list [--json]
@@ -34,18 +34,19 @@ func cmdPluginsList(args []string) error {
 		return err
 	}
 
-	reg := registry.Default
+	reg := plugins.Default
 	data := map[string][]string{
 		"algorithms": reg.Algorithms(),
 		"loaders":    reg.Loaders(),
 		"exporters":  reg.Exporters(),
 		"cost":       reg.CostModels(),
 		"loggers":    reg.Loggers(),
+		"modes":      reg.Modes(),
 	}
 	if *asJSON {
 		return json.NewEncoder(os.Stdout).Encode(data)
 	}
-	for _, kind := range []string{"algorithms", "loaders", "exporters", "cost", "loggers"} {
+	for _, kind := range []string{"algorithms", "loaders", "exporters", "cost", "loggers", "modes"} {
 		fmt.Printf("%s:\n", strings.ToUpper(kind))
 		if len(data[kind]) == 0 {
 			fmt.Println("  (none)")
@@ -107,6 +108,7 @@ func CmdPipeline(args []string) error {
 	if err != nil {
 		return err
 	}
+	defer res.Close()
 
 	fmt.Fprintf(os.Stderr, "route ok: nodes=%d cost=%.2f duration=%dms visited=%d\n",
 		len(res.Result.Path), res.Result.Cost, res.Result.DurationMS, res.Result.VisitedNodes)

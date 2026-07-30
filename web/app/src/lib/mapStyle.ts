@@ -1,15 +1,4 @@
-export const MODE_COLORS: Record<string, string> = {
-  walk: '#c2451e',
-  bus: '#1d4ed8',
-  transit: '#1d4ed8',
-  transfer: '#b45309',
-  car: '#b45309',
-  bike: '#2f7d4f',
-}
-
 export const DEFAULT_ROUTE_COLOR = '#c2451e'
-
-export const modeColor = (modeID: string): string => MODE_COLORS[modeID] ?? DEFAULT_ROUTE_COLOR
 
 export interface HighwayStyle {
   color: string

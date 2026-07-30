@@ -1,20 +1,29 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/danielscoffee/pathcraft/internal/cli"
 	"github.com/danielscoffee/pathcraft/internal/logging"
 
 	// Register built-in plugins so they are visible to the registry-backed
 	// pipeline command and `pathcraft plugins list`.
-	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/astar"
-	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/geojson"
-	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/gtfs"
-	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/osm"
-	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/raptor"
-	_ "github.com/danielscoffee/pathcraft/pkg/pathcraft/plugins/zaplogger"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/air"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/astar"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/bike"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/car"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/geojson"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/gtfs"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/gtfsmode"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/osm"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/raptor"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/walk"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/worldgraph"
+	_ "github.com/danielscoffee/pathcraft/pkg/plugins/zaplogger"
 )
 
 func main() {
@@ -43,6 +52,10 @@ func run() error {
 		return cli.CmdPreprocess(os.Args[2:])
 	case "route":
 		return cli.CmdRoute(os.Args[2:])
+	case "chunks":
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return cli.CmdChunksContext(ctx, os.Args[2:])
 	case "transit":
 		return cli.CmdTransit(os.Args[2:])
 	case "journey":

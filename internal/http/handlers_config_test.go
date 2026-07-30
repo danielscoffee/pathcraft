@@ -40,6 +40,9 @@ func TestServer_ConfigDefaultsWithoutGraph(t *testing.T) {
 	if body.TileURL == "" {
 		t.Fatal("tile_url empty")
 	}
+	if body.GraphChunks != nil {
+		t.Fatalf("graph_chunks = %+v, want omitted", body.GraphChunks)
+	}
 }
 
 func TestServer_ConfigCentersOnGraph(t *testing.T) {

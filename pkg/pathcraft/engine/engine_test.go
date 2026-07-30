@@ -1,7 +1,10 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"math"
 	"testing"
 	"time"
 
@@ -24,6 +27,24 @@ func buildRoutingGraph() *graph.Graph {
 	g.AddBidirectionalEdge(4, 5, geo.HaversineDistance(-8.05450, -34.88080, -8.05480, -34.88080))
 	g.AddBidirectionalEdge(5, 6, geo.HaversineDistance(-8.05480, -34.88080, -8.05480, -34.88030))
 	return g
+}
+
+func TestNearestNodeRejectsInvalidCoordinates(t *testing.T) {
+	e := New()
+	e.graph = graph.NewGraph()
+	for _, point := range []struct {
+		lat float64
+		lon float64
+	}{
+		{lat: math.NaN()},
+		{lat: math.Inf(1)},
+		{lat: 91},
+		{lon: 181},
+	} {
+		if _, _, err := e.NearestNode(point.lat, point.lon); err == nil {
+			t.Fatalf("NearestNode(%v, %v) error = nil", point.lat, point.lon)
+		}
+	}
 }
 
 func TestRouteGeoJSON(t *testing.T) {
@@ -97,6 +118,52 @@ func TestRouteByCoordinates(t *testing.T) {
 	}
 	if len(res.Nodes) == 0 {
 		t.Fatal("expected route nodes")
+	}
+}
+
+func TestRouteByCoordinatesPreservesCoordinateOptions(t *testing.T) {
+	e := New()
+	e.graph = buildRoutingGraph()
+	request := CoordinateRouteRequest{
+		FromLat: -8.05428,
+		FromLon: -34.88130,
+		ToLat:   -8.05480,
+		ToLon:   -34.88030,
+	}
+	withoutCoordinates, err := e.RouteByCoordinates(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if withoutCoordinates.Coordinates != nil {
+		t.Fatalf("coordinates = %#v, want nil", withoutCoordinates.Coordinates)
+	}
+
+	request.IncludeCoordinates = true
+	request.IncludeInputInShape = true
+	withInputs, err := e.RouteByCoordinates(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(withInputs.Coordinates) < 2 ||
+		withInputs.Coordinates[0] != (Coordinate{Lat: request.FromLat, Lon: request.FromLon}) ||
+		withInputs.Coordinates[len(withInputs.Coordinates)-1] != (Coordinate{Lat: request.ToLat, Lon: request.ToLon}) {
+		t.Fatalf("input coordinates not preserved: %#v", withInputs.Coordinates)
+	}
+}
+
+func TestRouteByCoordinatesContextHonorsCancellation(t *testing.T) {
+	e := New()
+	e.graph = buildRoutingGraph()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := e.RouteByCoordinatesContext(ctx, CoordinateRouteRequest{
+		FromLat: -8.05428,
+		FromLon: -34.88130,
+		ToLat:   -8.05480,
+		ToLon:   -34.88030,
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("RouteByCoordinatesContext() error = %v, want context.Canceled", err)
 	}
 }
 

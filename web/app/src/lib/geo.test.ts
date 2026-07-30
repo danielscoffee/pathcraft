@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { estimateMinutes, formatDistance, formatDuration, haversineMeters, lineLengthMeters, normalizeClockTime } from './geo'
+import { formatDistance, formatDuration, haversineMeters, lineLengthMeters, normalizeClockTime } from './geo'
 
 describe('haversineMeters', () => {
   it('measures Copenhagen Central → Nørreport at roughly 1.3 km', () => {
@@ -28,16 +28,6 @@ describe('lineLengthMeters', () => {
   it('returns zero for fewer than two points', () => {
     expect(lineLengthMeters([])).toBe(0)
     expect(lineLengthMeters([[-34.88, -8.05]])).toBe(0)
-  })
-})
-
-describe('estimateMinutes', () => {
-  it('walks 840 m in about 10 minutes', () => {
-    expect(estimateMinutes('walk', 840)).toBeCloseTo(10, 0)
-  })
-
-  it('falls back to walking speed for unknown modes', () => {
-    expect(estimateMinutes('hovercraft', 840)).toBeCloseTo(estimateMinutes('walk', 840))
   })
 })
 

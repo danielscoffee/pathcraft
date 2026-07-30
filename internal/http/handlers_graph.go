@@ -12,6 +12,10 @@ import (
 )
 
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
+	if s.engine == nil {
+		http.Error(w, "graph not loaded", http.StatusServiceUnavailable)
+		return
+	}
 	g := s.engine.GetGraph()
 	if g == nil {
 		http.Error(w, "graph not loaded", http.StatusServiceUnavailable)
@@ -26,6 +30,10 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleNodes(w http.ResponseWriter, r *http.Request) {
+	if s.engine == nil {
+		http.Error(w, "graph not loaded", http.StatusServiceUnavailable)
+		return
+	}
 	g := s.engine.GetGraph()
 	if g == nil {
 		http.Error(w, "graph not loaded", http.StatusServiceUnavailable)

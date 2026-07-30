@@ -28,7 +28,7 @@ Phases 0.1–1.0 match tested prototype behavior. Pathcraft combines configurabl
 ### Working now
 
 - OSM parsing and mode-aware graph construction
-- configurable walk, bike, and car defaults through `engine.Config`
+- registered walk, bike, and car mode plugins with engine-level primitive speed/penalty configuration
 - highway penalty multipliers that affect A* route selection
 - coordinate and node-ID street routing
 - GTFS ingestion and RAPTOR transit routing

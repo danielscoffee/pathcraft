@@ -2,6 +2,7 @@ package astar
 
 import (
 	"container/heap"
+	"context"
 	"errors"
 	"math"
 	"slices"
@@ -39,11 +40,25 @@ func AStar(g *graph.Graph, source, target graph.NodeID, h geo.Heuristic) (Path, 
 }
 
 func AStarWithProfile(g *graph.Graph, source, target graph.NodeID, h geo.Heuristic, profile mobility.Profile) (Path, error) {
+	path, err := AStarWithProfileContext(context.Background(), g, source, target, h, profile)
+	if err != nil {
+		return Path{}, err
+	}
+	return *path, nil
+}
+
+func AStarWithProfileContext(ctx context.Context, g *graph.Graph, source, target graph.NodeID, h geo.Heuristic, profile mobility.Profile) (*Path, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if !g.HasNode(source) || !g.HasNode(target) {
-		return Path{}, ErrNodeNotFound
+		return nil, ErrNodeNotFound
 	}
 	if source == target {
-		return Path{Nodes: []graph.NodeID{source}, NodesCount: 1, ExpandedNodes: 1}, nil
+		return &Path{Nodes: []graph.NodeID{source}, NodesCount: 1, ExpandedNodes: 1}, nil
 	}
 	useContraction := true
 	if _, ok := profile.(highwayPenaltyProfile); ok {
@@ -61,8 +76,15 @@ func AStarWithProfile(g *graph.Graph, source, target graph.NodeID, h geo.Heurist
 	heap.Init(openSet)
 	heap.Push(openSet, &pqItem{nodeID: source, priority: h(g.Nodes[source], targetNode)})
 	expanded := 0
+	pops := 0
 
 	for openSet.Len() > 0 {
+		if pops%64 == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+		}
+		pops++
 		current := heap.Pop(openSet).(*pqItem)
 		currentID := current.nodeID
 		if current.cost != gScore[currentID] {
@@ -70,7 +92,11 @@ func AStarWithProfile(g *graph.Graph, source, target graph.NodeID, h geo.Heurist
 		}
 		expanded++
 		if currentID == target {
-			return reconstructPath(cameFrom, target, gScore[target], distanceScore[target], expanded), nil
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			path := reconstructPath(cameFrom, target, gScore[target], distanceScore[target], expanded)
+			return &path, nil
 		}
 
 		relax := func(to graph.NodeID, cost, distance float64, via []graph.NodeID) {
@@ -94,7 +120,7 @@ func AStarWithProfile(g *graph.Graph, source, target graph.NodeID, h geo.Heurist
 				chain := index.Chains[arc.Chain]
 				cost, distance, blocked, err := contractionArcCost(chain, arc.From, arc.To, profile)
 				if err != nil {
-					return Path{}, err
+					return nil, err
 				}
 				if blocked {
 					continue
@@ -110,13 +136,16 @@ func AStarWithProfile(g *graph.Graph, source, target graph.NodeID, h geo.Heurist
 			}
 			cost, err := edgeCost(edge, profile)
 			if err != nil {
-				return Path{}, err
+				return nil, err
 			}
 			relax(edge.To, cost, edge.DistanceM, nil)
 		}
 	}
 
-	return Path{}, ErrNoPath
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return nil, ErrNoPath
 }
 
 type highwayPenaltyProfile interface {
