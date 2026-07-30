@@ -3,12 +3,14 @@ package worldgraph
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -117,6 +119,249 @@ func TestChunkRejectsUnsupportedVersion(t *testing.T) {
 
 	if _, err := DecodeChunk(bytes.NewReader(data)); !errors.Is(err, ErrUnsupportedVersion) {
 		t.Fatalf("DecodeChunk() error = %v, want ErrUnsupportedVersion", err)
+	}
+}
+
+func TestPackedManifestValidation(t *testing.T) {
+	valid := func() Manifest {
+		return Manifest{
+			Generation:    "global-1",
+			Zoom:          GlobalRoutingZoom,
+			Layout:        PackedLayout,
+			LayoutVersion: 1,
+			ShardZoom:     PackedShardZoom,
+			Shards: []TileID{
+				{Z: PackedShardZoom, X: 2, Y: 1},
+				{Z: PackedShardZoom, X: 1, Y: 1},
+			},
+			SourceBytes: 1234,
+			BuiltAt:     time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
+			Regions: []RegionManifest{{
+				Name:         "planet",
+				SourceSHA256: strings.Repeat("A", 64),
+			}},
+		}
+	}
+
+	prepared, err := prepareManifest(valid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tilesSorted(prepared.Shards) || prepared.Regions[0].SourceSHA256 != strings.Repeat("a", 64) {
+		t.Fatalf("prepareManifest() = %+v", prepared)
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*Manifest)
+	}{
+		{name: "unknown layout", mutate: func(manifest *Manifest) { manifest.Layout = "other" }},
+		{name: "wrong layout version", mutate: func(manifest *Manifest) { manifest.LayoutVersion = 2 }},
+		{name: "wrong routing zoom", mutate: func(manifest *Manifest) { manifest.Zoom = GlobalRoutingZoom - 1 }},
+		{name: "wrong shard zoom", mutate: func(manifest *Manifest) { manifest.ShardZoom = PackedShardZoom - 1 }},
+		{name: "no shards", mutate: func(manifest *Manifest) { manifest.Shards = nil }},
+		{name: "duplicate shard", mutate: func(manifest *Manifest) { manifest.Shards[1] = manifest.Shards[0] }},
+		{name: "invalid shard", mutate: func(manifest *Manifest) { manifest.Shards[0].X = 1 << PackedShardZoom }},
+		{name: "no source", mutate: func(manifest *Manifest) { manifest.Regions = nil }},
+		{name: "multiple sources", mutate: func(manifest *Manifest) { manifest.Regions = append(manifest.Regions, manifest.Regions[0]) }},
+		{name: "source tiles", mutate: func(manifest *Manifest) { manifest.Regions[0].Tiles = []TileID{{Z: GlobalRoutingZoom}} }},
+		{name: "global tiles", mutate: func(manifest *Manifest) { manifest.Tiles = []TileID{{Z: GlobalRoutingZoom}} }},
+		{name: "missing source bytes", mutate: func(manifest *Manifest) { manifest.SourceBytes = 0 }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			manifest := valid()
+			test.mutate(&manifest)
+			if _, err := prepareManifest(manifest); err == nil {
+				t.Fatal("prepareManifest() error = nil")
+			}
+		})
+	}
+
+	legacy, err := prepareManifest(testManifest("legacy-1", nil))
+	if err != nil {
+		t.Fatalf("legacy prepareManifest() error = %v", err)
+	}
+	if legacy.Layout != "" || legacy.LayoutVersion != 0 || legacy.ShardZoom != 0 || len(legacy.Shards) != 0 || legacy.SourceBytes != 0 {
+		t.Fatalf("legacy packed fields = %+v", legacy)
+	}
+}
+
+func TestPackedStoreLoadsSparseChunks(t *testing.T) {
+	shard := TileID{Z: PackedShardZoom, X: 17, Y: 2}
+	first := mustPackedTile(t, shard, 0)
+	absent := mustPackedTile(t, shard, 1)
+	last := mustPackedTile(t, shard, 2)
+	root, manifest := writePackedStoreFixture(t, map[TileID]Chunk{
+		first: {Tile: first},
+		last:  {Tile: last},
+	})
+	store, err := OpenStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gotManifest, err := store.Manifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotManifest.Layout != PackedLayout || !reflect.DeepEqual(gotManifest.Shards, manifest.Shards) || len(gotManifest.Tiles) != 0 {
+		t.Fatalf("Manifest() = %+v", gotManifest)
+	}
+	gotManifest.Shards[0].X++
+	again, err := store.Manifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Shards[0] != manifest.Shards[0] {
+		t.Fatal("Manifest() returned aliased shard slice")
+	}
+
+	covered, err := store.Covers(context.Background(), first)
+	if err != nil || !covered {
+		t.Fatalf("Covers(first) = %v, %v", covered, err)
+	}
+	covered, err = store.Covers(context.Background(), absent)
+	if err != nil || covered {
+		t.Fatalf("Covers(absent) = %v, %v", covered, err)
+	}
+	otherShard := mustPackedTile(t, TileID{Z: PackedShardZoom, X: 18, Y: 2}, 0)
+	covered, err = store.Covers(context.Background(), otherShard)
+	if err != nil || covered {
+		t.Fatalf("Covers(other shard) = %v, %v", covered, err)
+	}
+	chunk, err := store.LoadChunk(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chunk.Tile != first {
+		t.Fatalf("LoadChunk() tile = %+v, want %+v", chunk.Tile, first)
+	}
+	if _, err := store.LoadChunk(absent); !errors.Is(err, ErrUncoveredTile) {
+		t.Fatalf("LoadChunk(absent) error = %v, want ErrUncoveredTile", err)
+	}
+
+	prefix, err := shardPackPrefix(filepath.Join(root, "generations", manifest.Generation), shard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(shardIndexPath(prefix)); err != nil {
+		t.Fatal(err)
+	}
+	covered, err = store.Covers(context.Background(), last)
+	if err != nil || !covered {
+		t.Fatalf("cached Covers(last) = %v, %v", covered, err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Covers(context.Background(), first); !errors.Is(err, ErrRouterClosed) {
+		t.Fatalf("closed Covers() error = %v, want ErrRouterClosed", err)
+	}
+}
+
+func TestPackedStoreReportsMissingAndCorruptData(t *testing.T) {
+	fixture := func(t *testing.T) (string, Manifest, TileID, TileID) {
+		t.Helper()
+		shard := TileID{Z: PackedShardZoom, X: 17, Y: 2}
+		tile := mustPackedTile(t, shard, 0)
+		root, manifest := writePackedStoreFixture(t, map[TileID]Chunk{tile: {Tile: tile}})
+		return root, manifest, shard, tile
+	}
+
+	t.Run("missing pack", func(t *testing.T) {
+		root, manifest, shard, tile := fixture(t)
+		prefix := packedFixturePrefix(t, root, manifest, shard)
+		if err := os.Remove(packSegmentPath(prefix, 0)); err != nil {
+			t.Fatal(err)
+		}
+		store, err := OpenStore(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer store.Close()
+		if _, err := store.LoadChunk(tile); !errors.Is(err, ErrMissingChunk) {
+			t.Fatalf("LoadChunk() error = %v, want ErrMissingChunk", err)
+		}
+	})
+
+	t.Run("corrupt digest", func(t *testing.T) {
+		root, manifest, shard, tile := fixture(t)
+		prefix := packedFixturePrefix(t, root, manifest, shard)
+		index := readTestShardIndex(t, shardIndexPath(prefix))
+		index.Entries[0].SHA256[0]++
+		writeTestShardIndex(t, shardIndexPath(prefix), index)
+		store, err := OpenStore(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer store.Close()
+		if _, err := store.LoadChunk(tile); !errors.Is(err, ErrCorruptChunk) {
+			t.Fatalf("LoadChunk() error = %v, want ErrCorruptChunk", err)
+		}
+	})
+
+	t.Run("corrupt index", func(t *testing.T) {
+		root, manifest, shard, tile := fixture(t)
+		path := shardIndexPath(packedFixturePrefix(t, root, manifest, shard))
+		if err := os.WriteFile(path, []byte("bad index"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		store, err := OpenStore(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer store.Close()
+		if _, err := store.Covers(context.Background(), tile); !errors.Is(err, ErrCorruptChunk) || !errors.Is(err, ErrCorruptIndex) {
+			t.Fatalf("Covers() error = %v, want ErrCorruptChunk and ErrCorruptIndex", err)
+		}
+	})
+
+	t.Run("malformed chunk", func(t *testing.T) {
+		root, manifest, shard, tile := fixture(t)
+		prefix := packedFixturePrefix(t, root, manifest, shard)
+		data := []byte("not a chunk")
+		if err := os.WriteFile(packSegmentPath(prefix, 0), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		index := readTestShardIndex(t, shardIndexPath(prefix))
+		index.Entries[0].Offset = 0
+		index.Entries[0].Length = uint32(len(data))
+		index.Entries[0].SHA256 = sha256.Sum256(data)
+		writeTestShardIndex(t, shardIndexPath(prefix), index)
+		store, err := OpenStore(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer store.Close()
+		if _, err := store.LoadChunk(tile); !errors.Is(err, ErrCorruptChunk) {
+			t.Fatalf("LoadChunk() error = %v, want ErrCorruptChunk", err)
+		}
+	})
+}
+
+func TestStoreKeepsLegacyReads(t *testing.T) {
+	root := t.TempDir()
+	store, err := OpenStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk := testChunk(t, 12.5683, 55.6761, "region-a")
+	if err := store.PublishGeneration(testManifest("legacy", []TileID{chunk.Tile}), map[TileID]Chunk{chunk.Tile: chunk}); err != nil {
+		t.Fatal(err)
+	}
+	covered, err := store.Covers(context.Background(), chunk.Tile)
+	if err != nil || !covered {
+		t.Fatalf("Covers() = %v, %v", covered, err)
+	}
+	if _, err := store.LoadChunk(chunk.Tile); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -634,4 +879,116 @@ func tilesSorted(tiles []TileID) bool {
 		}
 	}
 	return true
+}
+
+func writePackedStoreFixture(t *testing.T, chunks map[TileID]Chunk) (string, Manifest) {
+	t.Helper()
+	root := t.TempDir()
+	generation := "packed-1"
+	generationRoot := filepath.Join(root, "generations", generation)
+	groups := make(map[TileID][]Chunk)
+	for tile, chunk := range chunks {
+		address, err := packedShardAddress(tile)
+		if err != nil {
+			t.Fatal(err)
+		}
+		groups[address.Shard] = append(groups[address.Shard], chunk)
+	}
+	shards := make([]TileID, 0, len(groups))
+	for shard, shardChunks := range groups {
+		shards = append(shards, shard)
+		sort.Slice(shardChunks, func(i, j int) bool {
+			left, _ := packedShardAddress(shardChunks[i].Tile)
+			right, _ := packedShardAddress(shardChunks[j].Tile)
+			return left.Slot < right.Slot
+		})
+		writer, err := newShardPackWriter(context.Background(), generationRoot, shard, packWriterOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, chunk := range shardChunks {
+			if err := writer.Append(chunk.Tile, chunk); err != nil {
+				t.Fatal(err)
+			}
+		}
+		index, err := writer.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		prefix, err := shardPackPrefix(generationRoot, shard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeTestShardIndex(t, shardIndexPath(prefix), index)
+	}
+	sortTiles(shards)
+	manifest, err := prepareManifest(Manifest{
+		Generation:    generation,
+		Zoom:          GlobalRoutingZoom,
+		Layout:        PackedLayout,
+		LayoutVersion: PackedLayoutVersion,
+		ShardZoom:     PackedShardZoom,
+		Shards:        shards,
+		SourceBytes:   1234,
+		BuiltAt:       time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
+		Regions: []RegionManifest{{
+			Name:         "planet",
+			SourceSHA256: strings.Repeat("a", 64),
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	temporary, err := writeManifestTemp(root, manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(temporary, filepath.Join(root, manifestFilename)); err != nil {
+		t.Fatal(err)
+	}
+	return root, manifest
+}
+
+func packedFixturePrefix(t *testing.T, root string, manifest Manifest, shard TileID) string {
+	t.Helper()
+	prefix, err := shardPackPrefix(filepath.Join(root, "generations", manifest.Generation), shard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return prefix
+}
+
+func readTestShardIndex(t *testing.T, path string) shardIndex {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	index, err := decodeShardIndex(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return index
+}
+
+func writeTestShardIndex(t *testing.T, path string, index shardIndex) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := encodeShardIndex(file, index); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
 }

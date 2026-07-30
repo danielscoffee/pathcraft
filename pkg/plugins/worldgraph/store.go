@@ -19,8 +19,10 @@ import (
 type Store struct {
 	root string
 
-	mu       sync.RWMutex
-	manifest *Manifest
+	mu         sync.RWMutex
+	manifest   *Manifest
+	indexCache *shardIndexCache
+	closed     bool
 }
 
 func OpenStore(root string) (*Store, error) {
@@ -31,7 +33,7 @@ func OpenStore(root string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
-	store := &Store{root: absolute}
+	store := &Store{root: absolute, indexCache: newShardIndexCache(defaultShardIndexCacheEntries)}
 	info, err := os.Stat(absolute)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -54,12 +56,58 @@ func OpenStore(root string) (*Store, error) {
 }
 
 func (s *Store) Manifest() (Manifest, error) {
+	if s == nil {
+		return Manifest{}, ErrRouterClosed
+	}
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	if s.closed {
+		return Manifest{}, ErrRouterClosed
+	}
 	if s.manifest == nil {
 		return Manifest{}, os.ErrNotExist
 	}
 	return cloneManifest(*s.manifest), nil
+}
+
+func (s *Store) Covers(ctx context.Context, tile TileID) (bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	manifest, cache, err := s.snapshot()
+	if err != nil {
+		return false, err
+	}
+	if manifest == nil {
+		return false, nil
+	}
+	if err := validateStoreTile(tile); err != nil {
+		return false, err
+	}
+	if manifest.Layout == "" {
+		return manifestHasTile(*manifest, tile), nil
+	}
+	_, _, covered, err := s.packedEntry(ctx, manifest, cache, tile)
+	return covered, err
+}
+
+func (s *Store) Close() error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return nil
+	}
+	s.closed = true
+	cache := s.indexCache
+	s.mu.Unlock()
+	cache.Close()
+	return nil
 }
 
 func (s *Store) LoadChunk(tile TileID) (*Chunk, error) {
@@ -73,40 +121,50 @@ func (s *Store) LoadChunkContext(ctx context.Context, tile TileID) (*Chunk, erro
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	s.mu.RLock()
-	if s.manifest == nil {
-		s.mu.RUnlock()
+	manifest, cache, err := s.snapshot()
+	if err != nil {
+		return nil, err
+	}
+	if manifest == nil {
 		return nil, fmt.Errorf("%w: %+v", ErrUncoveredTile, tile)
 	}
-	manifest := s.manifest
-	s.mu.RUnlock()
+	if err := validateStoreTile(tile); err != nil {
+		return nil, err
+	}
 
-	n, err := tileCount(tile.Z)
-	if err != nil {
-		return nil, err
-	}
-	if err := validateTile(tile, n); err != nil {
-		return nil, err
-	}
-	if !manifestHasTile(*manifest, tile) {
-		return nil, fmt.Errorf("%w: %+v", ErrUncoveredTile, tile)
-	}
-	path := filepath.Join(s.root, "generations", manifest.Generation, tilePath(tile))
-	file, err := os.Open(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("%w: %+v", ErrMissingChunk, tile)
+	var chunk *Chunk
+	if manifest.Layout == "" {
+		if !manifestHasTile(*manifest, tile) {
+			return nil, fmt.Errorf("%w: %+v", ErrUncoveredTile, tile)
 		}
-		return nil, err
-	}
-	defer file.Close()
-
-	chunk, err := DecodeChunk(readerWithContext{ctx: ctx, reader: file})
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return nil, ctxErr
-	}
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrCorruptChunk, err)
+		path := filepath.Join(s.root, "generations", manifest.Generation, tilePath(tile))
+		file, openErr := os.Open(path)
+		if openErr != nil {
+			if os.IsNotExist(openErr) {
+				return nil, fmt.Errorf("%w: %+v", ErrMissingChunk, tile)
+			}
+			return nil, openErr
+		}
+		defer file.Close()
+		chunk, err = DecodeChunk(readerWithContext{ctx: ctx, reader: file})
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrCorruptChunk, err)
+		}
+	} else {
+		entry, prefix, covered, entryErr := s.packedEntry(ctx, manifest, cache, tile)
+		if entryErr != nil {
+			return nil, entryErr
+		}
+		if !covered {
+			return nil, fmt.Errorf("%w: %+v", ErrUncoveredTile, tile)
+		}
+		chunk, err = readPackedChunk(ctx, prefix, entry)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if chunk.Tile != tile {
 		return nil, fmt.Errorf("%w: file for %+v contains %+v", ErrCorruptChunk, tile, chunk.Tile)
@@ -115,6 +173,74 @@ func (s *Store) LoadChunkContext(ctx context.Context, tile TileID) (*Chunk, erro
 		return nil, fmt.Errorf("%w: %w", ErrCorruptChunk, err)
 	}
 	return chunk, nil
+}
+
+func (s *Store) snapshot() (*Manifest, *shardIndexCache, error) {
+	if s == nil {
+		return nil, nil, ErrRouterClosed
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return nil, nil, ErrRouterClosed
+	}
+	return s.manifest, s.indexCache, nil
+}
+
+func (s *Store) packedEntry(ctx context.Context, manifest *Manifest, cache *shardIndexCache, tile TileID) (shardIndexEntry, string, bool, error) {
+	address, err := packedShardAddress(tile)
+	if err != nil {
+		return shardIndexEntry{}, "", false, err
+	}
+	if !containsTile(manifest.Shards, address.Shard) {
+		return shardIndexEntry{}, "", false, nil
+	}
+	generationRoot := filepath.Join(s.root, "generations", manifest.Generation)
+	prefix, err := shardPackPrefix(generationRoot, address.Shard)
+	if err != nil {
+		return shardIndexEntry{}, "", false, err
+	}
+	index, err := cache.get(ctx, shardIndexCacheKey{generation: manifest.Generation, shard: address.Shard}, func(loadCtx context.Context) (shardIndex, error) {
+		return loadShardIndex(loadCtx, shardIndexPath(prefix))
+	})
+	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrRouterClosed) || errors.Is(err, ErrMissingChunk) {
+			return shardIndexEntry{}, "", false, err
+		}
+		if errors.Is(err, ErrCorruptIndex) {
+			return shardIndexEntry{}, "", false, fmt.Errorf("%w: %w", ErrCorruptChunk, err)
+		}
+		return shardIndexEntry{}, "", false, err
+	}
+	entry, covered := index.entry(address.Slot)
+	return entry, prefix, covered, nil
+}
+
+func loadShardIndex(ctx context.Context, path string) (shardIndex, error) {
+	if err := ctx.Err(); err != nil {
+		return shardIndex{}, err
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return shardIndex{}, fmt.Errorf("%w: shard index %q", ErrMissingChunk, path)
+		}
+		return shardIndex{}, err
+	}
+	defer file.Close()
+	index, err := decodeShardIndex(readerWithContext{ctx: ctx, reader: file})
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return shardIndex{}, ctxErr
+	}
+	return index, err
+}
+
+func validateStoreTile(tile TileID) error {
+	n, err := tileCount(tile.Z)
+	if err != nil {
+		return err
+	}
+	return validateTile(tile, n)
 }
 
 type readerWithContext struct {
@@ -556,7 +682,7 @@ func chunkMapProvider(chunks map[TileID]Chunk) func(TileID) (Chunk, bool, error)
 func validateChunkProvenance(chunk Chunk, manifest Manifest) error {
 	regions := make(map[string]struct{})
 	for _, region := range manifest.Regions {
-		if containsTile(region.Tiles, chunk.Tile) {
+		if manifest.Layout == PackedLayout || containsTile(region.Tiles, chunk.Tile) {
 			regions[region.Name] = struct{}{}
 		}
 	}
@@ -597,6 +723,7 @@ func tileProvenance(manifest Manifest, tile TileID) []string {
 func cloneManifest(manifest Manifest) Manifest {
 	cloned := manifest
 	cloned.Tiles = append([]TileID(nil), manifest.Tiles...)
+	cloned.Shards = append([]TileID(nil), manifest.Shards...)
 	cloned.Regions = append([]RegionManifest(nil), manifest.Regions...)
 	for i := range cloned.Regions {
 		cloned.Regions[i].Tiles = append([]TileID(nil), manifest.Regions[i].Tiles...)

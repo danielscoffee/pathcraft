@@ -222,6 +222,10 @@ func shardPackPrefix(root string, shard TileID) (string, error) {
 	return filepath.Join(root, "shards", strconv.Itoa(shard.X>>4), strconv.Itoa(shard.X), strconv.Itoa(shard.Y)), nil
 }
 
+func shardIndexPath(prefix string) string {
+	return prefix + ".idx"
+}
+
 func packSegmentPath(prefix string, segment uint16) string {
 	return fmt.Sprintf("%s-%03d.pack", prefix, segment)
 }
