@@ -39,14 +39,29 @@ func validatePBF(ctx context.Context, path string, maxWayNodes int) (err error) 
 		return err
 	}
 	defer func() { err = errors.Join(err, file.Close()) }()
+	return validatePBFReader(ctx, file, maxWayNodes)
+}
 
+func validatePBFReader(ctx context.Context, reader io.Reader, maxWayNodes int) error {
+	if ctx == nil {
+		return fmt.Errorf("PBF validation context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if reader == nil {
+		return fmt.Errorf("PBF reader is nil")
+	}
+	if maxWayNodes < 1 {
+		return fmt.Errorf("maximum way node count must be positive")
+	}
 	blockIndex := 0
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		var sizeBytes [4]byte
-		if _, err := io.ReadFull(file, sizeBytes[:]); err != nil {
+		if _, err := io.ReadFull(reader, sizeBytes[:]); err != nil {
 			if err == io.EOF && blockIndex > 0 {
 				return nil
 			}
@@ -57,7 +72,7 @@ func validatePBF(ctx context.Context, path string, maxWayNodes int) (err error) 
 			return fmt.Errorf("invalid PBF blob header size %d", headerSize)
 		}
 		header := make([]byte, headerSize)
-		if _, err := io.ReadFull(file, header); err != nil {
+		if _, err := io.ReadFull(reader, header); err != nil {
 			return err
 		}
 		kind, blobSize, err := parsePBFBlobHeader(header)
@@ -68,7 +83,7 @@ func validatePBF(ctx context.Context, path string, maxWayNodes int) (err error) 
 			return fmt.Errorf("invalid PBF blob size %d", blobSize)
 		}
 		blob := make([]byte, blobSize)
-		if _, err := io.ReadFull(file, blob); err != nil {
+		if _, err := io.ReadFull(reader, blob); err != nil {
 			return err
 		}
 		payload, err := decodeBoundedPBFBlob(blob)

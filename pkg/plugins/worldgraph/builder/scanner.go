@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -49,8 +50,20 @@ func scanNodesUnchecked(ctx context.Context, path string, consume func([]worldgr
 		return err
 	}
 	defer file.Close()
+	return scanNodesReader(ctx, file, consume)
+}
 
-	scanner := osmpbf.New(ctx, file, scannerWorkers())
+func scanNodesReader(ctx context.Context, reader io.Reader, consume func([]worldgraph.Node) error) error {
+	if ctx == nil {
+		return fmt.Errorf("node scan context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if reader == nil || consume == nil {
+		return fmt.Errorf("node reader and consumer are required")
+	}
+	scanner := osmpbf.New(ctx, reader, scannerWorkers())
 	scanner.SkipWays = true
 	scanner.SkipRelations = true
 	defer scanner.Close()
@@ -132,8 +145,23 @@ func scanWaysUnchecked(ctx context.Context, path string, maxWayNodes int, consum
 		return err
 	}
 	defer file.Close()
+	return scanWaysReader(ctx, file, maxWayNodes, consume)
+}
 
-	scanner := osmpbf.New(ctx, file, scannerWorkers())
+func scanWaysReader(ctx context.Context, reader io.Reader, maxWayNodes int, consume func(Way) error) error {
+	if ctx == nil {
+		return fmt.Errorf("way scan context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if reader == nil || consume == nil {
+		return fmt.Errorf("way reader and consumer are required")
+	}
+	if maxWayNodes < 1 {
+		return fmt.Errorf("maximum way node count must be positive")
+	}
+	scanner := osmpbf.New(ctx, reader, scannerWorkers())
 	scanner.SkipNodes = true
 	scanner.SkipRelations = true
 	defer scanner.Close()
