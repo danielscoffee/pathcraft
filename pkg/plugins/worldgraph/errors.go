@@ -9,6 +9,7 @@ var (
 	ErrUncoveredTile      = errors.New("worldgraph tile is not covered")
 	ErrMissingChunk       = errors.New("worldgraph expected chunk is missing")
 	ErrCorruptChunk       = errors.New("worldgraph chunk is corrupt")
+	ErrCorruptIndex       = errors.New("worldgraph shard index is corrupt")
 	ErrRouteAreaLimit     = errors.New("worldgraph route area limit exceeded")
 	ErrNoPath             = errors.New("worldgraph has no connected path")
 	ErrRouterClosed       = errors.New("worldgraph router is closed")
