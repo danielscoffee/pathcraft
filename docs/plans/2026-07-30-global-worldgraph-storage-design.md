@@ -101,18 +101,25 @@ A planet build uses bounded-memory, restartable stages:
 6. Replay the way spool. Resolve coordinates by binary search in the compact
    node index, apply current ownership/halo rules, and append contributions to
    zoom-8 shard spool files through a bounded file-handle LRU.
-7. Process one shard spool at a time into at most 256 normalized chunks, then
-   append encoded chunks to pack segments and write the shard index.
+7. Create a resumable store-owned `generations/.<generation>.build` directory.
+   Process one shard spool at a time into at most 256 normalized chunks, writing
+   pack segments and indexes directly into that directory.
 8. Verify source identity and SHA-256 again before publication.
-9. Sync the generation and atomically replace `manifest.json` under the
-   existing cross-process writer lock and expected-parent check.
+9. Acquire the existing cross-process writer lock, compare the expected parent,
+   validate and sync the completed stage, rename it to the immutable generation,
+   then atomically replace `manifest.json`.
+
+No generation-wide copy occurs. Temporary sort/spool data lives in the selected
+work directory; final pack bytes are written once on the store filesystem.
 
 The official planet PBF is expected to have monotonic node IDs. Regional or
 custom unsorted PBFs continue using the existing regional builder.
 
 Stage metadata in the requested work directory records source identity,
-configuration, and completed stages. Re-running the same command resumes only
-when metadata matches; mismatches fail rather than mixing sources.
+configuration, completed stages, and the store-owned generation-stage path.
+Re-running the same command resumes only when metadata matches; mismatches fail
+rather than mixing sources. External merges use bounded fan-in, so run count
+cannot exhaust file descriptors.
 
 ## CLI
 
