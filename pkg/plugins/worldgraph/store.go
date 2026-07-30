@@ -308,21 +308,7 @@ func (s *Store) verifyManifestCurrent() error {
 		expected = s.manifest.Generation
 	}
 	s.mu.RUnlock()
-
-	current, err := readManifestFile(filepath.Join(s.root, manifestFilename))
-	if err != nil {
-		if os.IsNotExist(err) && expected == "" {
-			return nil
-		}
-		if os.IsNotExist(err) {
-			return fmt.Errorf("%w: expected generation %q, found no manifest", ErrPublishConflict, expected)
-		}
-		return err
-	}
-	if expected == "" || current.Generation != expected {
-		return fmt.Errorf("%w: expected generation %q, found %q", ErrPublishConflict, expected, current.Generation)
-	}
-	return nil
+	return verifyManifestGeneration(s.root, expected)
 }
 
 func (s *Store) publishGeneration(manifest Manifest, chunks map[TileID]Chunk, renameManifest func(string, string) error) error {
