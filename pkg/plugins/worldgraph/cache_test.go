@@ -6,6 +6,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestCacheEvictsLeastRecentlyUsedByByteBudget(t *testing.T) {
@@ -93,6 +94,119 @@ func TestCacheSharesConcurrentLoad(t *testing.T) {
 	}
 	if loads.Load() != 1 {
 		t.Fatalf("load count = %d, want 1", loads.Load())
+	}
+}
+
+func TestCacheBoundsDistinctConcurrentLoads(t *testing.T) {
+	cache := newChunkCache(1)
+	started := make(chan struct{}, maxConcurrentChunkLoads+2)
+	release := make(chan struct{})
+	errorsCh := make(chan error, maxConcurrentChunkLoads+2)
+	for index := range maxConcurrentChunkLoads + 2 {
+		tile := TileID{Z: 4, X: index, Y: 0}
+		go func() {
+			_, err := cache.GetContext(context.Background(), tile, func(ctx context.Context) (*Chunk, error) {
+				started <- struct{}{}
+				select {
+				case <-release:
+					return cacheTestChunk(tile, "bounded"), nil
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			})
+			errorsCh <- err
+		}()
+	}
+	for range maxConcurrentChunkLoads {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for bounded loads")
+		}
+	}
+	select {
+	case <-started:
+		t.Fatal("more than configured distinct chunk loads ran concurrently")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	for range maxConcurrentChunkLoads + 2 {
+		if err := <-errorsCh; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestCacheCancelsLoadAfterAllWaitersLeave(t *testing.T) {
+	cache := newChunkCache(1)
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{})
+	stopped := make(chan struct{})
+	result := make(chan error, 1)
+	go func() {
+		_, err := cache.GetContext(ctx, TileID{Z: 0}, func(loadCtx context.Context) (*Chunk, error) {
+			close(started)
+			<-loadCtx.Done()
+			close(stopped)
+			return nil, loadCtx.Err()
+		})
+		result <- err
+	}()
+	<-started
+	cancel()
+	if err := <-result; !errors.Is(err, context.Canceled) {
+		t.Fatalf("GetContext() error = %v, want context.Canceled", err)
+	}
+	select {
+	case <-stopped:
+	case <-time.After(time.Second):
+		t.Fatal("load continued after all waiters canceled")
+	}
+}
+
+func TestCacheStartsFreshLoadAfterCanceledFlightRetires(t *testing.T) {
+	chunk := cacheTestChunk(TileID{Z: 2, X: 0, Y: 0}, "replacement")
+	cache := newChunkCache(decodedChunkBytes(chunk))
+	ctx, cancel := context.WithCancel(context.Background())
+	firstStarted := make(chan struct{})
+	firstStopped := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	firstResult := make(chan error, 1)
+	go func() {
+		_, err := cache.GetContext(ctx, chunk.Tile, func(context.Context) (*Chunk, error) {
+			close(firstStarted)
+			<-releaseFirst
+			close(firstStopped)
+			return chunk, nil
+		})
+		firstResult <- err
+	}()
+	<-firstStarted
+	cancel()
+	if err := <-firstResult; !errors.Is(err, context.Canceled) {
+		t.Fatalf("first GetContext() error = %v, want context.Canceled", err)
+	}
+
+	secondResult := make(chan error, 1)
+	go func() {
+		_, err := cache.GetContext(context.Background(), chunk.Tile, func(context.Context) (*Chunk, error) {
+			return chunk, nil
+		})
+		secondResult <- err
+	}()
+	select {
+	case err := <-secondResult:
+		if err != nil {
+			t.Fatalf("replacement GetContext() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("replacement request joined canceled flight")
+	}
+	close(releaseFirst)
+	select {
+	case <-firstStopped:
+	case <-time.After(time.Second):
+		t.Fatal("retired loader did not stop")
 	}
 }
 

@@ -15,10 +15,16 @@ import (
 )
 
 var (
-	contributionTiles = []byte("tiles")
-	contributionNodes = []byte("nodes")
-	contributionEdges = []byte("edges")
-	stagedChunks      = []byte("staged-chunks")
+	contributionTiles        = []byte("tiles")
+	contributionNodes        = []byte("nodes")
+	contributionEdges        = []byte("edges")
+	contributionEdgeBytesKey = []byte("edge-bytes")
+	stagedChunks             = []byte("staged-chunks")
+)
+
+const (
+	maxContributionEdgeValueBytes = 512 << 10
+	maxContributionTileEdgeBytes  = 256 << 20
 )
 
 type edgeContribution struct {
@@ -97,7 +103,7 @@ func (s *contributionStore) PutBatch(ctx context.Context, contributions []edgeCo
 				return err
 			}
 			edges := tileBucket.Bucket(contributionEdges)
-			if err := putContributionEdge(edges, contribution.edge); err != nil {
+			if err := putContributionEdge(tileBucket, edges, contribution.edge); err != nil {
 				return err
 			}
 		}
@@ -140,6 +146,9 @@ func (s *contributionStore) Chunk(ctx context.Context, tile worldgraph.TileID) (
 			if err := ctx.Err(); err != nil {
 				return err
 			}
+			if len(chunk.Nodes) >= worldgraph.MaxChunkNodes {
+				return fmt.Errorf("%w: tile %+v exceeds %d nodes", worldgraph.ErrInvalidChunk, tile, worldgraph.MaxChunkNodes)
+			}
 			if len(value) != nodeValueSize {
 				return fmt.Errorf("contribution node has invalid value length %d", len(value))
 			}
@@ -149,6 +158,9 @@ func (s *contributionStore) Chunk(ctx context.Context, tile worldgraph.TileID) (
 		for _, value := edgeCursor.First(); value != nil; _, value = edgeCursor.Next() {
 			if err := ctx.Err(); err != nil {
 				return err
+			}
+			if len(chunk.Edges) >= worldgraph.MaxChunkEdges {
+				return fmt.Errorf("%w: tile %+v exceeds %d edges", worldgraph.ErrInvalidChunk, tile, worldgraph.MaxChunkEdges)
 			}
 			edge, err := decodeContributionEdge(value)
 			if err != nil {
@@ -217,12 +229,22 @@ func putContributionNode(bucket *bolt.Bucket, node worldgraph.Node) error {
 		}
 		return nil
 	}
-	return bucket.Put(key, value)
+	count := bucket.Sequence()
+	if count >= worldgraph.MaxChunkNodes {
+		return fmt.Errorf("%w: tile exceeds %d contribution nodes", worldgraph.ErrInvalidChunk, worldgraph.MaxChunkNodes)
+	}
+	if err := bucket.Put(key, value); err != nil {
+		return err
+	}
+	return bucket.SetSequence(count + 1)
 }
 
-func putContributionEdge(bucket *bolt.Bucket, edge worldgraph.Edge) error {
+func putContributionEdge(tileBucket, bucket *bolt.Bucket, edge worldgraph.Edge) error {
 	key := contributionEdgeKey(edge.ID)
-	if previous := bucket.Get(key); previous != nil {
+	previous := bucket.Get(key)
+	previousBytes := len(previous)
+	isNew := previous == nil
+	if previous != nil {
 		existing, err := decodeContributionEdge(previous)
 		if err != nil {
 			return err
@@ -232,11 +254,43 @@ func putContributionEdge(bucket *bolt.Bucket, edge worldgraph.Edge) error {
 		}
 		edge.Sources = mergeSources(existing.Sources, edge.Sources)
 	}
+	count := bucket.Sequence()
+	if isNew && count >= worldgraph.MaxChunkEdges {
+		return fmt.Errorf("%w: tile exceeds %d contribution edges", worldgraph.ErrInvalidChunk, worldgraph.MaxChunkEdges)
+	}
 	value, err := encodeContributionEdge(edge)
 	if err != nil {
 		return err
 	}
-	return bucket.Put(key, value)
+	if len(value) > maxContributionEdgeValueBytes {
+		return fmt.Errorf("%w: contribution edge exceeds %d bytes", worldgraph.ErrInvalidChunk, maxContributionEdgeValueBytes)
+	}
+	currentBytes := uint64(0)
+	if encoded := tileBucket.Get(contributionEdgeBytesKey); encoded != nil {
+		if len(encoded) != 8 {
+			return fmt.Errorf("contribution edge byte count is invalid")
+		}
+		currentBytes = binary.BigEndian.Uint64(encoded)
+	}
+	if currentBytes < uint64(previousBytes) {
+		return fmt.Errorf("contribution edge byte count underflows")
+	}
+	nextBytes := currentBytes - uint64(previousBytes) + uint64(len(value))
+	if nextBytes > maxContributionTileEdgeBytes {
+		return fmt.Errorf("%w: tile contributions exceed %d edge bytes", worldgraph.ErrInvalidChunk, maxContributionTileEdgeBytes)
+	}
+	if err := bucket.Put(key, value); err != nil {
+		return err
+	}
+	var encodedBytes [8]byte
+	binary.BigEndian.PutUint64(encodedBytes[:], nextBytes)
+	if err := tileBucket.Put(contributionEdgeBytesKey, encodedBytes[:]); err != nil {
+		return err
+	}
+	if isNew {
+		return bucket.SetSequence(count + 1)
+	}
+	return nil
 }
 
 func encodeContributionEdge(edge worldgraph.Edge) ([]byte, error) {

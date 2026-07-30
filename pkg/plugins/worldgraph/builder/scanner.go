@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"path/filepath"
 	"runtime"
 
 	"github.com/danielscoffee/pathcraft/pkg/plugins/worldgraph"
@@ -16,7 +17,7 @@ import (
 const (
 	DefaultMaxWayNodes = 100_000
 	nodeBatchSize      = 4_096
-	maxScannerWorkers  = 4
+	maxScannerWorkers  = 2
 )
 
 var ErrWayNodeLimit = errors.New("OSM way node limit exceeded")
@@ -34,10 +35,9 @@ func ScanNodes(ctx context.Context, path string, consume func([]worldgraph.Node)
 	if consume == nil {
 		return fmt.Errorf("node consumer is nil")
 	}
-	if err := validatePBF(ctx, path, DefaultMaxWayNodes); err != nil {
-		return err
-	}
-	return scanNodesUnchecked(ctx, path, consume)
+	return scanValidatedPBFSnapshot(ctx, path, DefaultMaxWayNodes, func(snapshot string) error {
+		return scanNodesUnchecked(ctx, snapshot, consume)
+	})
 }
 
 func scanNodesUnchecked(ctx context.Context, path string, consume func([]worldgraph.Node) error) error {
@@ -102,10 +102,25 @@ func scanWays(ctx context.Context, path string, maxWayNodes int, consume func(Wa
 	if consume == nil {
 		return fmt.Errorf("way consumer is nil")
 	}
-	if err := validatePBF(ctx, path, maxWayNodes); err != nil {
+	return scanValidatedPBFSnapshot(ctx, path, maxWayNodes, func(snapshot string) error {
+		return scanWaysUnchecked(ctx, snapshot, maxWayNodes, consume)
+	})
+}
+
+func scanValidatedPBFSnapshot(ctx context.Context, path string, maxWayNodes int, scan func(string) error) error {
+	workDir, err := os.MkdirTemp("", "pathcraft-worldgraph-scan-*")
+	if err != nil {
 		return err
 	}
-	return scanWaysUnchecked(ctx, path, maxWayNodes, consume)
+	defer os.RemoveAll(workDir)
+	snapshot := filepath.Join(workDir, "input.osm.pbf")
+	if _, err := snapshotPBF(ctx, path, snapshot); err != nil {
+		return err
+	}
+	if err := validatePBF(ctx, snapshot, maxWayNodes); err != nil {
+		return err
+	}
+	return scan(snapshot)
 }
 
 func scanWaysUnchecked(ctx context.Context, path string, maxWayNodes int, consume func(Way) error) error {

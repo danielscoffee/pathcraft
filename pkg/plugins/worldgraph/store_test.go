@@ -2,8 +2,10 @@ package worldgraph
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -25,6 +27,41 @@ func TestChunkRoundTrip(t *testing.T) {
 	if !reflect.DeepEqual(got, &chunk) {
 		t.Fatalf("DecodeChunk() = %+v, want %+v", got, chunk)
 	}
+}
+
+func TestDecodeChunkRejectsOversizedPayload(t *testing.T) {
+	var header bytes.Buffer
+	if _, err := io.WriteString(&header, chunkMagic); err != nil {
+		t.Fatal(err)
+	}
+	if err := binary.Write(&header, binary.BigEndian, uint32(FormatVersion)); err != nil {
+		t.Fatal(err)
+	}
+	header.Write(make([]byte, 32))
+	reader := io.MultiReader(bytes.NewReader(header.Bytes()), io.LimitReader(zeroReader{}, MaxChunkPayloadBytes+1))
+	if _, err := DecodeChunk(reader); !errors.Is(err, ErrCorruptChunk) {
+		t.Fatalf("DecodeChunk() error = %v, want ErrCorruptChunk", err)
+	}
+}
+
+func TestChunkRejectsStructuralLimits(t *testing.T) {
+	chunk := testChunk(t, 12.5683, 55.6761, "region-a")
+	chunk.Nodes = make([]Node, MaxChunkNodes+1)
+	if err := chunk.validate(); !errors.Is(err, ErrInvalidChunk) {
+		t.Fatalf("validate() node-limit error = %v, want ErrInvalidChunk", err)
+	}
+	chunk = testChunk(t, 12.5683, 55.6761, "region-a")
+	chunk.Edges[0].Name = strings.Repeat("x", MaxEdgeNameBytes+1)
+	if err := chunk.validate(); !errors.Is(err, ErrInvalidChunk) {
+		t.Fatalf("validate() text-limit error = %v, want ErrInvalidChunk", err)
+	}
+}
+
+type zeroReader struct{}
+
+func (zeroReader) Read(buffer []byte) (int, error) {
+	clear(buffer)
+	return len(buffer), nil
 }
 
 func TestEdgeMidpointTileWrapsAntimeridian(t *testing.T) {
@@ -145,6 +182,36 @@ func TestStoreDistinguishesUncoveredMissingAndCorrupt(t *testing.T) {
 	}
 }
 
+func TestPublishGenerationRejectsStaleStoreSnapshot(t *testing.T) {
+	root := t.TempDir()
+	first, err := OpenStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale, err := OpenStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk := testChunk(t, 0, 0, "region-a")
+	if err := first.PublishGeneration(testManifest("generation-1", []TileID{chunk.Tile}), map[TileID]Chunk{chunk.Tile: chunk}); err != nil {
+		t.Fatal(err)
+	}
+	if err := stale.PublishGeneration(testManifest("generation-2", []TileID{chunk.Tile}), map[TileID]Chunk{chunk.Tile: chunk}); !errors.Is(err, ErrPublishConflict) {
+		t.Fatalf("stale PublishGeneration() error = %v, want ErrPublishConflict", err)
+	}
+	manifest, err := OpenStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := manifest.Manifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Generation != "generation-1" {
+		t.Fatalf("current generation = %q, want generation-1", current.Generation)
+	}
+}
+
 func TestPublishGenerationRejectsInvalidProvenance(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -228,6 +295,85 @@ func TestPublishGenerationStreamsChangedChunks(t *testing.T) {
 	}
 }
 
+func TestPublishGenerationHonorsCancellationBeforeManifestCommit(t *testing.T) {
+	root := t.TempDir()
+	store, err := OpenStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunks := threeNeighborChunks(t)
+	first := testManifest("generation-1", sortedChunkTiles(chunks))
+	if err := store.PublishGeneration(first, chunks); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	manifestRenamed := false
+	generations := filepath.Join(root, "generations")
+	ops := publishFileOps{
+		renameManifest: func(oldPath, newPath string) error {
+			manifestRenamed = true
+			return os.Rename(oldPath, newPath)
+		},
+		syncDirectory: func(path string) error {
+			if path == generations {
+				cancel()
+			}
+			return syncDirectory(path)
+		},
+	}
+	second := testManifest("generation-2", sortedChunkTiles(chunks))
+	if err := store.publishGenerationFromContextWithOps(ctx, second, chunkMapProvider(chunks), ops); !errors.Is(err, context.Canceled) {
+		t.Fatalf("publish error = %v, want context.Canceled", err)
+	}
+	if manifestRenamed {
+		t.Fatal("manifest committed after cancellation")
+	}
+	current, err := store.Manifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Generation != first.Generation {
+		t.Fatalf("current generation = %q, want %q", current.Generation, first.Generation)
+	}
+	if _, err := os.Stat(filepath.Join(generations, second.Generation)); !os.IsNotExist(err) {
+		t.Fatalf("canceled generation remains: %v", err)
+	}
+}
+
+func TestPublishGenerationCommitWinsCancellationRace(t *testing.T) {
+	root := t.TempDir()
+	store, err := OpenStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunks := threeNeighborChunks(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ops := publishFileOps{
+		renameManifest: func(oldPath, newPath string) error {
+			if err := os.Rename(oldPath, newPath); err != nil {
+				return err
+			}
+			cancel()
+			return nil
+		},
+		syncDirectory: syncDirectory,
+	}
+	manifest := testManifest("generation-1", sortedChunkTiles(chunks))
+	if err := store.publishGenerationFromContextWithOps(ctx, manifest, chunkMapProvider(chunks), ops); err != nil {
+		t.Fatalf("publish error after commit = %v, want success", err)
+	}
+	current, err := store.Manifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Generation != manifest.Generation {
+		t.Fatalf("current generation = %q, want %q", current.Generation, manifest.Generation)
+	}
+}
+
 func TestPublishGenerationSyncsDirectoriesAroundManifestRename(t *testing.T) {
 	dir := t.TempDir()
 	store, err := OpenStore(dir)
@@ -279,11 +425,17 @@ func TestPublishGenerationRollsBackAfterRootSyncFailure(t *testing.T) {
 	second := testManifest("generation-2", sortedChunkTiles(chunks))
 	syncErr := errors.New("forced root sync failure")
 	failed := false
+	var pinned *Store
 	ops := publishFileOps{
 		renameManifest: os.Rename,
 		syncDirectory: func(path string) error {
 			if path == dir && !failed {
 				failed = true
+				var err error
+				pinned, err = OpenStore(dir)
+				if err != nil {
+					return err
+				}
 				return syncErr
 			}
 			return syncDirectory(path)
@@ -306,8 +458,23 @@ func TestPublishGenerationRollsBackAfterRootSyncFailure(t *testing.T) {
 	if current.Generation != first.Generation {
 		t.Fatalf("current generation = %q, want %q", current.Generation, first.Generation)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "generations", second.Generation)); !os.IsNotExist(err) {
-		t.Fatalf("failed generation remains: %v", err)
+	if pinned == nil {
+		t.Fatal("new generation was not pinned before rollback")
+	}
+	pinnedManifest, err := pinned.Manifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pinnedManifest.Generation != second.Generation {
+		t.Fatalf("pinned generation = %q, want %q", pinnedManifest.Generation, second.Generation)
+	}
+	for tile := range chunks {
+		if _, err := pinned.LoadChunk(tile); err != nil {
+			t.Fatalf("pinned LoadChunk(%+v) error = %v", tile, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "generations", second.Generation)); err != nil {
+		t.Fatalf("rolled-back generation missing: %v", err)
 	}
 }
 

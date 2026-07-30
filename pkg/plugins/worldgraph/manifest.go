@@ -110,6 +110,9 @@ func validateManifest(manifest Manifest) error {
 		if strings.TrimSpace(region.Name) == "" {
 			return fmt.Errorf("manifest contains unnamed region")
 		}
+		if len(region.Name) > MaxSourceNameBytes {
+			return fmt.Errorf("manifest region name exceeds %d bytes", MaxSourceNameBytes)
+		}
 		if _, exists := regions[region.Name]; exists {
 			return fmt.Errorf("manifest contains duplicate region %q", region.Name)
 		}

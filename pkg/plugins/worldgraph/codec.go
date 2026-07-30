@@ -10,7 +10,16 @@ import (
 	"math"
 )
 
-const chunkMagic = "PCGCHNK\x00"
+const (
+	chunkMagic           = "PCGCHNK\x00"
+	MaxChunkPayloadBytes = 64 << 20
+	MaxChunkNodes        = 250_000
+	MaxChunkEdges        = 500_000
+	MaxEdgeSources       = 1_024
+	MaxEdgeHighwayBytes  = 256
+	MaxEdgeNameBytes     = 1_024
+	MaxSourceNameBytes   = 256
+)
 
 func EncodeChunk(w io.Writer, chunk Chunk) error {
 	if err := chunk.validate(); err != nil {
@@ -20,6 +29,9 @@ func EncodeChunk(w io.Writer, chunk Chunk) error {
 	var payload bytes.Buffer
 	if err := gob.NewEncoder(&payload).Encode(chunk); err != nil {
 		return fmt.Errorf("encode worldgraph chunk: %w", err)
+	}
+	if payload.Len() > MaxChunkPayloadBytes {
+		return fmt.Errorf("%w: payload exceeds %d bytes", ErrInvalidChunk, MaxChunkPayloadBytes)
 	}
 	checksum := sha256.Sum256(payload.Bytes())
 	if _, err := io.WriteString(w, chunkMagic); err != nil {
@@ -58,9 +70,12 @@ func DecodeChunk(r io.Reader) (*Chunk, error) {
 	if _, err := io.ReadFull(r, expected[:]); err != nil {
 		return nil, fmt.Errorf("%w: read checksum: %w", ErrCorruptChunk, err)
 	}
-	payload, err := io.ReadAll(r)
+	payload, err := io.ReadAll(io.LimitReader(r, MaxChunkPayloadBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("%w: read payload: %w", ErrCorruptChunk, err)
+	}
+	if len(payload) > MaxChunkPayloadBytes {
+		return nil, fmt.Errorf("%w: payload exceeds %d bytes", ErrCorruptChunk, MaxChunkPayloadBytes)
 	}
 	actual := sha256.Sum256(payload)
 	if !bytes.Equal(actual[:], expected[:]) {
@@ -78,6 +93,12 @@ func DecodeChunk(r io.Reader) (*Chunk, error) {
 }
 
 func (chunk *Chunk) validate() error {
+	if len(chunk.Nodes) > MaxChunkNodes {
+		return fmt.Errorf("%w: chunk has %d nodes, limit %d", ErrInvalidChunk, len(chunk.Nodes), MaxChunkNodes)
+	}
+	if len(chunk.Edges) > MaxChunkEdges {
+		return fmt.Errorf("%w: chunk has %d edges, limit %d", ErrInvalidChunk, len(chunk.Edges), MaxChunkEdges)
+	}
 	n, err := tileCount(chunk.Tile.Z)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidChunk, err)
@@ -133,13 +154,22 @@ func (chunk *Chunk) validate() error {
 		if err != nil || edge.Owner != expectedOwner {
 			return fmt.Errorf("%w: edge %+v has incorrect owner", ErrInvalidChunk, edge.ID)
 		}
+		if len(edge.Highway) > MaxEdgeHighwayBytes || len(edge.Name) > MaxEdgeNameBytes {
+			return fmt.Errorf("%w: edge %+v text exceeds limits", ErrInvalidChunk, edge.ID)
+		}
 		if len(edge.Sources) == 0 {
 			return fmt.Errorf("%w: edge %+v has no sources", ErrInvalidChunk, edge.ID)
+		}
+		if len(edge.Sources) > MaxEdgeSources {
+			return fmt.Errorf("%w: edge %+v has %d sources, limit %d", ErrInvalidChunk, edge.ID, len(edge.Sources), MaxEdgeSources)
 		}
 		sources := make(map[string]struct{}, len(edge.Sources))
 		for _, source := range edge.Sources {
 			if source == "" {
 				return fmt.Errorf("%w: edge %+v has empty source", ErrInvalidChunk, edge.ID)
+			}
+			if len(source) > MaxSourceNameBytes {
+				return fmt.Errorf("%w: edge %+v source exceeds %d bytes", ErrInvalidChunk, edge.ID, MaxSourceNameBytes)
 			}
 			if _, exists := sources[source]; exists {
 				return fmt.Errorf("%w: edge %+v has duplicate source %q", ErrInvalidChunk, edge.ID, source)

@@ -38,6 +38,15 @@ func TestRouterRoutesWithinOneTile(t *testing.T) {
 	}
 }
 
+func TestRouterRejectsUnsupportedMercatorLatitude(t *testing.T) {
+	router := &Router{manifest: Manifest{Zoom: DefaultZoom}}
+	for _, latitude := range []float64{-90, 90} {
+		if _, err := router.tileForPosition(latitude, 0); !errors.Is(err, ErrInvalidPosition) {
+			t.Fatalf("tileForPosition(%v, 0) error = %v, want ErrInvalidPosition", latitude, err)
+		}
+	}
+}
+
 func TestRouterRoutesAcrossChunkSeam(t *testing.T) {
 	left := TileID{Z: 4, X: 7, Y: 8}
 	right := TileID{Z: 4, X: 8, Y: 8}

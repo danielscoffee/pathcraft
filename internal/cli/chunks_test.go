@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -34,6 +36,15 @@ func TestCmdChunksBuildsGenerationAndPrintsSummary(t *testing.T) {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output %q lacks %q", output, want)
 		}
+	}
+}
+
+func TestCmdChunksHonorsCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := CmdChunksContext(ctx, []string{"build", "--pbf", "unused.osm.pbf", "--store", t.TempDir(), "--region", "test"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("CmdChunksContext() error = %v, want context.Canceled", err)
 	}
 }
 

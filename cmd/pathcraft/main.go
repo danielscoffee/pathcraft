@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/danielscoffee/pathcraft/internal/cli"
 	"github.com/danielscoffee/pathcraft/internal/logging"
@@ -50,7 +53,9 @@ func run() error {
 	case "route":
 		return cli.CmdRoute(os.Args[2:])
 	case "chunks":
-		return cli.CmdChunks(os.Args[2:])
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		return cli.CmdChunksContext(ctx, os.Args[2:])
 	case "transit":
 		return cli.CmdTransit(os.Args[2:])
 	case "journey":

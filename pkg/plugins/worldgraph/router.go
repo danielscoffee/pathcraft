@@ -249,8 +249,8 @@ func (r *Router) loadChunk(ctx context.Context, tile TileID) (*Chunk, error) {
 	if err := r.checkContext(ctx); err != nil {
 		return nil, err
 	}
-	return r.cache.Get(ctx, tile, func() (*Chunk, error) {
-		chunk, err := r.store.LoadChunk(tile)
+	return r.cache.GetContext(ctx, tile, func(loadCtx context.Context) (*Chunk, error) {
+		chunk, err := r.store.LoadChunkContext(loadCtx, tile)
 		if err != nil {
 			return nil, err
 		}
@@ -275,9 +275,13 @@ func (r *Router) isCovered(tile TileID) bool {
 
 func (r *Router) tileForPosition(lat, lon float64) (TileID, error) {
 	if math.IsNaN(lat) || math.IsInf(lat, 0) || math.IsNaN(lon) || math.IsInf(lon, 0) || lat < -90 || lat > 90 || lon < -180 || lon > 180 {
-		return TileID{}, fmt.Errorf("coordinates must be finite latitude [-90,90] and longitude [-180,180]")
+		return TileID{}, fmt.Errorf("%w: coordinates must be finite latitude [-90,90] and longitude [-180,180]", ErrInvalidPosition)
 	}
-	return TileForPosition(lon, lat, r.manifest.Zoom)
+	tile, err := TileForPosition(lon, lat, r.manifest.Zoom)
+	if err != nil {
+		return TileID{}, fmt.Errorf("%w: %v", ErrInvalidPosition, err)
+	}
+	return tile, nil
 }
 
 func (r *Router) checkContext(ctx context.Context) error {

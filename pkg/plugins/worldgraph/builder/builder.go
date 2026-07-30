@@ -17,7 +17,10 @@ import (
 	"github.com/danielscoffee/pathcraft/pkg/plugins/worldgraph"
 )
 
-const contributionBatchSize = 4_096
+const (
+	contributionBatchSize   = 4_096
+	maxWayContributionBytes = 64 << 20
+)
 
 type Options struct {
 	PBFPath     string
@@ -56,6 +59,22 @@ func build(ctx context.Context, options Options, scans scanFunctions) (worldgrap
 		return worldgraph.Manifest{}, fmt.Errorf("build scanner is nil")
 	}
 
+	workDir, err := os.MkdirTemp(options.TempDir, "pathcraft-worldgraph-*")
+	if err != nil {
+		return worldgraph.Manifest{}, err
+	}
+	defer os.RemoveAll(workDir)
+
+	snapshotPath := filepath.Join(workDir, "input.osm.pbf")
+	sourceHash, err := snapshotPBF(ctx, options.PBFPath, snapshotPath)
+	if err != nil {
+		return worldgraph.Manifest{}, fmt.Errorf("snapshot PBF: %w", err)
+	}
+	options.PBFPath = snapshotPath
+	if err := validatePBF(ctx, options.PBFPath, options.MaxWayNodes); err != nil {
+		return worldgraph.Manifest{}, fmt.Errorf("validate PBF: %w", err)
+	}
+
 	store, err := worldgraph.OpenStore(options.StorePath)
 	if err != nil {
 		return worldgraph.Manifest{}, err
@@ -67,19 +86,6 @@ func build(ctx context.Context, options Options, scans scanFunctions) (worldgrap
 	if hasPrevious && previous.Zoom != options.Zoom {
 		return worldgraph.Manifest{}, fmt.Errorf("store zoom %d does not match build zoom %d", previous.Zoom, options.Zoom)
 	}
-	if err := validatePBF(ctx, options.PBFPath, options.MaxWayNodes); err != nil {
-		return worldgraph.Manifest{}, fmt.Errorf("validate PBF: %w", err)
-	}
-
-	sourceHash, err := fingerprintFile(ctx, options.PBFPath)
-	if err != nil {
-		return worldgraph.Manifest{}, err
-	}
-	workDir, err := os.MkdirTemp(options.TempDir, "pathcraft-worldgraph-*")
-	if err != nil {
-		return worldgraph.Manifest{}, err
-	}
-	defer os.RemoveAll(workDir)
 
 	nodes, err := OpenNodeIndex(filepath.Join(workDir, "nodes.db"))
 	if err != nil {
@@ -131,7 +137,7 @@ func build(ctx context.Context, options Options, scans scanFunctions) (worldgrap
 	if err := ctx.Err(); err != nil {
 		return worldgraph.Manifest{}, err
 	}
-	if err := store.PublishGenerationFrom(manifest, func(tile worldgraph.TileID) (worldgraph.Chunk, bool, error) {
+	if err := store.PublishGenerationFromContext(ctx, manifest, func(tile worldgraph.TileID) (worldgraph.Chunk, bool, error) {
 		return contributions.StagedChunk(ctx, tile)
 	}); err != nil {
 		return worldgraph.Manifest{}, err
@@ -148,6 +154,9 @@ func normalizeBuildOptions(options *Options) error {
 	}
 	if strings.TrimSpace(options.Region) == "" {
 		return fmt.Errorf("region is required")
+	}
+	if len(options.Region) > worldgraph.MaxSourceNameBytes {
+		return fmt.Errorf("region exceeds %d bytes", worldgraph.MaxSourceNameBytes)
 	}
 	if options.Zoom == 0 {
 		options.Zoom = worldgraph.DefaultZoom
@@ -176,23 +185,41 @@ func optionalManifest(store *worldgraph.Store) (worldgraph.Manifest, bool, error
 	return manifest, err == nil, err
 }
 
-func fingerprintFile(ctx context.Context, path string) (fingerprint string, err error) {
-	file, err := os.Open(filepath.Clean(path))
+func snapshotPBF(ctx context.Context, source, destination string) (fingerprint string, err error) {
+	input, err := os.Open(source)
 	if err != nil {
 		return "", err
 	}
-	defer func() { err = errors.Join(err, file.Close()) }()
+	info, err := input.Stat()
+	if err != nil {
+		return "", errors.Join(err, input.Close())
+	}
+	if !info.Mode().IsRegular() {
+		return "", errors.Join(fmt.Errorf("PBF input is not a regular file"), input.Close())
+	}
+	output, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return "", errors.Join(err, input.Close())
+	}
+	defer func() {
+		err = errors.Join(err, output.Close(), input.Close())
+		if err != nil {
+			_ = os.Remove(destination)
+		}
+	}()
+
 	hash := sha256.New()
+	writer := io.MultiWriter(output, hash)
 	buffer := make([]byte, 1<<20)
 	for {
 		if err := ctx.Err(); err != nil {
 			return "", err
 		}
-		count, readErr := file.Read(buffer)
+		count, readErr := input.Read(buffer)
 		if count > 0 {
-			written, err := hash.Write(buffer[:count])
-			if err != nil {
-				return "", err
+			written, writeErr := writer.Write(buffer[:count])
+			if writeErr != nil {
+				return "", writeErr
 			}
 			if written != count {
 				return "", io.ErrShortWrite
@@ -205,6 +232,9 @@ func fingerprintFile(ctx context.Context, path string) (fingerprint string, err 
 			return "", readErr
 		}
 	}
+	if err := output.Sync(); err != nil {
+		return "", err
+	}
 	return fmt.Sprintf("%x", hash.Sum(nil)), nil
 }
 
@@ -212,6 +242,13 @@ func addWayContributions(index *NodeIndex, writer *contributionWriter, way Way, 
 	policy := internalosm.PolicyForTags(way.Tags)
 	if !policy.Routable || len(way.NodeIDs) < 2 {
 		return nil
+	}
+	if len(way.Tags["highway"]) > worldgraph.MaxEdgeHighwayBytes || len(way.Tags["name"]) > worldgraph.MaxEdgeNameBytes {
+		return fmt.Errorf("way %d has routing text above chunk limits", way.ID)
+	}
+	estimatedBytes := int64(len(way.NodeIDs)-1) * 6 * int64(len(way.Tags["highway"])+len(way.Tags["name"])+len(region)+256)
+	if estimatedBytes > maxWayContributionBytes {
+		return fmt.Errorf("way %d contributions exceed %d estimated bytes", way.ID, maxWayContributionBytes)
 	}
 	from, found, err := index.Get(way.NodeIDs[0])
 	if err != nil {

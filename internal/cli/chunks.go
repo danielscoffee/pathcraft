@@ -9,6 +9,10 @@ import (
 )
 
 func CmdChunks(args []string) error {
+	return CmdChunksContext(context.Background(), args)
+}
+
+func CmdChunksContext(ctx context.Context, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("chunks requires the build subcommand")
 	}
@@ -36,7 +40,7 @@ func CmdChunks(args []string) error {
 	if *region == "" {
 		return fmt.Errorf("--region is required")
 	}
-	manifest, err := builder.Build(context.Background(), builder.Options{
+	manifest, err := builder.Build(ctx, builder.Options{
 		PBFPath: *pbf, StorePath: *store, Region: *region, Zoom: *zoom,
 	})
 	if err != nil {

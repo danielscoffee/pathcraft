@@ -1,6 +1,7 @@
 package worldgraph
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,9 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"time"
+
+	bbolt "go.etcd.io/bbolt"
 )
 
 type Store struct {
@@ -59,12 +63,22 @@ func (s *Store) Manifest() (Manifest, error) {
 }
 
 func (s *Store) LoadChunk(tile TileID) (*Chunk, error) {
+	return s.LoadChunkContext(context.Background(), tile)
+}
+
+func (s *Store) LoadChunkContext(ctx context.Context, tile TileID) (*Chunk, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	s.mu.RLock()
 	if s.manifest == nil {
 		s.mu.RUnlock()
 		return nil, fmt.Errorf("%w: %+v", ErrUncoveredTile, tile)
 	}
-	manifest := cloneManifest(*s.manifest)
+	manifest := s.manifest
 	s.mu.RUnlock()
 
 	n, err := tileCount(tile.Z)
@@ -74,7 +88,7 @@ func (s *Store) LoadChunk(tile TileID) (*Chunk, error) {
 	if err := validateTile(tile, n); err != nil {
 		return nil, err
 	}
-	if !manifestHasTile(manifest, tile) {
+	if !manifestHasTile(*manifest, tile) {
 		return nil, fmt.Errorf("%w: %+v", ErrUncoveredTile, tile)
 	}
 	path := filepath.Join(s.root, "generations", manifest.Generation, tilePath(tile))
@@ -87,17 +101,32 @@ func (s *Store) LoadChunk(tile TileID) (*Chunk, error) {
 	}
 	defer file.Close()
 
-	chunk, err := DecodeChunk(file)
+	chunk, err := DecodeChunk(readerWithContext{ctx: ctx, reader: file})
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, ctxErr
+	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrCorruptChunk, err)
 	}
 	if chunk.Tile != tile {
 		return nil, fmt.Errorf("%w: file for %+v contains %+v", ErrCorruptChunk, tile, chunk.Tile)
 	}
-	if err := validateChunkProvenance(*chunk, manifest); err != nil {
+	if err := validateChunkProvenance(*chunk, *manifest); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrCorruptChunk, err)
 	}
 	return chunk, nil
+}
+
+type readerWithContext struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (r readerWithContext) Read(buffer []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(buffer)
 }
 
 type publishFileOps struct {
@@ -113,10 +142,61 @@ func (s *Store) PublishGeneration(manifest Manifest, chunks map[TileID]Chunk) er
 }
 
 func (s *Store) PublishGenerationFrom(manifest Manifest, provide func(TileID) (Chunk, bool, error)) error {
-	return s.publishGenerationFromWithOps(manifest, provide, publishFileOps{
+	return s.PublishGenerationFromContext(context.Background(), manifest, provide)
+}
+
+func (s *Store) PublishGenerationFromContext(ctx context.Context, manifest Manifest, provide func(TileID) (Chunk, bool, error)) (err error) {
+	if ctx == nil {
+		return fmt.Errorf("publish context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(s.root, 0o700); err != nil {
+		return err
+	}
+	lock, err := bbolt.Open(filepath.Join(s.root, ".publish.lock"), 0o600, &bbolt.Options{Timeout: time.Second})
+	if err != nil {
+		if errors.Is(err, bbolt.ErrTimeout) {
+			return fmt.Errorf("%w: another writer holds publication lock", ErrPublishConflict)
+		}
+		return err
+	}
+	defer func() { err = errors.Join(err, lock.Close()) }()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := s.verifyManifestCurrent(); err != nil {
+		return err
+	}
+	return s.publishGenerationFromContextWithOps(ctx, manifest, provide, publishFileOps{
 		renameManifest: os.Rename,
 		syncDirectory:  syncDirectory,
 	})
+}
+
+func (s *Store) verifyManifestCurrent() error {
+	s.mu.RLock()
+	expected := ""
+	if s.manifest != nil {
+		expected = s.manifest.Generation
+	}
+	s.mu.RUnlock()
+
+	current, err := readManifestFile(filepath.Join(s.root, manifestFilename))
+	if err != nil {
+		if os.IsNotExist(err) && expected == "" {
+			return nil
+		}
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%w: expected generation %q, found no manifest", ErrPublishConflict, expected)
+		}
+		return err
+	}
+	if expected == "" || current.Generation != expected {
+		return fmt.Errorf("%w: expected generation %q, found %q", ErrPublishConflict, expected, current.Generation)
+	}
+	return nil
 }
 
 func (s *Store) publishGeneration(manifest Manifest, chunks map[TileID]Chunk, renameManifest func(string, string) error) error {
@@ -137,6 +217,16 @@ func (s *Store) publishGenerationWithOps(manifest Manifest, chunks map[TileID]Ch
 }
 
 func (s *Store) publishGenerationFromWithOps(manifest Manifest, provide func(TileID) (Chunk, bool, error), ops publishFileOps) error {
+	return s.publishGenerationFromContextWithOps(context.Background(), manifest, provide, ops)
+}
+
+func (s *Store) publishGenerationFromContextWithOps(ctx context.Context, manifest Manifest, provide func(TileID) (Chunk, bool, error), ops publishFileOps) error {
+	if ctx == nil {
+		return fmt.Errorf("publish context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if provide == nil || ops.renameManifest == nil || ops.syncDirectory == nil {
 		return fmt.Errorf("publish operation is nil")
 	}
@@ -173,12 +263,18 @@ func (s *Store) publishGenerationFromWithOps(manifest Manifest, provide func(Til
 	defer func() { _ = os.RemoveAll(stage) }()
 
 	for _, tile := range prepared.Tiles {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		destination := filepath.Join(stage, tilePath(tile))
 		if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
 			return err
 		}
 		chunk, changed, err := provide(tile)
 		if err != nil {
+			return err
+		}
+		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if changed {
@@ -207,7 +303,13 @@ func (s *Store) publishGenerationFromWithOps(manifest Manifest, provide func(Til
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := syncTreeDirectories(stage, ops.syncDirectory); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 	manifestTemp, err := writeManifestTemp(s.root, prepared)
@@ -224,10 +326,19 @@ func (s *Store) publishGenerationFromWithOps(manifest Manifest, provide func(Til
 		defer func() { _ = os.Remove(rollbackTemp) }()
 	}
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := os.Rename(stage, target); err != nil {
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		return errors.Join(err, removePublishedGeneration(target, generations, ops.syncDirectory))
+	}
 	if err := ops.syncDirectory(generations); err != nil {
+		return errors.Join(err, removePublishedGeneration(target, generations, ops.syncDirectory))
+	}
+	if err := ctx.Err(); err != nil {
 		return errors.Join(err, removePublishedGeneration(target, generations, ops.syncDirectory))
 	}
 	manifestPath := filepath.Join(s.root, manifestFilename)
@@ -235,7 +346,7 @@ func (s *Store) publishGenerationFromWithOps(manifest Manifest, provide func(Til
 		return errors.Join(err, removePublishedGeneration(target, generations, ops.syncDirectory))
 	}
 	if err := ops.syncDirectory(s.root); err != nil {
-		restored, rollbackErr := rollbackPublication(manifestPath, rollbackTemp, target, generations, s.root, ops)
+		restored, rollbackErr := rollbackPublication(manifestPath, rollbackTemp, s.root, ops)
 		if !restored {
 			s.manifest = &prepared
 		}
@@ -283,7 +394,7 @@ func removePublishedGeneration(target, generations string, sync func(string) err
 	return errors.Join(os.RemoveAll(target), sync(generations))
 }
 
-func rollbackPublication(manifestPath, rollbackManifest, target, generations, root string, ops publishFileOps) (bool, error) {
+func rollbackPublication(manifestPath, rollbackManifest, root string, ops publishFileOps) (bool, error) {
 	var restoreErr error
 	if rollbackManifest == "" {
 		restoreErr = os.Remove(manifestPath)
@@ -293,9 +404,8 @@ func rollbackPublication(manifestPath, rollbackManifest, target, generations, ro
 	if restoreErr != nil {
 		return false, restoreErr
 	}
-	rootSyncErr := ops.syncDirectory(root)
-	cleanupErr := removePublishedGeneration(target, generations, ops.syncDirectory)
-	return true, errors.Join(rootSyncErr, cleanupErr)
+	// Keep target: readers may have pinned it while its manifest was visible.
+	return true, ops.syncDirectory(root)
 }
 
 func writeChunkFile(path string, chunk Chunk) error {

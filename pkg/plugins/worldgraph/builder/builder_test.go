@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/danielscoffee/pathcraft/pkg/plugins/worldgraph"
@@ -118,6 +119,56 @@ func TestCancelledBuildLeavesCurrentGenerationUntouched(t *testing.T) {
 	after := currentManifest(t, storePath)
 	if after.Generation != before.Generation {
 		t.Fatalf("generation changed after cancellation: %q -> %q", before.Generation, after.Generation)
+	}
+}
+
+func TestBuildScansPrivatePBFSnapshot(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "input.osm.pbf")
+	data, err := os.ReadFile(seamFixturePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var nodePath, wayPath string
+	scans := scanFunctions{
+		nodes: func(ctx context.Context, path string, emit func([]worldgraph.Node) error) error {
+			nodePath = path
+			return ScanNodes(ctx, path, emit)
+		},
+		ways: func(ctx context.Context, path string, limit int, emit func(Way) error) error {
+			wayPath = path
+			return scanWaysUnchecked(ctx, path, limit, emit)
+		},
+	}
+	options := fixtureOptions(t, t.TempDir(), "region-a")
+	options.PBFPath = source
+	if _, err := build(context.Background(), options, scans); err != nil {
+		t.Fatal(err)
+	}
+	if nodePath == source || nodePath == "" || wayPath != nodePath {
+		t.Fatalf("scanner paths = nodes %q, ways %q; want same private snapshot distinct from %q", nodePath, wayPath, source)
+	}
+}
+
+func TestAddWayContributionsRejectsOversizedRoutingText(t *testing.T) {
+	way := Way{
+		ID:      1,
+		NodeIDs: []int64{1, 2},
+		Tags: map[string]string{
+			"highway": "residential",
+			"name":    strings.Repeat("x", worldgraph.MaxEdgeNameBytes+1),
+		},
+	}
+	if err := addWayContributions(nil, nil, way, "region", worldgraph.DefaultZoom); err == nil {
+		t.Fatal("addWayContributions() error = nil, want routing-text limit")
+	}
+	way.Tags["name"] = "ordinary"
+	way.NodeIDs = make([]int64, 100_001)
+	if err := addWayContributions(nil, nil, way, "region", worldgraph.DefaultZoom); err == nil {
+		t.Fatal("addWayContributions() error = nil, want contribution expansion limit")
 	}
 }
 

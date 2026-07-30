@@ -196,6 +196,7 @@ func TestServerUsesChunkHostForNearestAndStreetModes(t *testing.T) {
 		{worldgraph.ErrCorruptChunk, http.StatusServiceUnavailable},
 		{worldgraph.ErrRouteAreaLimit, http.StatusRequestEntityTooLarge},
 		{worldgraph.ErrNoPath, http.StatusNotFound},
+		{worldgraph.ErrInvalidPosition, http.StatusBadRequest},
 		{context.Canceled, http.StatusRequestTimeout},
 	} {
 		host.err = test.err

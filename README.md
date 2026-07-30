@@ -129,10 +129,15 @@ collector removes them, so operators must clean only generations no active
 reader or manifest needs. This MVP targets bounded local/regional trips, not
 arbitrary intercontinental routing or a continental hierarchy.
 
-Generated `.pcg` stores are trusted local artifacts, never HTTP uploads. The
-PBF importer applies framing, decompression, structural, coordinate, and
-way-size limits before decoding, but still runs as an explicit local build
-step. Keep OpenStreetMap attribution visible when rendering derived data:
+Generated `.pcg` stores are trusted local artifacts, never HTTP uploads. Each
+build hashes and scans one private regular-file PBF snapshot; concurrent stale
+publishers fail instead of replacing newer manifests. Before decoding, imports
+reject unsupported protobuf wire layouts; headers cap at 1 MiB, while data
+blocks cap at 100,000 entities, 1,000,000 tags, 250,000 string entries, and
+64 MiB decompressed. Routing labels and per-tile contribution bytes are also
+bounded. Chunks cap at 250,000 nodes, 500,000 edges, and 64 MiB encoded payload.
+These are fixed MVP resource limits, so split denser extracts when needed. Keep
+OpenStreetMap attribution visible when rendering derived data:
 © OpenStreetMap contributors, under the ODbL. The HTTP server is
 unauthenticated and binds loopback by default; explicit non-loopback exposure
 needs a trusted reverse proxy, authentication, TLS, and rate limits.

@@ -98,6 +98,33 @@ func TestScanWaysRejectsOutOfRangeStringTableIndex(t *testing.T) {
 	}
 }
 
+func TestScanWaysRejectsProtobufGroups(t *testing.T) {
+	stringTable := testPBFBytesField(nil, 1, nil)
+	hiddenNode := protowire.AppendTag(nil, 99, protowire.StartGroupType)
+	hiddenNode = testPBFBytesField(hiddenNode, 1, nil)
+	hiddenNode = protowire.AppendTag(hiddenNode, 99, protowire.EndGroupType)
+	block := testPBFBytesField(nil, 1, stringTable)
+	block = testPBFBytesField(block, 2, hiddenNode)
+	path := writeTestPBF(t, testPBFFileBlock("OSMData", block))
+
+	if err := ScanWays(context.Background(), path, func(Way) error { return nil }); err == nil {
+		t.Fatal("ScanWays() error = nil, want protobuf group rejection")
+	}
+}
+
+func TestScanWaysRejectsWrongWireType(t *testing.T) {
+	stringTable := testPBFBytesField(nil, 1, nil)
+	way := testPBFBytesField(nil, 1, testPBFBytesField(nil, 2, protowire.AppendVarint(nil, 9)))
+	group := testPBFBytesField(nil, 3, way)
+	block := testPBFBytesField(nil, 1, stringTable)
+	block = testPBFBytesField(block, 2, group)
+	path := writeTestPBF(t, testPBFFileBlock("OSMData", block))
+
+	if err := ScanWays(context.Background(), path, func(Way) error { return nil }); err == nil {
+		t.Fatal("ScanWays() error = nil, want wrong wire-type rejection")
+	}
+}
+
 func TestScanWaysRejectsRepeatedReferenceFields(t *testing.T) {
 	stringTable := testPBFBytesField(nil, 1, nil)
 	way := testPBFVarintField(nil, 1, 1)
@@ -149,6 +176,100 @@ func TestScanAcceptsBoundedZlibPBF(t *testing.T) {
 	}
 }
 
+func TestScanRejectsWrongPrimitiveBlockScalarWireType(t *testing.T) {
+	stringTable := testPBFBytesField(nil, 1, nil)
+	block := testPBFBytesField(nil, 1, stringTable)
+	block = testPBFBytesField(block, 17, nil)
+	path := writeTestPBF(t, testPBFFileBlock("OSMData", block))
+
+	if err := ScanNodes(context.Background(), path, func([]worldgraph.Node) error { return nil }); err == nil {
+		t.Fatal("ScanNodes() error = nil, want wrong scalar wire-type rejection")
+	}
+}
+
+func TestScanRejectsCompressedDenseEntityBomb(t *testing.T) {
+	column := bytes.Repeat([]byte{0}, maxPBFEntitiesPerBlock+1)
+	dense := testPBFBytesField(nil, 1, column)
+	dense = testPBFBytesField(dense, 8, column)
+	dense = testPBFBytesField(dense, 9, column)
+	group := testPBFBytesField(nil, 2, dense)
+	stringTable := testPBFBytesField(nil, 1, nil)
+	block := testPBFBytesField(nil, 1, stringTable)
+	block = testPBFBytesField(block, 2, group)
+	path := writeTestPBF(t, testPBFZlibFileBlock("OSMData", block))
+
+	if err := ScanNodes(context.Background(), path, func([]worldgraph.Node) error { return nil }); err == nil {
+		t.Fatal("ScanNodes() error = nil, want dense entity limit")
+	}
+}
+
+func TestScanRejectsCompressedHeaderFeatureBomb(t *testing.T) {
+	header := make([]byte, 0, 2*(maxPBFHeaderFeatures+1))
+	for range maxPBFHeaderFeatures + 1 {
+		header = testPBFBytesField(header, 4, nil)
+	}
+	path := filepath.Join(t.TempDir(), "header-bomb.osm.pbf")
+	if err := os.WriteFile(path, testPBFZlibFileBlock("OSMHeader", header), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ScanNodes(context.Background(), path, func([]worldgraph.Node) error { return nil }); err == nil || !strings.Contains(err.Error(), "features") {
+		t.Fatalf("ScanNodes() error = %v, want header feature limit", err)
+	}
+}
+
+func TestValidatePBFRejectsStringTableEntryBomb(t *testing.T) {
+	stringTable := make([]byte, 0, 2*(maxPBFStringTableEntries+1))
+	for range maxPBFStringTableEntries + 1 {
+		stringTable = testPBFBytesField(stringTable, 1, nil)
+	}
+	block := testPBFBytesField(nil, 1, stringTable)
+	if err := validatePBFPrimitiveBlock(block, DefaultMaxWayNodes); err == nil {
+		t.Fatal("validatePBFPrimitiveBlock() error = nil, want string-table limit")
+	}
+}
+
+func TestValidatePBFRejectsOversizedString(t *testing.T) {
+	stringTable := testPBFBytesField(nil, 1, nil)
+	stringTable = testPBFBytesField(stringTable, 1, bytes.Repeat([]byte{'x'}, maxPBFStringLength+1))
+	block := testPBFBytesField(nil, 1, stringTable)
+	if err := validatePBFPrimitiveBlock(block, DefaultMaxWayNodes); err == nil {
+		t.Fatal("validatePBFPrimitiveBlock() error = nil, want string-size limit")
+	}
+}
+
+func TestValidatePBFRejectsExcessiveWayTags(t *testing.T) {
+	stringTable := testPBFBytesField(nil, 1, nil)
+	stringTable = testPBFBytesField(stringTable, 1, []byte("tag"))
+	indexes := make([]byte, 0, maxPBFTagsPerEntity+1)
+	for range maxPBFTagsPerEntity + 1 {
+		indexes = protowire.AppendVarint(indexes, 1)
+	}
+	way := testPBFVarintField(nil, 1, 1)
+	way = testPBFBytesField(way, 2, indexes)
+	way = testPBFBytesField(way, 3, indexes)
+	group := testPBFBytesField(nil, 3, way)
+	block := testPBFBytesField(nil, 1, stringTable)
+	block = testPBFBytesField(block, 2, group)
+	if err := validatePBFPrimitiveBlock(block, DefaultMaxWayNodes); err == nil {
+		t.Fatal("validatePBFPrimitiveBlock() error = nil, want tag limit")
+	}
+}
+
+func TestValidatePBFRejectsMismatchedDenseInfoColumns(t *testing.T) {
+	info := testPBFBytesField(nil, 1, testPBFPackedVarints(1, 1))
+	dense := testPBFBytesField(nil, 1, testPBFPackedSInt64(1))
+	dense = testPBFBytesField(dense, 5, info)
+	dense = testPBFBytesField(dense, 8, testPBFPackedSInt64(1))
+	dense = testPBFBytesField(dense, 9, testPBFPackedSInt64(1))
+	group := testPBFBytesField(nil, 2, dense)
+	stringTable := testPBFBytesField(nil, 1, nil)
+	block := testPBFBytesField(nil, 1, stringTable)
+	block = testPBFBytesField(block, 2, group)
+	if err := validatePBFPrimitiveBlock(block, DefaultMaxWayNodes); err == nil {
+		t.Fatal("validatePBFPrimitiveBlock() error = nil, want dense-info length rejection")
+	}
+}
+
 func TestScanRejectsOversizedUncompressedBlock(t *testing.T) {
 	const declaredSize = 65 << 20
 	blob := testPBFVarintField(nil, 2, declaredSize)
@@ -158,6 +279,35 @@ func TestScanRejectsOversizedUncompressedBlock(t *testing.T) {
 	err := ScanWays(context.Background(), path, func(Way) error { return nil })
 	if err == nil || !strings.Contains(err.Error(), "uncompressed PBF block") {
 		t.Fatalf("ScanWays() error = %v, want uncompressed block limit", err)
+	}
+}
+
+func TestValidatedScannerUsesPrivateSnapshot(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "input.osm.pbf")
+	original, err := os.ReadFile(seamFixturePath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(source, original, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := scanValidatedPBFSnapshot(context.Background(), source, DefaultMaxWayNodes, func(snapshot string) error {
+		if snapshot == source {
+			t.Fatal("scanner reused mutable source path")
+		}
+		if err := os.WriteFile(source, []byte("replaced"), 0o600); err != nil {
+			return err
+		}
+		got, err := os.ReadFile(snapshot)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(got, original) {
+			t.Fatal("private scanner snapshot changed with source")
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -190,6 +340,23 @@ func TestScanWaysRejectsExcessiveNodeCount(t *testing.T) {
 	if !errors.Is(err, ErrWayNodeLimit) {
 		t.Fatalf("scanWays() error = %v, want ErrWayNodeLimit", err)
 	}
+}
+
+func FuzzAcceptedPBFPrimitiveBlocksDoNotPanicDecoder(f *testing.F) {
+	stringTable := testPBFBytesField(nil, 1, nil)
+	way := testPBFVarintField(nil, 1, 1)
+	group := testPBFBytesField(nil, 3, way)
+	seed := testPBFBytesField(nil, 1, stringTable)
+	seed = testPBFBytesField(seed, 2, group)
+	f.Add(seed)
+
+	f.Fuzz(func(t *testing.T, block []byte) {
+		if len(block) > 1<<20 || validatePBFPrimitiveBlock(block, DefaultMaxWayNodes) != nil {
+			return
+		}
+		path := writeTestPBF(t, testPBFFileBlock("OSMData", block))
+		_ = ScanWays(context.Background(), path, func(Way) error { return nil })
+	})
 }
 
 func seamFixturePath() string {

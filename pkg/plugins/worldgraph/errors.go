@@ -12,4 +12,6 @@ var (
 	ErrRouteAreaLimit     = errors.New("worldgraph route area limit exceeded")
 	ErrNoPath             = errors.New("worldgraph has no connected path")
 	ErrRouterClosed       = errors.New("worldgraph router is closed")
+	ErrPublishConflict    = errors.New("worldgraph store changed during publication")
+	ErrInvalidPosition    = errors.New("worldgraph position is outside supported coordinates")
 )

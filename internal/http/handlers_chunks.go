@@ -120,6 +120,8 @@ func worldGraphErrorStatus(err error) (int, bool) {
 	switch {
 	case errors.Is(err, worldgraph.ErrUncoveredTile), errors.Is(err, worldgraph.ErrNoPath):
 		return http.StatusNotFound, true
+	case errors.Is(err, worldgraph.ErrInvalidPosition):
+		return http.StatusBadRequest, true
 	case errors.Is(err, worldgraph.ErrRouteAreaLimit):
 		return http.StatusRequestEntityTooLarge, true
 	case errors.Is(err, worldgraph.ErrMissingChunk),
