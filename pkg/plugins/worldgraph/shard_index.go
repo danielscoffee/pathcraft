@@ -131,8 +131,8 @@ func validateShardIndex(index shardIndex) error {
 		if entry.Length == 0 || uint64(entry.Length) > uint64(maxEncodedChunkBytes) {
 			return fmt.Errorf("%w: invalid chunk length %d", ErrCorruptIndex, entry.Length)
 		}
-		if entry.Offset > math.MaxUint64-uint64(entry.Length) {
-			return fmt.Errorf("%w: chunk range overflows", ErrCorruptIndex)
+		if entry.Offset > math.MaxInt64 || uint64(entry.Length) > uint64(math.MaxInt64)-entry.Offset {
+			return fmt.Errorf("%w: chunk range exceeds file offsets", ErrCorruptIndex)
 		}
 	}
 	return nil

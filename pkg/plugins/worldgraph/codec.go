@@ -34,16 +34,18 @@ func EncodeChunk(w io.Writer, chunk Chunk) error {
 		return fmt.Errorf("%w: payload exceeds %d bytes", ErrInvalidChunk, MaxChunkPayloadBytes)
 	}
 	checksum := sha256.Sum256(payload.Bytes())
-	if _, err := io.WriteString(w, chunkMagic); err != nil {
+	if err := writeAll(w, []byte(chunkMagic)); err != nil {
 		return err
 	}
-	if err := binary.Write(w, binary.BigEndian, uint32(FormatVersion)); err != nil {
+	var version [4]byte
+	binary.BigEndian.PutUint32(version[:], uint32(FormatVersion))
+	if err := writeAll(w, version[:]); err != nil {
 		return err
 	}
-	if _, err := w.Write(checksum[:]); err != nil {
+	if err := writeAll(w, checksum[:]); err != nil {
 		return err
 	}
-	if _, err := payload.WriteTo(w); err != nil {
+	if err := writeAll(w, payload.Bytes()); err != nil {
 		return err
 	}
 	return nil

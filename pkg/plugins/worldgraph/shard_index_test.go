@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
+	"math"
 	"reflect"
 	"testing"
 )
@@ -108,6 +109,12 @@ func TestShardIndexRejectsInvalidEntries(t *testing.T) {
 			name: "range overflow",
 			index: shardIndex{Shard: TileID{Z: PackedShardZoom}, Entries: []shardIndexEntry{
 				{Slot: 1, Offset: ^uint64(0), Length: 1, SHA256: digest},
+			}},
+		},
+		{
+			name: "range exceeds file offset",
+			index: shardIndex{Shard: TileID{Z: PackedShardZoom}, Entries: []shardIndexEntry{
+				{Slot: 1, Offset: math.MaxInt64, Length: 2, SHA256: digest},
 			}},
 		},
 	}
