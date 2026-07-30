@@ -69,6 +69,64 @@ func TestRouterRoutesAcrossChunkSeam(t *testing.T) {
 	}
 }
 
+func TestRouterRoutesPackedAcrossShardBoundary(t *testing.T) {
+	left := TileID{Z: GlobalRoutingZoom, X: 15, Y: 2048}
+	right := TileID{Z: GlobalRoutingZoom, X: 16, Y: 2048}
+	from := routerNode(left, 1, 0.9, 0.5)
+	to := routerNode(right, 2, 0.1, 0.5)
+	edges := routerBidirectionalEdges(t, from, to, 20, false, false)
+	for index := range edges {
+		edges[index].Sources = []string{"planet"}
+	}
+	root, _ := writePackedStoreFixture(t, map[TileID]Chunk{
+		left:  {Tile: left, Nodes: []Node{from, to}, Edges: edges},
+		right: {Tile: right, Nodes: []Node{from, to}, Edges: edges},
+	})
+	router := openTestRouter(t, root, RouterOptions{MaxTiles: 32})
+	if len(router.covered) != 0 {
+		t.Fatalf("packed router materialized %d covered tiles", len(router.covered))
+	}
+
+	result, err := router.RouteByCoordinatesContext(context.Background(), routerRequest(from, to, mobility.NewDriving(8.3)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Nodes) != 2 || result.FromNodeID != from.ID || result.ToNodeID != to.ID {
+		t.Fatalf("cross-shard route = %+v", result)
+	}
+	if _, err := router.ChunkGeoJSON(context.Background(), left.Z, left.X, left.Y); err != nil {
+		t.Fatalf("ChunkGeoJSON() error = %v", err)
+	}
+
+	outsideTile := right
+	outsideTile.X++
+	outside := routerNode(outsideTile, 3, 0.5, 0.5)
+	if _, err := router.RouteByCoordinatesContext(context.Background(), routerRequest(from, outside, mobility.NewDriving(8.3))); !errors.Is(err, ErrUncoveredTile) {
+		t.Fatalf("uncovered route error = %v, want ErrUncoveredTile", err)
+	}
+
+	if err := router.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := router.store.Covers(context.Background(), left); !errors.Is(err, ErrRouterClosed) {
+		t.Fatalf("closed store Covers() error = %v, want ErrRouterClosed", err)
+	}
+}
+
+func TestRouterPackedCoveragePropagatesCorruptIndex(t *testing.T) {
+	shard := TileID{Z: PackedShardZoom, X: 1, Y: 128}
+	tile := mustPackedTile(t, shard, 0)
+	root, manifest := writePackedStoreFixture(t, map[TileID]Chunk{tile: {Tile: tile}})
+	prefix := packedFixturePrefix(t, root, manifest, shard)
+	if err := os.WriteFile(shardIndexPath(prefix), []byte("bad index"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	router := openTestRouter(t, root, RouterOptions{})
+	if _, err := router.ChunkGeoJSON(context.Background(), tile.Z, tile.X, tile.Y); !errors.Is(err, ErrCorruptChunk) {
+		t.Fatalf("ChunkGeoJSON() error = %v, want ErrCorruptChunk", err)
+	}
+}
+
 func TestRouterHonorsRestrictionsAndOnewayEdges(t *testing.T) {
 	tile := TileID{Z: 4, X: 8, Y: 8}
 	nodes := []Node{

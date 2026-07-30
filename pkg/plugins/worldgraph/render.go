@@ -37,7 +37,11 @@ func (r *Router) ChunkGeoJSON(ctx context.Context, z, x, y int) ([]byte, error) 
 		}
 		return nil, err
 	}
-	if !r.isCovered(tile) {
+	covered, err := r.isCovered(ctx, tile)
+	if err != nil {
+		return nil, err
+	}
+	if !covered {
 		return nil, fmt.Errorf("%w: %+v", ErrUncoveredTile, tile)
 	}
 	chunk, err := r.loadChunk(ctx, tile)

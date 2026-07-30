@@ -48,7 +48,7 @@ func (r *Router) Neighbors(ctx context.Context, nodeID core.NodeID) ([]core.Edge
 			return nil, err
 		}
 		r.scanIndex++
-		if err := r.indexChunkNodes(chunk); err != nil {
+		if err := r.indexChunkNodesLocked(chunk); err != nil {
 			return nil, err
 		}
 		owner, found = r.nodeOwners[id]
@@ -60,7 +60,7 @@ func (r *Router) Neighbors(ctx context.Context, nodeID core.NodeID) ([]core.Edge
 	if err != nil {
 		return nil, err
 	}
-	if err := r.indexChunkNodes(chunk); err != nil {
+	if err := r.indexChunkNodesLocked(chunk); err != nil {
 		return nil, err
 	}
 	edges := make([]core.Edge, 0)
@@ -82,6 +82,12 @@ func (r *Router) Neighbors(ctx context.Context, nodeID core.NodeID) ([]core.Edge
 }
 
 func (r *Router) indexChunkNodes(chunk *Chunk) error {
+	r.graphMu.Lock()
+	defer r.graphMu.Unlock()
+	return r.indexChunkNodesLocked(chunk)
+}
+
+func (r *Router) indexChunkNodesLocked(chunk *Chunk) error {
 	for _, node := range chunk.Nodes {
 		if owner, exists := r.nodeOwners[node.ID]; exists && owner != node.Owner {
 			return fmt.Errorf("%w: conflicting owner for node %d", ErrCorruptChunk, node.ID)

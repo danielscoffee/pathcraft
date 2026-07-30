@@ -64,11 +64,15 @@ func OpenRouter(storePath string, options RouterOptions) (*Router, error) {
 	}
 	manifest, err := store.Manifest()
 	if err != nil {
+		_ = store.Close()
 		return nil, err
 	}
-	covered := make(map[TileID]struct{}, len(manifest.Tiles))
-	for _, tile := range manifest.Tiles {
-		covered[tile] = struct{}{}
+	var covered map[TileID]struct{}
+	if manifest.Layout == "" {
+		covered = make(map[TileID]struct{}, len(manifest.Tiles))
+		for _, tile := range manifest.Tiles {
+			covered[tile] = struct{}{}
+		}
 	}
 	return &Router{
 		store: store, manifest: manifest, covered: covered,
@@ -82,7 +86,7 @@ func (r *Router) Close() error {
 		return nil
 	}
 	r.cache.Close()
-	return nil
+	return r.store.Close()
 }
 
 func (r *Router) RouteByCoordinatesContext(ctx context.Context, request engine.CoordinateRouteRequest) (*engine.CoordinateRouteResult, error) {
@@ -102,7 +106,11 @@ func (r *Router) RouteByCoordinatesContext(ctx context.Context, request engine.C
 		return nil, fmt.Errorf("%w: %v", ErrRouteAreaLimit, err)
 	}
 	for _, tile := range core {
-		if !r.isCovered(tile) {
+		covered, err := r.isCovered(ctx, tile)
+		if err != nil {
+			return nil, err
+		}
+		if !covered {
 			return nil, fmt.Errorf("%w: %+v", ErrUncoveredTile, tile)
 		}
 	}
@@ -116,7 +124,11 @@ func (r *Router) RouteByCoordinatesContext(ctx context.Context, request engine.C
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrRouteAreaLimit, err)
 		}
-		g, err := r.graphForTiles(ctx, r.coveredTiles(tiles))
+		covered, err := r.coveredTiles(ctx, tiles)
+		if err != nil {
+			return nil, err
+		}
+		g, err := r.graphForTiles(ctx, covered)
 		if err != nil {
 			return nil, err
 		}
@@ -148,14 +160,22 @@ func (r *Router) NearestPosition(ctx context.Context, lat, lon float64) (id int6
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
-	if !r.isCovered(tile) {
+	covered, err := r.isCovered(ctx, tile)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	if !covered {
 		return 0, 0, 0, 0, fmt.Errorf("%w: %+v", ErrUncoveredTile, tile)
 	}
 	tiles, err := Expand([]TileID{tile}, 1, r.options.MaxTiles)
 	if err != nil {
 		return 0, 0, 0, 0, fmt.Errorf("%w: %v", ErrRouteAreaLimit, err)
 	}
-	g, err := r.graphForTiles(ctx, r.coveredTiles(tiles))
+	coveredTiles, err := r.coveredTiles(ctx, tiles)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	g, err := r.graphForTiles(ctx, coveredTiles)
 	if err != nil {
 		return 0, 0, 0, 0, err
 	}
@@ -190,6 +210,9 @@ func (r *Router) graphForTiles(ctx context.Context, tiles []TileID) (*graph.Grap
 		}
 		chunk, err := r.loadChunk(ctx, tile)
 		if err != nil {
+			return nil, err
+		}
+		if err := r.indexChunkNodes(chunk); err != nil {
 			return nil, err
 		}
 		for _, node := range chunk.Nodes {
@@ -258,19 +281,29 @@ func (r *Router) loadChunk(ctx context.Context, tile TileID) (*Chunk, error) {
 	})
 }
 
-func (r *Router) coveredTiles(tiles []TileID) []TileID {
+func (r *Router) coveredTiles(ctx context.Context, tiles []TileID) ([]TileID, error) {
 	covered := make([]TileID, 0, len(tiles))
 	for _, tile := range tiles {
-		if r.isCovered(tile) {
+		ok, err := r.isCovered(ctx, tile)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
 			covered = append(covered, tile)
 		}
 	}
-	return covered
+	return covered, nil
 }
 
-func (r *Router) isCovered(tile TileID) bool {
-	_, ok := r.covered[tile]
-	return ok
+func (r *Router) isCovered(ctx context.Context, tile TileID) (bool, error) {
+	if err := r.checkContext(ctx); err != nil {
+		return false, err
+	}
+	if r.manifest.Layout == "" {
+		_, ok := r.covered[tile]
+		return ok, nil
+	}
+	return r.store.Covers(ctx, tile)
 }
 
 func (r *Router) tileForPosition(lat, lon float64) (TileID, error) {

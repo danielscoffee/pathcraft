@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/danielscoffee/pathcraft/internal/mobility"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
 	"github.com/danielscoffee/pathcraft/pkg/plugins"
@@ -46,6 +47,28 @@ func TestLoaderRegistersAndOpensLazyWorldGraph(t *testing.T) {
 		t.Fatal("loaded world graph is not closable")
 	} else if err := closer.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPackedRouterIndexesLoadedNodesForGraphAdapter(t *testing.T) {
+	tile := TileID{Z: GlobalRoutingZoom, X: 16, Y: 2048}
+	from := routerNode(tile, 1, 0.25, 0.5)
+	to := routerNode(tile, 2, 0.75, 0.5)
+	edge := routerDirectedEdge(t, from, to, 70, false, false)
+	edge.Sources = []string{"planet"}
+	root, _ := writePackedStoreFixture(t, map[TileID]Chunk{
+		tile: {Tile: tile, Nodes: []Node{from, to}, Edges: []Edge{edge}},
+	})
+	router := openTestRouter(t, root, RouterOptions{})
+	if _, err := router.RouteByCoordinatesContext(context.Background(), routerRequest(from, to, mobility.NewWalking(1.4))); err != nil {
+		t.Fatal(err)
+	}
+	edges, err := router.Neighbors(context.Background(), core.NodeID("1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(edges) != 1 || edges[0].To != "2" {
+		t.Fatalf("Neighbors() = %+v", edges)
 	}
 }
 
