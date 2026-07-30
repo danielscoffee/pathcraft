@@ -11,6 +11,10 @@
 - [gRPC API](api/grpc.md): Protobuf contract, server, client, and security limits.
 - [Plugin system](architecture/plugin-system.md): Compile-time extension points and authoring.
 
+## Operations
+
+- [World graph operations](worldgraph-operations.md): Global build resources, resume, storage, recovery, and acceptance checks.
+
 ## Project Status
 
 - [Roadmap](ROADMAP.md): Current status and future plans.

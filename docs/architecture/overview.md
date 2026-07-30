@@ -98,8 +98,9 @@ Private core logic (not exported).
 
 Public compile-time registry and built-in implementations. Applications
 activate plugins through imports; adapters discover registered capabilities.
-`worldgraph` streams OSM PBF into immutable regional XYZ generations and
-routes over bounded request-local graph unions without loading a planet graph.
+`worldgraph` streams regional OSM PBF extracts into per-tile generations or a
+global PBF snapshot into sparse indexed shard packs. Both route over bounded
+request-local graph unions without loading a planet graph.
 
 ### `/pkg/pathcraft/engine`
 
@@ -124,17 +125,20 @@ adding geography to `core.Mode`.
 ### Versioned world graph runtime
 
 Regional PBF builds produce `manifest.json` plus immutable
-`generations/<generation>/<z>/<x>/<y>.pcg`. Edges have one owner tile and
-endpoint/owner seam copies; render responses emit owners only. Runtime requests
-compute wrapped corridors, load a one-tile halo through a decoded-byte LRU,
-deduplicate a request-local graph, and expand only after no path.
+`generations/<generation>/<z>/<x>/<y>.pcg`. Restartable global builds use
+zoom-8 shard indexes and segmented packs under
+`generations/<generation>/shards/`; packed manifests omit global zoom-12 tile
+lists. Edges have one owner tile and endpoint/owner seam copies; render
+responses emit owners only. Runtime requests compute wrapped corridors, load a
+one-tile halo through bounded index/decoded-byte LRUs, deduplicate a
+request-local graph, and expand only after no path.
 
 Defaults are zoom 12, Web Mercator `±85.05112878°`, 256 route tiles, three
 expansions, and 512 MiB decoded cache. This is a local/regional MVP, not a
 continental hierarchy. Missing coverage and corrupt/missing expected chunks
 fail explicitly; no fallback geometry is fabricated. Generations publish
-atomically, and active readers stay pinned while region replacement removes
-deleted provenance.
+atomically, and active readers stay pinned. Regional replacement removes
+deleted provenance; each global generation represents one source snapshot.
 
 ---
 

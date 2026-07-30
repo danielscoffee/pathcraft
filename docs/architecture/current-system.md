@@ -54,14 +54,17 @@ wraps existing internals without rewriting them.
 
 ## `pkg/plugins/worldgraph`
 
-- Streaming two-pass OSM PBF importer with disk-backed node/contribution
-  indexes and shared street-access policy.
-- Versioned fixed-zoom XYZ chunks with stable OSM IDs, edge ownership, seam
-  copies, source provenance, checksums, and immutable generations.
+- Streaming regional importer plus restartable global PBF pipeline with
+  external reference sorting, compact node lookup, bounded shard writers, and
+  shared street-access policy.
+- Versioned fixed-zoom XYZ chunks stored as regional `.pcg` files or sparse
+  zoom-8 indexes and segmented packs, with stable OSM IDs, edge ownership,
+  seam copies, source provenance, checksums, and immutable generations.
 - Request-local graph unions, wrapped corridors, bounded expansion,
   profile-aware A*, and a 512 MiB decoded-byte LRU by default.
-- Region replacement removes old provenance/deleted roads, syncs staged files,
-  then atomically replaces `manifest.json`; open routers stay pinned.
+- Regional replacement removes old provenance/deleted roads; global builds
+  publish one source snapshot. Both sync staged files, atomically replace
+  `manifest.json`, and leave open routers pinned.
 - Coverage is Web Mercator `±85.05112878°`. Missing coverage/files,
   corruption, area limits, no path, and cancellation stay distinct errors.
 
@@ -75,8 +78,8 @@ wraps existing internals without rewriting them.
 
 ## `internal/cli`
 
-- Subcommands: `parse`, `preprocess`, `chunks build`, `route`, `transit`,
-  `journey`, `grpc`, `serve`, `plugins`, and `pipeline`.
+- Subcommands: `parse`, `preprocess`, `chunks build`, `chunks build-global`,
+  `route`, `transit`, `journey`, `grpc`, `serve`, `plugins`, and `pipeline`.
 - `route` and `serve` accept exactly one legacy `--file` or versioned
   `--chunks` host for street modes. Servers default to `127.0.0.1`.
 - `loadEngine(file)` uses cache only when source SHA-256 and cache/preprocessing versions match.

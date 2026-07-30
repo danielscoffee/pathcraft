@@ -120,11 +120,12 @@ host with `--chunks`—there are no `world-walk` aliases. Generic node-neighbor
 lookup is lazy; bounded coordinate routing is the intended worldwide path.
 `air` preserves altitude as a direct-route example, not a flight planner.
 
-World chunk files are immutable, checksummed local artifacts. Region imports
-publish a manifest atomically, pin active readers, and report missing coverage
-instead of inventing partial/direct geometry. Defaults cap corridors at 256
-tiles and decoded cache at 512 MiB; intercontinental hierarchy is outside this
-MVP.
+World chunk files are immutable, checksummed local artifacts. Regional imports
+publish per-tile files; restartable global imports publish sparse indexed shard
+packs without a global tile list. Both replace the manifest atomically, pin
+active readers, and report missing coverage instead of inventing partial/direct
+geometry. Defaults cap corridors at 256 tiles and decoded cache at 512 MiB;
+intercontinental hierarchy is outside this MVP.
 
 ## Native capability escape hatches
 
