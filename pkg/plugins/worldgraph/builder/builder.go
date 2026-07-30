@@ -239,6 +239,30 @@ func snapshotPBF(ctx context.Context, source, destination string) (fingerprint s
 }
 
 func addWayContributions(index *NodeIndex, writer *contributionWriter, way Way, region string, zoom int) error {
+	ctx := context.Background()
+	var lookup func(int64) (worldgraph.Node, bool, error)
+	var emit func(worldgraph.Node, worldgraph.Node, worldgraph.Edge) error
+	if index != nil {
+		lookup = index.Get
+	}
+	if writer != nil {
+		ctx = writer.ctx
+		emit = writer.Add
+	}
+	return addWayContributionsWithLookup(ctx, lookup, emit, way, region, zoom)
+}
+
+func addWayContributionsWithLookup(
+	ctx context.Context,
+	lookup func(int64) (worldgraph.Node, bool, error),
+	emit func(worldgraph.Node, worldgraph.Node, worldgraph.Edge) error,
+	way Way,
+	region string,
+	zoom int,
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	policy := internalosm.PolicyForTags(way.Tags)
 	if !policy.Routable || len(way.NodeIDs) < 2 {
 		return nil
@@ -250,7 +274,10 @@ func addWayContributions(index *NodeIndex, writer *contributionWriter, way Way, 
 	if estimatedBytes > maxWayContributionBytes {
 		return fmt.Errorf("way %d contributions exceed %d estimated bytes", way.ID, maxWayContributionBytes)
 	}
-	from, found, err := index.Get(way.NodeIDs[0])
+	if lookup == nil || emit == nil {
+		return fmt.Errorf("way contribution lookup and sink are required")
+	}
+	from, found, err := lookup(way.NodeIDs[0])
 	if err != nil {
 		return err
 	}
@@ -258,10 +285,10 @@ func addWayContributions(index *NodeIndex, writer *contributionWriter, way Way, 
 		return fmt.Errorf("way %d references missing node %d", way.ID, way.NodeIDs[0])
 	}
 	for _, toID := range way.NodeIDs[1:] {
-		if err := writer.ctx.Err(); err != nil {
+		if err := ctx.Err(); err != nil {
 			return err
 		}
-		to, found, err := index.Get(toID)
+		to, found, err := lookup(toID)
 		if err != nil {
 			return err
 		}
@@ -274,7 +301,11 @@ func addWayContributions(index *NodeIndex, writer *contributionWriter, way Way, 
 				return err
 			}
 			for _, edge := range edges {
-				if err := writer.Add(from, to, edge); err != nil {
+				edgeFrom, edgeTo := from, to
+				if edge.ID.From == to.ID {
+					edgeFrom, edgeTo = to, from
+				}
+				if err := emit(edgeFrom, edgeTo, edge); err != nil {
 					return err
 				}
 			}
@@ -317,18 +348,25 @@ type contributionWriter struct {
 }
 
 func (w *contributionWriter) Add(from, to worldgraph.Node, edge worldgraph.Edge) error {
-	tiles := map[worldgraph.TileID]struct{}{
-		from.Owner: {},
-		to.Owner:   {},
-		edge.Owner: {},
-	}
-	for tile := range tiles {
-		w.pending = append(w.pending, edgeContribution{tile: tile, from: from, to: to, edge: edge})
-	}
+	w.pending = append(w.pending, edgeContributions(from, to, edge)...)
 	if len(w.pending) >= contributionBatchSize {
 		return w.Flush()
 	}
 	return nil
+}
+
+func edgeContributions(from, to worldgraph.Node, edge worldgraph.Edge) []edgeContribution {
+	tiles := []worldgraph.TileID{from.Owner, to.Owner, edge.Owner}
+	seen := make(map[worldgraph.TileID]struct{}, len(tiles))
+	contributions := make([]edgeContribution, 0, len(tiles))
+	for _, tile := range tiles {
+		if _, exists := seen[tile]; exists {
+			continue
+		}
+		seen[tile] = struct{}{}
+		contributions = append(contributions, edgeContribution{tile: tile, from: from, to: to, edge: edge})
+	}
+	return contributions
 }
 
 func (w *contributionWriter) Flush() error {

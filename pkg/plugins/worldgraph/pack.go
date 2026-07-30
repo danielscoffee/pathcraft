@@ -222,6 +222,71 @@ func shardPackPrefix(root string, shard TileID) (string, error) {
 	return filepath.Join(root, "shards", strconv.Itoa(shard.X>>4), strconv.Itoa(shard.X), strconv.Itoa(shard.Y)), nil
 }
 
+// WritePackedShard writes sorted chunks and their immutable shard index beneath root.
+func WritePackedShard(ctx context.Context, root string, shard TileID, chunks []Chunk, maxSegmentBytes int64) error {
+	if ctx == nil {
+		return fmt.Errorf("packed shard context is nil")
+	}
+	if len(chunks) == 0 {
+		return fmt.Errorf("packed shard %+v has no chunks", shard)
+	}
+	writer, err := newShardPackWriter(ctx, root, shard, packWriterOptions{MaxSegmentBytes: maxSegmentBytes})
+	if err != nil {
+		return err
+	}
+	complete := false
+	defer func() {
+		if !complete {
+			_ = writer.Abort()
+		}
+	}()
+	for _, chunk := range chunks {
+		if err := writer.Append(chunk.Tile, chunk); err != nil {
+			return err
+		}
+	}
+	index, err := writer.Close()
+	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	prefix, err := shardPackPrefix(root, shard)
+	if err != nil {
+		return err
+	}
+	path := shardIndexPath(prefix)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			_ = file.Close()
+		}
+		if !complete {
+			_ = os.Remove(path)
+		}
+	}()
+	if err := file.Chmod(0o600); err != nil {
+		return err
+	}
+	if err := encodeShardIndex(file, index); err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	closed = true
+	complete = true
+	return nil
+}
+
 func shardIndexPath(prefix string) string {
 	return prefix + ".idx"
 }
