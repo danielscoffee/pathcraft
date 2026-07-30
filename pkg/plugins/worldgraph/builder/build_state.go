@@ -25,6 +25,7 @@ type GlobalCounts struct {
 	Ways          int64 `json:"ways"`
 	References    int64 `json:"references"`
 	Nodes         int64 `json:"nodes"`
+	Edges         int64 `json:"edges"`
 	Contributions int64 `json:"contributions"`
 	Shards        int64 `json:"shards"`
 	Chunks        int64 `json:"chunks"`
@@ -216,7 +217,7 @@ func validateGlobalBuildState(state globalBuildState) error {
 		return fmt.Errorf("global build packed shards are not sorted")
 	}
 	for _, count := range []int64{
-		state.Counts.Ways, state.Counts.References, state.Counts.Nodes, state.Counts.Contributions,
+		state.Counts.Ways, state.Counts.References, state.Counts.Nodes, state.Counts.Edges, state.Counts.Contributions,
 		state.Counts.Shards, state.Counts.Chunks, state.Counts.WorkBytes, state.Counts.StoreBytes,
 	} {
 		if count < 0 {

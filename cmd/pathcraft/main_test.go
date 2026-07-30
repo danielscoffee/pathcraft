@@ -17,6 +17,17 @@ func TestRunDispatchesChunksCommand(t *testing.T) {
 	}
 }
 
+func TestRunDispatchesGlobalChunksCommand(t *testing.T) {
+	originalArgs := os.Args
+	os.Args = []string{"pathcraft", "chunks", "build-global"}
+	t.Cleanup(func() { os.Args = originalArgs })
+
+	err := run()
+	if err == nil || !strings.Contains(err.Error(), "--pbf is required") {
+		t.Fatalf("run() error = %v, want global chunks validation", err)
+	}
+}
+
 func TestRunDispatchesGRPCCommand(t *testing.T) {
 	originalArgs := os.Args
 	os.Args = []string{"pathcraft", "grpc"}

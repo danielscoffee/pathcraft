@@ -192,12 +192,12 @@ func TestGlobalContributionPartitionsAndWritesPackedShard(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	chunks, err := buildPackedShardFromSpool(context.Background(), spoolPath, shard, stage.Path(), 1_024)
+	chunks, edges, err := buildPackedShardFromSpool(context.Background(), spoolPath, shard, stage.Path(), 1_024)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if chunks != 2 {
-		t.Fatalf("packed chunk count = %d, want 2", chunks)
+	if chunks != 2 || edges != 2 {
+		t.Fatalf("packed counts = %d chunks, %d edges; want 2 and 2", chunks, edges)
 	}
 	segments, err := filepath.Glob(filepath.Join(stage.Path(), "shards", "1", "17", "2-*.pack"))
 	if err != nil {

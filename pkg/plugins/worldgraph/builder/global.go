@@ -245,11 +245,12 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 			if err != nil {
 				return worldgraph.Manifest{}, err
 			}
-			chunks, err := buildPackedShardFromSpool(ctx, spoolPath, shard, stage.Path(), options.PackSegmentBytes)
+			chunks, edges, err := buildPackedShardFromSpool(ctx, spoolPath, shard, stage.Path(), options.PackSegmentBytes)
 			if err != nil {
 				return worldgraph.Manifest{}, err
 			}
 			state.Counts.Chunks += int64(chunks)
+			state.Counts.Edges += edges
 			state.PackedShards = append(state.PackedShards, key)
 			sort.Strings(state.PackedShards)
 			packed[key] = struct{}{}

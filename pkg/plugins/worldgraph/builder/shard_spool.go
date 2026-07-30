@@ -534,32 +534,32 @@ func buildPackedShardFromSpool(
 	shard worldgraph.TileID,
 	stageRoot string,
 	maxSegmentBytes int64,
-) (int, error) {
+) (int, int64, error) {
 	if ctx == nil {
-		return 0, fmt.Errorf("packed shard build context is nil")
+		return 0, 0, fmt.Errorf("packed shard build context is nil")
 	}
 	if err := ctx.Err(); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if err := validatePackedBuilderShard(shard); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	temporary, err := os.CreateTemp(filepath.Dir(spoolPath), ".shard-contributions-*.db")
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	databasePath := temporary.Name()
 	if err := temporary.Close(); err != nil {
 		_ = os.Remove(databasePath)
-		return 0, err
+		return 0, 0, err
 	}
 	if err := os.Remove(databasePath); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	defer os.Remove(databasePath)
 	store, err := openContributionStore(databasePath)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	closed := false
 	defer func() {
@@ -585,14 +585,14 @@ func buildPackedShardFromSpool(
 		}
 		return nil
 	}); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if err := flush(); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	tiles, err := store.Tiles(ctx)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	width := 1 << (worldgraph.GlobalRoutingZoom - worldgraph.PackedShardZoom)
 	sort.Slice(tiles, func(i, j int) bool {
@@ -601,26 +601,33 @@ func buildPackedShardFromSpool(
 		return leftY*width+leftX < rightY*width+rightX
 	})
 	chunks := make([]worldgraph.Chunk, 0, len(tiles))
+	var ownedEdges int64
 	for _, tile := range tiles {
 		actual, err := packedBuilderShard(tile)
 		if err != nil || actual != shard {
-			return 0, fmt.Errorf("shard spool produced tile %+v outside shard %+v", tile, shard)
+			return 0, 0, fmt.Errorf("shard spool produced tile %+v outside shard %+v", tile, shard)
 		}
 		chunk, found, err := store.Chunk(ctx, tile)
 		if err != nil {
-			return 0, err
+			return 0, 0, err
 		}
 		if !found {
-			return 0, fmt.Errorf("contribution tile %+v disappeared", tile)
+			return 0, 0, fmt.Errorf("contribution tile %+v disappeared", tile)
 		}
-		chunks = append(chunks, normalizeChunk(chunk))
+		normalized := normalizeChunk(chunk)
+		for _, edge := range normalized.Edges {
+			if edge.Owner == tile {
+				ownedEdges++
+			}
+		}
+		chunks = append(chunks, normalized)
 	}
 	if err := store.Close(); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	closed = true
 	if err := worldgraph.WritePackedShard(ctx, stageRoot, shard, chunks, maxSegmentBytes); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	return len(chunks), nil
+	return len(chunks), ownedEdges, nil
 }
