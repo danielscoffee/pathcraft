@@ -201,6 +201,68 @@ func (r *Router) ChunkConfig() (generation string, zoom, minRenderZoom int) {
 	return r.manifest.Generation, r.manifest.Zoom, minRenderZoom
 }
 
+func (r *Router) ChunkViewport() (centerLat, centerLon float64, zoom int) {
+	if r == nil {
+		return 0, 0, 0
+	}
+	_, chunkZoom, minRenderZoom := r.ChunkConfig()
+	coverage := r.manifest.Tiles
+	if r.manifest.Layout == PackedLayout {
+		coverage = r.manifest.Shards
+	}
+	if len(coverage) == 0 {
+		return 0, 0, minRenderZoom
+	}
+	bounds := make([]Bounds, len(coverage))
+	minLat, maxLat := math.Inf(1), math.Inf(-1)
+	for index, tile := range coverage {
+		bounds[index] = tile.Bounds()
+		minLat = min(minLat, bounds[index].South)
+		maxLat = max(maxLat, bounds[index].North)
+	}
+	centerLon, longitudeSpan := minimalLongitudeViewport(bounds)
+	centerLat = (minLat + maxLat) / 2
+	span := max(longitudeSpan, maxLat-minLat)
+	zoom = chunkZoom
+	if span > 0 {
+		zoom = int(math.Floor(math.Log2(360 / span)))
+		zoom = max(0, min(zoom, chunkZoom))
+	}
+	zoom = max(zoom, minRenderZoom)
+	return centerLat, centerLon, zoom
+}
+
+func minimalLongitudeViewport(bounds []Bounds) (center, span float64) {
+	type interval struct{ start, end float64 }
+	intervals := make([]interval, len(bounds))
+	for index, bound := range bounds {
+		intervals[index] = interval{start: bound.West + 180, end: bound.East + 180}
+	}
+	sort.Slice(intervals, func(i, j int) bool { return intervals[i].start < intervals[j].start })
+	merged := intervals[:0]
+	for _, current := range intervals {
+		if len(merged) == 0 || current.start > merged[len(merged)-1].end {
+			merged = append(merged, current)
+			continue
+		}
+		merged[len(merged)-1].end = max(merged[len(merged)-1].end, current.end)
+	}
+	largestGap, coverageStart := -1.0, merged[0].start
+	for index, current := range merged {
+		nextStart := merged[(index+1)%len(merged)].start
+		if index == len(merged)-1 {
+			nextStart += 360
+		}
+		if gap := nextStart - current.end; gap > largestGap {
+			largestGap = gap
+			coverageStart = math.Mod(nextStart, 360)
+		}
+	}
+	span = 360 - largestGap
+	center = math.Mod(coverageStart+span/2, 360) - 180
+	return center, span
+}
+
 func (r *Router) graphForTiles(ctx context.Context, tiles []TileID) (*graph.Graph, error) {
 	nodes := make(map[int64]Node)
 	edges := make(map[EdgeID]Edge)

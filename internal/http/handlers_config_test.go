@@ -9,6 +9,16 @@ import (
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/engine"
 )
 
+type viewportChunkHost struct {
+	*chunkHostStub
+	lat, lon float64
+	zoom     int
+}
+
+func (host *viewportChunkHost) ChunkViewport() (float64, float64, int) {
+	return host.lat, host.lon, host.zoom
+}
+
 func TestServer_ConfigDefaultsWithoutGraph(t *testing.T) {
 	e := engine.New()
 	s := NewServer(e)
@@ -42,6 +52,45 @@ func TestServer_ConfigDefaultsWithoutGraph(t *testing.T) {
 	}
 	if body.GraphChunks != nil {
 		t.Fatalf("graph_chunks = %+v, want omitted", body.GraphChunks)
+	}
+}
+
+func TestServer_ConfigUsesChunkViewportWithoutEngine(t *testing.T) {
+	host := &viewportChunkHost{
+		chunkHostStub: &chunkHostStub{generation: "global"},
+		lat:           35.68,
+		lon:           139.69,
+		zoom:          11,
+	}
+	recorder := httptest.NewRecorder()
+	NewServerWithHost(host).Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/config", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d", recorder.Code)
+	}
+	var body configResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.CenterLat != host.lat || body.CenterLon != host.lon || body.Zoom != host.zoom {
+		t.Fatalf("config viewport = %+v", body)
+	}
+}
+
+func TestServer_ConfigEngineCenterOverridesChunkViewport(t *testing.T) {
+	host := &viewportChunkHost{
+		chunkHostStub: &chunkHostStub{generation: "global"},
+		lat:           35.68,
+		lon:           139.69,
+		zoom:          11,
+	}
+	recorder := httptest.NewRecorder()
+	NewServerWithEngineAndHost(newTestEngine(t), host, nil).Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/config", nil))
+	var body configResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.CenterLat > -7.9 || body.CenterLat < -8.2 || body.CenterLon > -34.7 || body.CenterLon < -35.0 || body.Zoom != 16 {
+		t.Fatalf("engine-backed config viewport = %+v", body)
 	}
 }
 

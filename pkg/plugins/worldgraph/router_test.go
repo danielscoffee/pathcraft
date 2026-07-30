@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"testing"
@@ -124,6 +125,38 @@ func TestRouterPackedCoveragePropagatesCorruptIndex(t *testing.T) {
 	router := openTestRouter(t, root, RouterOptions{})
 	if _, err := router.ChunkGeoJSON(context.Background(), tile.Z, tile.X, tile.Y); !errors.Is(err, ErrCorruptChunk) {
 		t.Fatalf("ChunkGeoJSON() error = %v, want ErrCorruptChunk", err)
+	}
+}
+
+func TestRouterChunkViewportHandlesPackedAntimeridianCoverage(t *testing.T) {
+	westShard := TileID{Z: PackedShardZoom, X: 0, Y: 128}
+	eastShard := TileID{Z: PackedShardZoom, X: 255, Y: 128}
+	westTile := mustPackedTile(t, westShard, 0)
+	eastTile := mustPackedTile(t, eastShard, 255)
+	root, _ := writePackedStoreFixture(t, map[TileID]Chunk{
+		westTile: {Tile: westTile},
+		eastTile: {Tile: eastTile},
+	})
+	router := openTestRouter(t, root, RouterOptions{})
+	lat, lon, zoom := router.ChunkViewport()
+	_, _, minRenderZoom := router.ChunkConfig()
+	if lat < -2 || lat > 2 || math.Abs(lon) < 170 || zoom < minRenderZoom {
+		t.Fatalf("ChunkViewport() = %v, %v, %d; min render %d", lat, lon, zoom, minRenderZoom)
+	}
+}
+
+func TestRouterChunkViewportSupportsLegacyTiles(t *testing.T) {
+	west := TileID{Z: GlobalRoutingZoom, X: 0, Y: 2048}
+	east := TileID{Z: GlobalRoutingZoom, X: (1 << GlobalRoutingZoom) - 1, Y: 2048}
+	root, _ := publishRouterFixture(t, map[TileID]Chunk{
+		west: {Tile: west},
+		east: {Tile: east},
+	})
+	router := openTestRouter(t, root, RouterOptions{})
+	_, lon, zoom := router.ChunkViewport()
+	_, _, minRenderZoom := router.ChunkConfig()
+	if math.Abs(lon) < 170 || zoom < minRenderZoom {
+		t.Fatalf("ChunkViewport() longitude = %v, zoom = %d", lon, zoom)
 	}
 }
 

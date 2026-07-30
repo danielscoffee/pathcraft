@@ -27,6 +27,8 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 			centerLat = sumLat / float64(len(g.Nodes))
 			centerLon = sumLon / float64(len(g.Nodes))
 		}
+	} else if host, ok := s.modeHost.(graphChunkViewportHost); ok {
+		centerLat, centerLon, zoom = host.ChunkViewport()
 	}
 
 	var chunks *graphChunkConfig

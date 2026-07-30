@@ -15,6 +15,10 @@ type graphChunkHost interface {
 	ChunkConfig() (generation string, zoom, minRenderZoom int)
 }
 
+type graphChunkViewportHost interface {
+	ChunkViewport() (centerLat, centerLon float64, zoom int)
+}
+
 type nearestPositionHost interface {
 	NearestPosition(context.Context, float64, float64) (id int64, snapLat, snapLon, distance float64, err error)
 }

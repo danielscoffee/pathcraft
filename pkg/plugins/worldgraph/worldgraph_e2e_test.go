@@ -5,11 +5,19 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"math"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 
+	pathhttp "github.com/danielscoffee/pathcraft/internal/http"
 	"github.com/danielscoffee/pathcraft/pkg/pathcraft/core"
 	"github.com/danielscoffee/pathcraft/pkg/plugins"
 	_ "github.com/danielscoffee/pathcraft/pkg/plugins/car"
@@ -158,6 +166,240 @@ func TestWorldGraphEndToEnd(t *testing.T) {
 	if _, err := walkMode.Route(ctx, reopened, request); !errors.Is(err, worldgraph.ErrNoPath) {
 		t.Fatalf("route after deletion error = %v, want ErrNoPath", err)
 	}
+}
+
+func TestPackedWorldGraphHTTPMultiRegionEndToEnd(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	pbf := filepath.Join(root, "global.osm.pbf")
+	writeGlobalE2EPBF(t, pbf)
+	storePath := filepath.Join(root, "store")
+	manifest, err := builder.BuildGlobal(ctx, builder.GlobalOptions{
+		PBFPath: pbf, StorePath: storePath, WorkDir: filepath.Join(root, "work"),
+		RunMemoryBytes: 24, PackSegmentBytes: 1_024, MaxOpenShards: 2, Resume: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Layout != worldgraph.PackedLayout || len(manifest.Shards) != 3 || len(manifest.Tiles) != 0 || len(manifest.Regions[0].Tiles) != 0 {
+		t.Fatalf("packed manifest = %+v", manifest)
+	}
+	router, err := worldgraph.OpenRouter(storePath, worldgraph.RouterOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer router.Close()
+	server := httptest.NewServer(pathhttp.NewServerWithHost(router).Handler())
+	defer server.Close()
+
+	response, err := http.Get(server.URL + "/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config struct {
+		CenterLat float64 `json:"center_lat"`
+		CenterLon float64 `json:"center_lon"`
+		Zoom      int     `json:"zoom"`
+		Chunks    struct {
+			Generation string `json:"generation"`
+			Zoom       int    `json:"zoom"`
+			MinZoom    int    `json:"min_render_zoom"`
+		} `json:"graph_chunks"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&config); err != nil {
+		_ = response.Body.Close()
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK || config.Chunks.Generation != manifest.Generation || config.Zoom < config.Chunks.MinZoom ||
+		config.CenterLat == -8.0540 && config.CenterLon == -34.8800 {
+		t.Fatalf("config = %+v, status %d", config, response.StatusCode)
+	}
+
+	regions := []struct {
+		fromLon, fromLat float64
+		toLon, toLat     float64
+	}{
+		{12.56, 55.67, 12.57, 55.67},
+		{-34.90, -8.05, -34.89, -8.04},
+		{139.69, 35.68, 139.70, 35.69},
+	}
+	var tiles []worldgraph.TileID
+	for _, region := range regions {
+		tile, err := worldgraph.TileForPosition(region.fromLon, region.fromLat, worldgraph.GlobalRoutingZoom)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tiles = append(tiles, tile)
+		chunkURL := fmt.Sprintf("%s/graph/chunks/%s/%d/%d/%d", server.URL, manifest.Generation, tile.Z, tile.X, tile.Y)
+		type result struct {
+			status int
+			cache  string
+			etag   string
+			body   string
+			err    error
+		}
+		results := make(chan result, 6)
+		var wait sync.WaitGroup
+		for range 6 {
+			wait.Add(1)
+			go func() {
+				defer wait.Done()
+				response, err := http.Get(chunkURL)
+				if err != nil {
+					results <- result{err: err}
+					return
+				}
+				body, readErr := io.ReadAll(response.Body)
+				_ = response.Body.Close()
+				results <- result{status: response.StatusCode, cache: response.Header.Get("Cache-Control"), etag: response.Header.Get("ETag"), body: string(body), err: readErr}
+			}()
+		}
+		wait.Wait()
+		close(results)
+		for got := range results {
+			if got.err != nil || got.status != http.StatusOK || !strings.Contains(got.cache, "immutable") || got.etag != fmt.Sprintf("%q", manifest.Generation) || !strings.Contains(got.body, "FeatureCollection") {
+				t.Fatalf("chunk response = %+v", got)
+			}
+		}
+		for _, mode := range []string{"walk", "car"} {
+			registered, ok := plugins.Default.Mode(mode)
+			if !ok {
+				t.Fatalf("mode %q is not registered", mode)
+			}
+			if _, err := registered.Route(ctx, router, core.ModeRequest{
+				From: core.Position{region.fromLon, region.fromLat},
+				To:   core.Position{region.toLon, region.toLat},
+			}); err != nil {
+				t.Fatalf("%s direct route for %+v: %v", mode, region, err)
+			}
+			endpoint := fmt.Sprintf("%s/mode-route?mode=%s&from=%s&to=%s", server.URL, mode,
+				url.QueryEscape(fmt.Sprintf("%.6f,%.6f", region.fromLon, region.fromLat)),
+				url.QueryEscape(fmt.Sprintf("%.6f,%.6f", region.toLon, region.toLat)))
+			response, err := http.Get(endpoint)
+			if err != nil {
+				t.Fatal(err)
+			}
+			body, _ := io.ReadAll(response.Body)
+			_ = response.Body.Close()
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("%s route status = %d: %s", mode, response.StatusCode, body)
+			}
+		}
+	}
+
+	uncovered, err := worldgraph.TileForPosition(0, 0, worldgraph.GlobalRoutingZoom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]int{
+		fmt.Sprintf("/graph/chunks/%s/%d/%d/%d", manifest.Generation, uncovered.Z, uncovered.X, uncovered.Y): http.StatusNotFound,
+		fmt.Sprintf("/graph/chunks/stale/%d/%d/%d", tiles[0].Z, tiles[0].X, tiles[0].Y):                      http.StatusConflict,
+	} {
+		response, err := http.Get(server.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = response.Body.Close()
+		if response.StatusCode != want {
+			t.Fatalf("GET %s status = %d, want %d", path, response.StatusCode, want)
+		}
+	}
+
+	corruptTile := tiles[2]
+	shardX := corruptTile.X >> (worldgraph.GlobalRoutingZoom - worldgraph.PackedShardZoom)
+	shardY := corruptTile.Y >> (worldgraph.GlobalRoutingZoom - worldgraph.PackedShardZoom)
+	packPath := filepath.Join(storePath, "generations", manifest.Generation, "shards", fmt.Sprint(shardX>>4), fmt.Sprint(shardX), fmt.Sprintf("%d-000.pack", shardY))
+	data, err := os.ReadFile(packPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data[len(data)-1] ^= 0xff
+	if err := os.WriteFile(packPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	corruptRouter, err := worldgraph.OpenRouter(storePath, worldgraph.RouterOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer corruptRouter.Close()
+	corruptServer := httptest.NewServer(pathhttp.NewServerWithHost(corruptRouter).Handler())
+	defer corruptServer.Close()
+	response, err = http.Get(fmt.Sprintf("%s/graph/chunks/%s/%d/%d/%d", corruptServer.URL, manifest.Generation, corruptTile.Z, corruptTile.X, corruptTile.Y))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("corrupt chunk status = %d, want 503", response.StatusCode)
+	}
+}
+
+func writeGlobalE2EPBF(t *testing.T, path string) {
+	t.Helper()
+	type node struct {
+		id       int64
+		lon, lat float64
+	}
+	type way struct {
+		id       int64
+		from, to int64
+		name     string
+	}
+	nodes := []node{
+		{1, 12.56, 55.67}, {2, 12.57, 55.67},
+		{3, -34.90, -8.05}, {4, -34.89, -8.04},
+		{5, 139.69, 35.68}, {6, 139.70, 35.69},
+	}
+	ways := []way{{100, 1, 2, "Copenhagen"}, {101, 3, 4, "Recife"}, {102, 5, 6, "Tokyo"}}
+	stringsTable := []string{"", "highway", "residential", "name", "Copenhagen", "Recife", "Tokyo"}
+	var table []byte
+	for _, value := range stringsTable {
+		table = appendPBFBytes(table, 1, []byte(value))
+	}
+	stringIDs := map[string]uint64{"highway": 1, "residential": 2, "name": 3, "Copenhagen": 4, "Recife": 5, "Tokyo": 6}
+	var ids, lats, lons []int64
+	var previousID, previousLat, previousLon int64
+	for _, current := range nodes {
+		lat, lon := pbfCoordinate(current.lat), pbfCoordinate(current.lon)
+		ids = append(ids, current.id-previousID)
+		lats = append(lats, lat-previousLat)
+		lons = append(lons, lon-previousLon)
+		previousID, previousLat, previousLon = current.id, lat, lon
+	}
+	var dense []byte
+	dense = appendPBFBytes(dense, 1, packedPBFSInt64(ids))
+	dense = appendPBFBytes(dense, 8, packedPBFSInt64(lats))
+	dense = appendPBFBytes(dense, 9, packedPBFSInt64(lons))
+	nodeGroup := appendPBFBytes(nil, 2, dense)
+	var wayGroup []byte
+	for _, current := range ways {
+		encoded := protowire.AppendTag(nil, 1, protowire.VarintType)
+		encoded = protowire.AppendVarint(encoded, uint64(current.id))
+		encoded = appendPBFBytes(encoded, 2, packedPBFVarints(stringIDs["highway"], stringIDs["name"]))
+		encoded = appendPBFBytes(encoded, 3, packedPBFVarints(stringIDs["residential"], stringIDs[current.name]))
+		encoded = appendPBFBytes(encoded, 8, packedPBFSInt64([]int64{current.from, current.to - current.from}))
+		wayGroup = appendPBFBytes(wayGroup, 3, encoded)
+	}
+	block := appendPBFBytes(nil, 1, table)
+	block = appendPBFBytes(block, 2, nodeGroup)
+	block = appendPBFBytes(block, 2, wayGroup)
+	var header []byte
+	header = appendPBFString(header, 4, "OsmSchema-V0.6")
+	header = appendPBFString(header, 4, "DenseNodes")
+	data := appendPBFFileBlock(nil, "OSMHeader", header)
+	data = appendPBFFileBlock(data, "OSMData", block)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func packedPBFVarints(values ...uint64) []byte {
+	var packed []byte
+	for _, value := range values {
+		packed = protowire.AppendVarint(packed, value)
+	}
+	return packed
 }
 
 func writeNodesOnlyPBF(t *testing.T, path string) {
