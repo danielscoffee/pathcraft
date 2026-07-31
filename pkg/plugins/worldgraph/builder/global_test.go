@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"testing"
 
 	"github.com/danielscoffee/pathcraft/pkg/plugins/worldgraph"
@@ -103,6 +104,120 @@ func TestBuildGlobalResumesStagesAndPublishesPackedGeneration(t *testing.T) {
 			t.Fatalf("fixture tile %+v is not covered", tile)
 		}
 	}
+}
+
+func TestBuildGlobalRecoversUncheckpointedPartialShard(t *testing.T) {
+	pbf := writeGlobalTestPBF(t)
+	root := t.TempDir()
+	options := GlobalOptions{
+		PBFPath: pbf, StorePath: filepath.Join(root, "store"), WorkDir: filepath.Join(root, "work"),
+		RunMemoryBytes: 24, PackSegmentBytes: 1_024, MaxOpenShards: 2, Resume: true,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	options.Progress = func(progress GlobalProgress) {
+		if progress.Stage == "write-packs" && !progress.Completed {
+			cancel()
+		}
+	}
+	if _, err := BuildGlobal(ctx, options); !errors.Is(err, context.Canceled) {
+		t.Fatalf("BuildGlobal() error = %v, want context.Canceled", err)
+	}
+	state, err := readGlobalBuildState(filepath.Join(options.WorkDir, globalBuildStateFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.StagePath == "" || len(state.OccupiedShards) == 0 || len(state.PackedShards) != 0 {
+		t.Fatalf("interrupted state = %+v", state)
+	}
+	prefix := globalTestShardPrefix(state.StagePath, state.OccupiedShards[0])
+	if err := os.MkdirAll(filepath.Dir(prefix), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(prefix+"-000.pack", []byte("partial"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	options.Progress = nil
+	if _, err := BuildGlobal(context.Background(), options); err != nil {
+		t.Fatalf("resumed BuildGlobal() error = %v", err)
+	}
+}
+
+func TestBuildGlobalRebuildsMissingCheckpointedShard(t *testing.T) {
+	pbf := writeGlobalTestPBF(t)
+	root := t.TempDir()
+	options := GlobalOptions{
+		PBFPath: pbf, StorePath: filepath.Join(root, "store"), WorkDir: filepath.Join(root, "work"),
+		RunMemoryBytes: 24, PackSegmentBytes: 1_024, MaxOpenShards: 2, Resume: true,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	options.Progress = func(progress GlobalProgress) {
+		if progress.Stage == "write-packs" && progress.Completed {
+			cancel()
+		}
+	}
+	if _, err := BuildGlobal(ctx, options); !errors.Is(err, context.Canceled) {
+		t.Fatalf("BuildGlobal() error = %v, want context.Canceled", err)
+	}
+	before, err := readGlobalBuildState(filepath.Join(options.WorkDir, globalBuildStateFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !before.hasStage("write-packs") || len(before.PackedShards) != len(before.OccupiedShards) {
+		t.Fatalf("checkpointed state = %+v", before)
+	}
+	prefix := globalTestShardPrefix(before.StagePath, before.OccupiedShards[0])
+	if err := os.Remove(prefix + ".idx"); err != nil {
+		t.Fatal(err)
+	}
+	options.Progress = nil
+	if _, err := BuildGlobal(context.Background(), options); err != nil {
+		t.Fatalf("resumed BuildGlobal() error = %v", err)
+	}
+	after, err := readGlobalBuildState(filepath.Join(options.WorkDir, globalBuildStateFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Counts.Chunks != before.Counts.Chunks || after.Counts.Edges != before.Counts.Edges {
+		t.Fatalf("recovered counts = %+v, want chunks %d edges %d", after.Counts, before.Counts.Chunks, before.Counts.Edges)
+	}
+}
+
+func TestBuildGlobalRecoversGenerationRenameBeforeManifest(t *testing.T) {
+	pbf := writeGlobalTestPBF(t)
+	root := t.TempDir()
+	options := GlobalOptions{
+		PBFPath: pbf, StorePath: filepath.Join(root, "store"), WorkDir: filepath.Join(root, "work"),
+		RunMemoryBytes: 24, PackSegmentBytes: 1_024, MaxOpenShards: 2, Resume: true,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	options.Progress = func(progress GlobalProgress) {
+		if progress.Stage == "write-packs" && progress.Completed {
+			cancel()
+		}
+	}
+	if _, err := BuildGlobal(ctx, options); !errors.Is(err, context.Canceled) {
+		t.Fatalf("BuildGlobal() error = %v, want context.Canceled", err)
+	}
+	state, err := readGlobalBuildState(filepath.Join(options.WorkDir, globalBuildStateFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(options.StorePath, "generations", state.Generation)
+	if err := os.Rename(state.StagePath, target); err != nil {
+		t.Fatal(err)
+	}
+	options.Progress = nil
+	manifest, err := BuildGlobal(context.Background(), options)
+	if err != nil {
+		t.Fatalf("resumed BuildGlobal() error = %v", err)
+	}
+	if manifest.Generation != state.Generation {
+		t.Fatalf("generation = %q, want %q", manifest.Generation, state.Generation)
+	}
+}
+
+func globalTestShardPrefix(root string, shard worldgraph.TileID) string {
+	return filepath.Join(root, "shards", strconv.Itoa(shard.X>>4), strconv.Itoa(shard.X), strconv.Itoa(shard.Y))
 }
 
 func TestBuildGlobalVerifiesSourceAgainBeforePublication(t *testing.T) {

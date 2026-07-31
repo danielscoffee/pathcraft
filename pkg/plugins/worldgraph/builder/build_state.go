@@ -241,3 +241,12 @@ func (state *globalBuildState) completeStage(stage string) {
 		state.Completed = append(state.Completed, stage)
 	}
 }
+
+func (state *globalBuildState) uncompleteStage(stage string) {
+	for index, completed := range state.Completed {
+		if completed == stage {
+			state.Completed = append(state.Completed[:index], state.Completed[index+1:]...)
+			return
+		}
+	}
+}

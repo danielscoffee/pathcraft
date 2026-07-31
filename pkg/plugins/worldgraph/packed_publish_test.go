@@ -82,6 +82,69 @@ func TestPublishPackedResumesAndCommitsManifestLast(t *testing.T) {
 	}
 }
 
+func TestBeginPackedGenerationRecoversMetadataInitializationCrash(t *testing.T) {
+	root := t.TempDir()
+	store, err := OpenStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	manifest := packedPublishTestManifest("packed-init-crash", []TileID{{Z: PackedShardZoom, X: 1, Y: 2}})
+	stagePath := filepath.Join(root, "generations", "."+manifest.Generation+".build")
+	if err := os.MkdirAll(stagePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stage, err := store.BeginPackedGeneration(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stage.Path() != stagePath {
+		t.Fatalf("stage path = %q, want %q", stage.Path(), stagePath)
+	}
+	if _, err := os.Stat(filepath.Join(stagePath, packedMetadataFilename)); err != nil {
+		t.Fatalf("metadata missing after recovery: %v", err)
+	}
+}
+
+func TestBeginPackedGenerationRecoversRenameBeforeManifestCrash(t *testing.T) {
+	root := t.TempDir()
+	store, err := OpenStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	shard := TileID{Z: PackedShardZoom, X: 17, Y: 2}
+	tile := mustPackedTile(t, shard, 0)
+	manifest := packedPublishTestManifest("packed-rename-crash", []TileID{shard})
+	stage, err := store.BeginPackedGeneration(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	populatePackedStage(t, stage, map[TileID]Chunk{tile: {Tile: tile}})
+	target := filepath.Join(root, "generations", manifest.Generation)
+	if err := os.Rename(stage.Path(), target); err != nil {
+		t.Fatal(err)
+	}
+	if err := syncDirectory(filepath.Dir(target)); err != nil {
+		t.Fatal(err)
+	}
+
+	resumed, err := store.BeginPackedGeneration(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resumed.Path() != stage.Path() {
+		t.Fatalf("resumed path = %q, want %q", resumed.Path(), stage.Path())
+	}
+	if err := resumed.Commit(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	current, err := store.Manifest()
+	if err != nil || current.Generation != manifest.Generation {
+		t.Fatalf("manifest = %+v, %v", current, err)
+	}
+}
+
 func TestPublishPackedResumesWhenBuildTimeWasDefaulted(t *testing.T) {
 	root := t.TempDir()
 	store, err := OpenStore(root)

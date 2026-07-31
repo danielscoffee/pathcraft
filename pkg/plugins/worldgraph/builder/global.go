@@ -110,6 +110,7 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 		}
 		return current, nil
 	}
+	state.uncompleteStage("publish")
 
 	if !state.hasStage("validate-source") {
 		if err := complete("validate-source"); err != nil {
@@ -228,11 +229,45 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 	} else if state.StagePath != stage.Path() {
 		return worldgraph.Manifest{}, fmt.Errorf("%w: packed stage path changed", ErrGlobalBuildStateMismatch)
 	}
-	if !state.hasStage("write-packs") {
-		packed := make(map[string]struct{}, len(state.PackedShards))
-		for _, key := range state.PackedShards {
-			packed[key] = struct{}{}
+	occupied := make(map[string]worldgraph.TileID, len(state.OccupiedShards))
+	for _, shard := range state.OccupiedShards {
+		occupied[globalShardStateKey(shard)] = shard
+	}
+	packed := make(map[string]struct{}, len(state.PackedShards))
+	validPacked := make([]string, 0, len(state.PackedShards))
+	state.Counts.Chunks, state.Counts.Edges = 0, 0
+	recovered := false
+	for _, key := range state.PackedShards {
+		shard, ok := occupied[key]
+		if !ok {
+			return worldgraph.Manifest{}, fmt.Errorf("%w: packed shard %q is not occupied", ErrGlobalBuildStateMismatch, key)
 		}
+		chunks, edges, inspectErr := stage.ValidateShard(ctx, shard)
+		if inspectErr == nil {
+			state.Counts.Chunks += int64(chunks)
+			state.Counts.Edges += edges
+			validPacked = append(validPacked, key)
+			packed[key] = struct{}{}
+			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+		if err := stage.ResetShard(shard); err != nil {
+			return worldgraph.Manifest{}, fmt.Errorf("recover packed shard %q after %v: %w", key, inspectErr, err)
+		}
+		recovered = true
+	}
+	state.PackedShards = validPacked
+	if len(packed) != len(state.OccupiedShards) {
+		state.uncompleteStage("write-packs")
+	}
+	if recovered {
+		if err := persist("write-packs", false, true); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+	}
+	if !state.hasStage("write-packs") {
 		for _, shard := range state.OccupiedShards {
 			if err := ctx.Err(); err != nil {
 				return worldgraph.Manifest{}, err
@@ -241,13 +276,23 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 			if _, complete := packed[key]; complete {
 				continue
 			}
+			if err := stage.ResetShard(shard); err != nil {
+				return worldgraph.Manifest{}, err
+			}
 			spoolPath, err := shardSpoolPath(contributionRoot, shard)
 			if err != nil {
 				return worldgraph.Manifest{}, err
 			}
-			chunks, edges, err := buildPackedShardFromSpool(ctx, spoolPath, shard, stage.Path(), options.PackSegmentBytes)
+			builtChunks, builtEdges, err := buildPackedShardFromSpool(ctx, spoolPath, shard, stage.Path(), options.PackSegmentBytes)
 			if err != nil {
 				return worldgraph.Manifest{}, err
+			}
+			chunks, edges, err := stage.SyncShard(ctx, shard)
+			if err != nil {
+				return worldgraph.Manifest{}, err
+			}
+			if chunks != builtChunks || edges != builtEdges {
+				return worldgraph.Manifest{}, fmt.Errorf("packed shard %q counts changed after write", key)
 			}
 			state.Counts.Chunks += int64(chunks)
 			state.Counts.Edges += edges

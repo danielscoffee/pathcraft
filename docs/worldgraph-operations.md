@@ -31,7 +31,7 @@ other values. Resource flags mean:
 
 | Flag | Default | Effect |
 |---|---:|---|
-| `--run-memory-mb` | 512 | Maximum records held by each external-sort run; not a process RSS limit |
+| `--run-memory-mb` | 512 | Approximate fixed-record payload memory per external-sort run; not a process RSS limit |
 | `--pack-mb` | 1024 | Maximum size of each immutable pack segment, not total store size |
 | `--open-shards` | 64 | Maximum contribution spool descriptors kept open |
 | `--resume` | true | Reuse matching completed stages and packed shards |
