@@ -36,6 +36,7 @@ type PackedGenerationStage struct {
 
 	store          *Store
 	manifest       Manifest
+	shards         map[TileID]struct{}
 	expectedParent string
 	stagePath      string
 	targetPath     string
@@ -175,9 +176,14 @@ func (store *Store) BeginPackedGeneration(manifest Manifest) (_ *PackedGeneratio
 			return nil, err
 		}
 	}
+	shards := make(map[TileID]struct{}, len(prepared.Shards))
+	for _, shard := range prepared.Shards {
+		shards[shard] = struct{}{}
+	}
 	return &PackedGenerationStage{
 		store:          store,
 		manifest:       prepared,
+		shards:         shards,
 		expectedParent: expectedParent,
 		stagePath:      stagePath,
 		targetPath:     target,
@@ -290,10 +296,8 @@ func (stage *PackedGenerationStage) validateMutableShard(shard TileID) error {
 	if stage.committed || stage.finalized {
 		return fmt.Errorf("packed generation stage is already finalized")
 	}
-	for _, occupied := range stage.manifest.Shards {
-		if occupied == shard {
-			return nil
-		}
+	if _, occupied := stage.shards[shard]; occupied {
+		return nil
 	}
 	return fmt.Errorf("packed generation does not contain shard %+v", shard)
 }
