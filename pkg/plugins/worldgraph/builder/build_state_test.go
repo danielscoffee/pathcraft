@@ -57,6 +57,38 @@ func TestBuildStateWritesAtomicallyAndResumesExactMatch(t *testing.T) {
 	}
 }
 
+func TestBuildStateMigratesVersionOneIdentityAtomically(t *testing.T) {
+	work := t.TempDir()
+	expected := globalBuildState{
+		Version: globalBuildStateVersion, SourcePath: "/data/planet.osm.pbf", SourceSize: 123,
+		SourceSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		RoutingZoom:  12, ShardZoom: 8, RunMemoryBytes: 1024, PackSegmentBytes: 2048,
+		MaxOpenShards: 2, Generation: "global-a", BuiltAt: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
+	}
+	legacy := expected
+	legacy.Version = 1
+	legacy.Completed = []string{"validate-source", "spool-ways-and-refs", "sort-refs", "select-nodes"}
+	legacy.Counts.Ways = 12
+	legacy.Counts.References = 24
+	if err := writeGlobalBuildState(filepath.Join(work, globalBuildStateFilename), legacy); err != nil {
+		t.Fatal(err)
+	}
+	migrated, err := loadOrCreateGlobalBuildState(work, expected, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if migrated.Version != globalBuildStateVersion || !reflect.DeepEqual(migrated.Completed, legacy.Completed) || migrated.Counts != legacy.Counts {
+		t.Fatalf("migrated state = %+v, want version %d with legacy progress", migrated, globalBuildStateVersion)
+	}
+	stored, err := readGlobalBuildState(filepath.Join(work, globalBuildStateFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Version != globalBuildStateVersion {
+		t.Fatalf("stored version = %d, want %d", stored.Version, globalBuildStateVersion)
+	}
+}
+
 func TestBuildStateRejectsMismatchAndDisabledResume(t *testing.T) {
 	expected := globalBuildState{
 		Version: globalBuildStateVersion, SourcePath: "/data/planet.osm.pbf", SourceSize: 123,

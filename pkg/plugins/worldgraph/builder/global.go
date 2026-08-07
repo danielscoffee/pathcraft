@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	defaultGlobalRunMemoryBytes = int64(512 << 20)
-	defaultGlobalPackBytes      = int64(1 << 30)
-	defaultGlobalOpenShards     = 64
+	defaultGlobalRunMemoryBytes    = int64(512 << 20)
+	defaultGlobalPackBytes         = int64(1 << 30)
+	defaultGlobalOpenShards        = 64
+	resolvedWayNodeSortMemoryBytes = 64 // Includes the in-memory TileID fields omitted from the 32-byte record.
 )
 
 type GlobalOptions struct {
@@ -79,8 +80,16 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 	}
 
 	persist := func(stage string, completed bool, checkCancellation bool) error {
-		state.Counts.WorkBytes, _ = directoryBytes(options.WorkDir)
-		state.Counts.StoreBytes, _ = directoryBytes(options.StorePath)
+		workBytes, measureErr := directoryBytes(options.WorkDir)
+		if measureErr != nil {
+			return fmt.Errorf("measure global work directory: %w", measureErr)
+		}
+		storeBytes, measureErr := directoryBytes(options.StorePath)
+		if measureErr != nil {
+			return fmt.Errorf("measure global store directory: %w", measureErr)
+		}
+		state.Counts.WorkBytes = workBytes
+		state.Counts.StoreBytes = storeBytes
 		if err := writeGlobalBuildState(statePath, state); err != nil {
 			return err
 		}
@@ -176,29 +185,120 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 		}
 	}
 
-	contributionRoot := filepath.Join(options.WorkDir, "contributions")
-	if !state.hasStage("partition-contributions") {
-		if err := os.RemoveAll(contributionRoot); err != nil {
+	if state.hasStage("partition-contributions") && !state.hasStage("partition-fragments-v2") {
+		return worldgraph.Manifest{}, fmt.Errorf("%w: legacy contribution partition cannot resume with partition v2; use a fresh work directory", ErrGlobalBuildStateMismatch)
+	}
+
+	requestsRawPath := filepath.Join(options.WorkDir, "way-node-requests.raw")
+	if !state.hasStage("spool-way-node-requests-v2") {
+		if err := os.Remove(requestsRawPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return worldgraph.Manifest{}, err
 		}
-		index, err := openGlobalNodeIndex(nodesPath)
+		count, err := spoolWayNodeRequests(ctx, waysPath, requestsRawPath, DefaultMaxWayNodes)
 		if err != nil {
 			return worldgraph.Manifest{}, err
 		}
-		shards, contributions, partitionErr := partitionGlobalContributions(
-			ctx, waysPath, index, contributionRoot, "planet", options.MaxOpenShards, DefaultMaxWayNodes,
+		if count != state.Counts.References {
+			return worldgraph.Manifest{}, fmt.Errorf("%w: way-node request count %d, want %d", ErrGlobalBuildStateMismatch, count, state.Counts.References)
+		}
+		if err := complete("spool-way-node-requests-v2"); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+	}
+
+	requestsSortedPath := filepath.Join(options.WorkDir, "way-node-requests.sorted")
+	requestRunsPath := filepath.Join(options.WorkDir, "way-node-request-runs")
+	if !state.hasStage("sort-way-node-requests-v2") {
+		if err := os.Remove(requestsSortedPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return worldgraph.Manifest{}, err
+		}
+		if err := os.RemoveAll(requestRunsPath); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+		if err := sortWayNodeRequests(ctx, requestsRawPath, requestsSortedPath, requestRunsPath,
+			globalSortRecordLimit(options.RunMemoryBytes, wayNodeRequestRecordBytes)); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+		if err := complete("sort-way-node-requests-v2"); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+	}
+	if state.hasStage("sort-way-node-requests-v2") {
+		if err := removeGlobalBuildArtifacts(requestsRawPath, requestRunsPath); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+	}
+
+	resolvedRawPath := filepath.Join(options.WorkDir, "resolved-way-nodes.raw")
+	if !state.hasStage("join-way-node-requests-v2") {
+		if err := os.Remove(resolvedRawPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return worldgraph.Manifest{}, err
+		}
+		count, err := joinWayNodeRequests(ctx, requestsSortedPath, nodesPath, resolvedRawPath)
+		if err != nil {
+			return worldgraph.Manifest{}, err
+		}
+		if count != state.Counts.References {
+			return worldgraph.Manifest{}, fmt.Errorf("%w: resolved way-node count %d, want %d", ErrGlobalBuildStateMismatch, count, state.Counts.References)
+		}
+		if err := complete("join-way-node-requests-v2"); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+	}
+	if state.hasStage("join-way-node-requests-v2") {
+		if err := removeGlobalBuildArtifacts(requestsSortedPath); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+	}
+
+	resolvedSortedPath := filepath.Join(options.WorkDir, "resolved-way-nodes.sorted")
+	resolvedRunsPath := filepath.Join(options.WorkDir, "resolved-way-node-runs")
+	if !state.hasStage("sort-resolved-way-nodes-v2") {
+		if err := os.Remove(resolvedSortedPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return worldgraph.Manifest{}, err
+		}
+		if err := os.RemoveAll(resolvedRunsPath); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+		if err := sortResolvedWayNodes(ctx, resolvedRawPath, resolvedSortedPath, resolvedRunsPath,
+			globalSortRecordLimit(options.RunMemoryBytes, resolvedWayNodeSortMemoryBytes)); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+		if err := complete("sort-resolved-way-nodes-v2"); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+	}
+	if state.hasStage("sort-resolved-way-nodes-v2") {
+		if err := removeGlobalBuildArtifacts(resolvedRawPath, resolvedRunsPath); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+	}
+
+	fragmentRoot := filepath.Join(options.WorkDir, "fragments-v2")
+	if !state.hasStage("partition-fragments-v2") {
+		if err := os.RemoveAll(fragmentRoot); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+		shards, fragmentCounts, err := partitionGlobalFragments(
+			ctx, waysPath, resolvedSortedPath, fragmentRoot, options.MaxOpenShards, DefaultMaxWayNodes,
 		)
-		closeErr := index.Close()
-		if partitionErr != nil || closeErr != nil {
-			return worldgraph.Manifest{}, errors.Join(partitionErr, closeErr)
+		if err != nil {
+			return worldgraph.Manifest{}, err
 		}
 		if len(shards) == 0 {
 			return worldgraph.Manifest{}, fmt.Errorf("global build produced no routable shards")
 		}
 		state.OccupiedShards = append([]worldgraph.TileID(nil), shards...)
 		state.Counts.Shards = int64(len(shards))
-		state.Counts.Contributions = contributions
-		if err := complete("partition-contributions"); err != nil {
+		state.Counts.Segments = fragmentCounts.Segments
+		state.Counts.Fragments = fragmentCounts.Fragments
+		state.Counts.Contributions = fragmentCounts.Contributions
+		if err := complete("partition-fragments-v2"); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+	}
+	if state.hasStage("partition-fragments-v2") {
+		if err := removeGlobalBuildArtifacts(resolvedSortedPath); err != nil {
 			return worldgraph.Manifest{}, err
 		}
 	}
@@ -275,11 +375,11 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 			if err := stage.ResetShard(shard); err != nil {
 				return worldgraph.Manifest{}, err
 			}
-			spoolPath, err := shardSpoolPath(contributionRoot, shard)
+			spoolPath, err := fragmentSpoolPath(fragmentRoot, shard)
 			if err != nil {
 				return worldgraph.Manifest{}, err
 			}
-			builtChunks, builtEdges, err := buildPackedShardFromSpool(ctx, spoolPath, shard, stage.Path(), options.PackSegmentBytes)
+			builtChunks, builtEdges, err := buildPackedShardFromFragmentSpool(ctx, spoolPath, shard, stage.Path(), options.PackSegmentBytes)
 			if err != nil {
 				return worldgraph.Manifest{}, err
 			}
@@ -359,6 +459,33 @@ func normalizeGlobalOptions(options *GlobalOptions) error {
 	}
 	if options.PBFPath == options.StorePath || options.PBFPath == options.WorkDir || options.StorePath == options.WorkDir {
 		return fmt.Errorf("global build paths must be distinct")
+	}
+	return nil
+}
+
+func globalSortRecordLimit(memoryBytes int64, recordBytes int) int {
+	if recordBytes < 1 {
+		return 1
+	}
+	limit := memoryBytes / int64(recordBytes)
+	maximumInt := int64(int(^uint(0) >> 1))
+	if limit > maximumInt {
+		limit = maximumInt
+	}
+	if limit < 1 {
+		return 1
+	}
+	return int(limit)
+}
+
+func removeGlobalBuildArtifacts(paths ...string) error {
+	for _, path := range paths {
+		if path == "" {
+			return fmt.Errorf("global build cleanup path is empty")
+		}
+		if err := os.RemoveAll(path); err != nil {
+			return err
+		}
 	}
 	return nil
 }

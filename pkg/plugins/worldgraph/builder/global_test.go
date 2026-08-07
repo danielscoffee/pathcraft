@@ -28,7 +28,11 @@ func TestBuildGlobalResumesStagesAndPublishesPackedGeneration(t *testing.T) {
 		"spool-ways-and-refs",
 		"sort-refs",
 		"select-nodes",
-		"partition-contributions",
+		"spool-way-node-requests-v2",
+		"sort-way-node-requests-v2",
+		"join-way-node-requests-v2",
+		"sort-resolved-way-nodes-v2",
+		"partition-fragments-v2",
 		"write-packs",
 	}
 	var stagedPackHashes map[string][sha256.Size]byte
@@ -83,7 +87,8 @@ func TestBuildGlobalResumesStagesAndPublishesPackedGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !state.hasStage("publish") || state.Counts.Shards != 3 || state.Counts.Chunks < 3 || state.Counts.Nodes != 6 {
+	if !state.hasStage("publish") || state.Counts.Shards != 3 || state.Counts.Chunks < 3 || state.Counts.Nodes != 6 ||
+		state.Counts.Segments != 3 || state.Counts.Fragments != 3 || state.Counts.Contributions == 0 {
 		t.Fatalf("final state = %+v", state)
 	}
 	store, err := worldgraph.OpenStore(storePath)
@@ -151,6 +156,101 @@ func TestBuildGlobalPreservesPolarReferencesWithoutPublishingPolarEdges(t *testi
 		if edge.ID.From < 3 || edge.ID.To < 3 {
 			t.Fatalf("published edge touches skipped polar segment: %+v", edge)
 		}
+	}
+}
+
+func TestGlobalPartitionV2MatchesLegacyPackedBytesWithSmallerSpool(t *testing.T) {
+	root := t.TempDir()
+	options := GlobalOptions{
+		PBFPath: seamFixturePath(), StorePath: filepath.Join(root, "store"), WorkDir: filepath.Join(root, "work"),
+		RunMemoryBytes: 64, PackSegmentBytes: 1 << 20, MaxOpenShards: 2, Resume: true,
+	}
+	manifest, err := BuildGlobal(context.Background(), options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := readGlobalBuildState(filepath.Join(options.WorkDir, globalBuildStateFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	legacyRoot := filepath.Join(root, "legacy-contributions")
+	index, err := openGlobalNodeIndex(filepath.Join(options.WorkDir, "nodes.idx"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyShards, legacyContributions, partitionErr := partitionGlobalContributions(
+		context.Background(), filepath.Join(options.WorkDir, "ways.spool"), index, legacyRoot,
+		fragmentPlanetSource, options.MaxOpenShards, DefaultMaxWayNodes,
+	)
+	closeErr := index.Close()
+	if partitionErr != nil || closeErr != nil {
+		t.Fatal(errors.Join(partitionErr, closeErr))
+	}
+	if !reflect.DeepEqual(legacyShards, state.OccupiedShards) {
+		t.Fatalf("legacy shards = %v, v2 shards = %v", legacyShards, state.OccupiedShards)
+	}
+	if legacyContributions != state.Counts.Contributions {
+		t.Fatalf("legacy contributions = %d, v2 logical contributions = %d", legacyContributions, state.Counts.Contributions)
+	}
+	fragmentBytes, err := directoryBytes(filepath.Join(options.WorkDir, "fragments-v2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyBytes, err := directoryBytes(legacyRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fragmentBytes <= 0 || fragmentBytes >= legacyBytes {
+		t.Fatalf("fragment bytes = %d, legacy bytes = %d; want compact fragments", fragmentBytes, legacyBytes)
+	}
+
+	legacyStage := filepath.Join(root, "legacy-stage")
+	for _, shard := range legacyShards {
+		spoolPath, err := shardSpoolPath(legacyRoot, shard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err := buildPackedShardFromSpool(context.Background(), spoolPath, shard, legacyStage, options.PackSegmentBytes); err != nil {
+			t.Fatal(err)
+		}
+	}
+	published := filepath.Join(options.StorePath, "generations", manifest.Generation)
+	for _, extension := range []string{".idx", ".pack"} {
+		want := hashFilesWithExtension(t, legacyStage, extension)
+		if got := hashFilesWithExtension(t, published, extension); !reflect.DeepEqual(got, want) {
+			t.Fatalf("v2 %s hashes = %v, legacy hashes = %v", extension, got, want)
+		}
+	}
+}
+
+func TestBuildGlobalRejectsLegacyUnpublishedPartitionState(t *testing.T) {
+	root := t.TempDir()
+	options := GlobalOptions{
+		PBFPath: seamFixturePath(), StorePath: filepath.Join(root, "store"), WorkDir: filepath.Join(root, "work"),
+		RunMemoryBytes: 64, PackSegmentBytes: 1 << 20, MaxOpenShards: 2, Resume: true,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	options.Progress = func(progress GlobalProgress) {
+		if progress.Stage == "select-nodes" && progress.Completed {
+			cancel()
+		}
+	}
+	if _, err := BuildGlobal(ctx, options); !errors.Is(err, context.Canceled) {
+		t.Fatalf("BuildGlobal() error = %v, want context.Canceled", err)
+	}
+	statePath := filepath.Join(options.WorkDir, globalBuildStateFilename)
+	state, err := readGlobalBuildState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.completeStage("partition-contributions")
+	if err := writeGlobalBuildState(statePath, state); err != nil {
+		t.Fatal(err)
+	}
+	options.Progress = nil
+	if _, err := BuildGlobal(context.Background(), options); !errors.Is(err, ErrGlobalBuildStateMismatch) {
+		t.Fatalf("BuildGlobal() error = %v, want ErrGlobalBuildStateMismatch", err)
 	}
 }
 

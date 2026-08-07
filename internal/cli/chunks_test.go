@@ -64,7 +64,7 @@ func TestCmdChunksBuildGlobalPublishesAndResumes(t *testing.T) {
 	if manifest.Layout != worldgraph.PackedLayout || len(manifest.Shards) == 0 || len(manifest.Tiles) != 0 {
 		t.Fatalf("manifest = %+v", manifest)
 	}
-	for _, want := range []string{"Stage:", "Generation: " + manifest.Generation, "Shards:", "Chunks:", "Nodes:", "Edges:", "Work bytes:", "Store bytes:", "Elapsed:"} {
+	for _, want := range []string{"Stage:", "Generation: " + manifest.Generation, "Shards:", "Chunks:", "Nodes:", "Segments:", "Fragments:", "Edges:", "Work bytes:", "Store bytes:", "Elapsed:"} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("output %q lacks %q", output, want)
 		}

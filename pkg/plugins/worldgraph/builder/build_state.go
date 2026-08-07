@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	globalBuildStateVersion  = 1
+	globalBuildStateVersion  = 2
 	globalBuildStateFilename = "build-state.json"
 )
 
@@ -25,6 +25,8 @@ type GlobalCounts struct {
 	Ways          int64 `json:"ways"`
 	References    int64 `json:"references"`
 	Nodes         int64 `json:"nodes"`
+	Segments      int64 `json:"segments"`
+	Fragments     int64 `json:"fragments"`
 	Edges         int64 `json:"edges"`
 	Contributions int64 `json:"contributions"`
 	Shards        int64 `json:"shards"`
@@ -86,7 +88,20 @@ func loadOrCreateGlobalBuildState(workDir string, expected globalBuildState, res
 	path := filepath.Join(workDir, globalBuildStateFilename)
 	state, err := readGlobalBuildState(path)
 	if err == nil {
-		if !resume || state.identity() != expected.identity() {
+		if !resume {
+			return globalBuildState{}, ErrGlobalBuildStateMismatch
+		}
+		if state.Version == 1 && expected.Version == globalBuildStateVersion {
+			state.Version = globalBuildStateVersion
+			if state.identity() != expected.identity() {
+				return globalBuildState{}, ErrGlobalBuildStateMismatch
+			}
+			if err := writeGlobalBuildState(path, state); err != nil {
+				return globalBuildState{}, err
+			}
+			return state, nil
+		}
+		if state.identity() != expected.identity() {
 			return globalBuildState{}, ErrGlobalBuildStateMismatch
 		}
 		return state, nil
@@ -173,7 +188,8 @@ func readGlobalBuildState(path string) (globalBuildState, error) {
 }
 
 func validateGlobalBuildState(state globalBuildState) error {
-	if state.Version != globalBuildStateVersion || !filepath.IsAbs(state.SourcePath) || state.SourceSize < 1 ||
+	validVersion := state.Version == 1 || state.Version == globalBuildStateVersion
+	if !validVersion || !filepath.IsAbs(state.SourcePath) || state.SourceSize < 1 ||
 		state.RoutingZoom != 12 || state.ShardZoom != 8 || state.RunMemoryBytes < 8 ||
 		state.PackSegmentBytes < 1 || state.MaxOpenShards < 1 || state.Generation == "" || state.BuiltAt.IsZero() {
 		return fmt.Errorf("invalid global build state identity")
@@ -217,8 +233,9 @@ func validateGlobalBuildState(state globalBuildState) error {
 		return fmt.Errorf("global build packed shards are not sorted")
 	}
 	for _, count := range []int64{
-		state.Counts.Ways, state.Counts.References, state.Counts.Nodes, state.Counts.Edges, state.Counts.Contributions,
-		state.Counts.Shards, state.Counts.Chunks, state.Counts.WorkBytes, state.Counts.StoreBytes,
+		state.Counts.Ways, state.Counts.References, state.Counts.Nodes, state.Counts.Segments, state.Counts.Fragments,
+		state.Counts.Edges, state.Counts.Contributions, state.Counts.Shards, state.Counts.Chunks,
+		state.Counts.WorkBytes, state.Counts.StoreBytes,
 	} {
 		if count < 0 {
 			return fmt.Errorf("global build state contains negative count")

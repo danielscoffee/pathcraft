@@ -22,6 +22,8 @@ const (
 	joinBufferBytes            = 256 << 10
 )
 
+var ErrCorruptReferenceJoin = errors.New("worldgraph reference join is corrupt")
+
 type wayNodeRequest struct {
 	NodeID     int64
 	Occurrence uint64
@@ -122,7 +124,7 @@ func joinWayNodeRequests(ctx context.Context, sortedRequestsPath, globalNodesPat
 	var previousNode globalNodeRecord
 	hasPreviousNode := false
 	readNode := func() (globalNodeRecord, bool, error) {
-		node, ok, err := readSequentialGlobalNodeRecord(nodes)
+		node, ok, err := readJoinedGlobalNodeRecord(nodes)
 		if err != nil || !ok {
 			return node, ok, err
 		}
@@ -394,7 +396,7 @@ func readResolvedWayNodeRecord(reader io.Reader) (resolvedWayNode, bool, error) 
 	return record, true, nil
 }
 
-func readSequentialGlobalNodeRecord(reader io.Reader) (globalNodeRecord, bool, error) {
+func readJoinedGlobalNodeRecord(reader io.Reader) (globalNodeRecord, bool, error) {
 	if reader == nil {
 		return globalNodeRecord{}, false, fmt.Errorf("global node reader is nil")
 	}
