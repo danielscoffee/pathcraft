@@ -4,8 +4,8 @@
     "tagline": "Self-hosted multimodal routing engine (OSM + GTFS) with a plugin architecture and an embedded web directions app",
     "repository": "github.com/danielscoffee/pathcraft",
     "license": "see LICENSE in repo",
-    "status": "working prototype / pre-release, single developer + AI-assisted",
-    "as_of": "2026-07-28"
+    "status": "working prototype / pre-release; packed global store is synthetic-tested, but full-planet acceptance is blocked by disk capacity and contribution-partition throughput",
+    "as_of": "2026-08-02"
   },
   "what_it_does": [
     "Parses OpenStreetMap extracts into a mode-aware street graph (walk/car/bike, oneway and access restrictions honored)",
@@ -16,13 +16,14 @@
     "Runs street routing in browser-compatible Go WebAssembly through a small JavaScript binding",
     "Ships a single native Go binary with an embedded React SPA: Google-Maps-style directions UI (A/B picking, per-mode ETAs solved in parallel, transit itineraries, debug overlays)",
     "Caches parsed OSM graphs and directed degree-two contraction indexes in source-hashed, versioned, atomically replaced binary files",
+    "Builds restartable regional per-tile and global packed worldgraph stores from local OSM PBF snapshots; official-planet publication is not yet proven",
     "Runs concurrent read-only routes against published graph/index state; loading and mutation remain serial"
   ],
   "tech_stack": {
     "backend": "Go 1.25.12, stdlib HTTP, grpc-go/protobuf, zap logging, compile-time plugin registry (algorithms, graph loaders, exporters, cost models, loggers)",
     "algorithms": "A* over base or exact directed degree-two contraction chains for street routing, RAPTOR for transit timetables",
     "frontend": "React 19, Vite 8, UnoCSS, Leaflet/react-leaflet, TypeScript; embedded via go:embed; optional Go WebAssembly street-routing module",
-    "data_formats": "OSM XML (Overpass extracts), GTFS static (stop_times, trips, stops, routes, shapes, transfers), Protocol Buffers",
+    "data_formats": "OSM XML, streaming OSM PBF, GTFS static (stop_times, trips, stops, routes, shapes, transfers), Protocol Buffers",
     "deployment_model": "single self-contained native binary plus optional browser WASM artifact + map tiles from any tile server (OSM default); no external routing APIs, no cloud dependencies"
   },
   "scale_proven": {
@@ -33,10 +34,94 @@
     "query_latency_observed": "street route solve ~20 ms; multimodal journey with real feed returns sub-second; all four modes solved in parallel per request pair",
     "example_real_result": "08:00 departure across Recife -> arrival 08:38, walk 358 m + bus with transfer, real trip IDs",
     "phase_0_4_synthetic_profile": "10,000-node linear A* median: 3.895 ms base vs 118.226 us contracted; contraction build median 21.501 ms and 17.9 MB allocated on one documented laptop",
+    "worldgraph_synthetic": "regional and restartable packed-global pipelines pass deterministic seam and multi-city synthetic tests, including routing, serving, interruption, and publication recovery",
+    "worldgraph_planet": "official planet snapshot was validated and processed through node selection, but no packed planet generation was published",
     "profiling": "standard Go benchmarks, race detector, and reproducible pprof alloc_space/inuse_space commands; synthetic numbers are not city-wide guarantees"
   },
+  "global_worldgraph_acceptance": {
+    "status": "stopped cleanly during partition-contributions; no planet store or manifest was published",
+    "snapshot": {
+      "name": "planet-260727.osm.pbf",
+      "source": "https://planet.openstreetmap.org/pbf/planet-260727.osm.pbf",
+      "bytes": 94103228835,
+      "official_md5": "3f79d450ecbf494b892884f5179d48cf",
+      "pathcraft_sha256": "e8b630301f3a8ded990321722a8ba54eba6911fe2627728e07d40a7703ab1af9",
+      "integrity": "download completed, official MD5 passed, and PathCraft source validation completed"
+    },
+    "machine": {
+      "cpu_threads": 8,
+      "ram_gib": 19,
+      "storage": "single 1 TB ext4 HDD mounted at /mnt/storage",
+      "filesystem_bytes": 983349346304,
+      "free_bytes_after_stop": 659293388800,
+      "peak_rss_kib": 2318792,
+      "ram_assessment": "RAM was not the blocker; observed peak RSS was about 2.21 GiB"
+    },
+    "completed_stages": [
+      "validate-source",
+      "spool-ways-and-refs",
+      "sort-refs",
+      "select-nodes"
+    ],
+    "checkpoint_counts": {
+      "routable_ways": 228354464,
+      "raw_node_references": 2671633633,
+      "selected_node_records": 2333477374,
+      "ways_spool_bytes": 38043122015,
+      "raw_references_bytes": 21373069064,
+      "sorted_references_bytes": 18667818992,
+      "node_index_bytes": 93339094960
+    },
+    "observed_timings": {
+      "validate_source": "42m25s",
+      "spool_ways_and_refs": "complete at 1h28m32s cumulative",
+      "sort_refs": "complete at 2h41m24s cumulative",
+      "select_nodes_after_resume": "complete at 2h16m28s cumulative, including mandatory source revalidation"
+    },
+    "partition_contributions": {
+      "status": "incomplete and not checkpointed; resume restarts this stage from zero",
+      "sampled_way_spool_progress": "one observed reader offset was 0.13% (49,617,312 of 38,043,122,015 bytes); the 8,424,914,510-byte residue was measured later, so those figures are not one linear-extrapolation sample",
+      "sampled_throughput": "91.5 KiB/s through ways.spool",
+      "linear_eta_at_sample": "about 4d16h for this stage",
+      "bottleneck": "each way-node lookup performs binary searches against the 93.3 GB node index on an HDD",
+      "uncheckpointed_bytes_left_after_stop": 8424914510
+    },
+    "capacity": {
+      "source_plus_checkpointed_work_gib": 247.3,
+      "projected_contribution_spool_gib": 672.4,
+      "projected_before_final_store_gib": 919.7,
+      "estimated_peak_with_final_store_tib": "1.2-1.6",
+      "estimate_quality": "the operational projection is low confidence because sample timestamps were not captured consistently; an independent count calculation yields about 687 GiB for two minimum-size records per candidate segment before skipped segments or seam copies, enough to show the current 1 TB drive is insufficient",
+      "recommendation": "do not resume on the current drive; use at least 2 TB, preferably 3 TB, unless the partition/storage design is reduced first"
+    },
+    "planet_compatibility_findings": [
+      {
+        "failure": "validator rejected blocks above 100,000 entities",
+        "evidence": "official planet blocks contained 224,000-288,000 dense nodes in the sampled first 1,000 blocks",
+        "fix": "raise the bounded block cap to 500,000, stream decoded entities through one ordered worker and bounded batches, and retain compressed entity-bomb plus real-decoder regressions"
+      },
+      {
+        "failure": "node selection rejected a valid OSM North Pole node",
+        "evidence": "node 269538499 has longitude 0 and latitude 90, valid in OSM but outside Web Mercator",
+        "fix": "accept global source latitude [-90,90], preserve reference integrity with non-routable records, and omit adjacent segments outside Web Mercator"
+      }
+    ],
+    "verification": {
+      "command": "go test ./... -count=1",
+      "result": "525 tests passed across 39 listed packages",
+      "race": "go test -race ./pkg/plugins/worldgraph/builder -count=1 passed",
+      "static_analysis": "go vet ./... and git diff --check passed",
+      "code_state": "planet compatibility fixes were reviewed and committed as b16cfdb"
+    },
+    "resume": {
+      "stop_result": "SIGTERM produced context canceled and exited cleanly",
+      "checkpoint_path": "/mnt/storage/pathcraft/work/planet-260727/build-state.json",
+      "requirements": "same verified PBF path, store/work paths, resource flags, and a binary containing commit b16cfdb or later",
+      "warning": "do not resume on the current 1 TB filesystem without redesigning storage use or moving the snapshot and checkpoint to larger storage"
+    }
+  },
   "quality_signals": {
-    "tests": "Deterministic Go, gRPC bufconn, WASM/Node, and frontend tests cover graph, contraction differential behavior, source-safe caches, concurrent routing, transit, engine, transports, registry, and UI helpers; fixtures live in tracked testdata/",
+    "tests": "Deterministic Go, gRPC bufconn, WASM/Node, frontend, regional-worldgraph, and packed-global tests cover graph, contraction differential behavior, source-safe caches, concurrent routing, transit, engine, transports, registry, interruption, and publication recovery; latest local planet-fix verification passed 525 Go tests",
     "ci": "GitHub Actions runs Go tests, real js/wasm build and Node smoke test, frontend tests, lint, and production build",
     "docs": "architecture, Go SDK, JavaScript/WASM, gRPC, plugin-system, roadmap, demo, and reproducible performance/memory guides live in docs/"
   },
@@ -50,14 +135,21 @@
     "No geocoding/search-by-name (coordinates and map clicks only)",
     "GTFS calendar/service-day filtering not applied (all trips treated as running); no GTFS-realtime",
     "No turn-by-turn instructions, no traffic, bike/car use heuristic speeds",
-    "Single-city testing; no full contraction hierarchies, horizontal scaling story, auth, rate limiting, or multi-tenant features",
+    "City routing remains the only real-data serving scale proven; no full contraction hierarchies, horizontal scaling story, auth, rate limiting, or multi-tenant features",
     "gRPC is plaintext and unauthenticated; loopback default is prototype-safe, not public-internet hardening",
     "WASM supports synchronous street routing only; no GTFS, workers, streaming input, or npm release",
     "Base street graph remains resident beside contraction index; concurrent hot reload and graph mutation are unsupported",
     "Router marked by author as debug/demo grade rather than production",
+    "Packed global format is synthetic-tested, but the official planet build has not reached publication",
+    "Current contribution partition performs billions of random disk-index lookups and is impractically slow on an HDD",
+    "Current planet work/store layout is projected to need roughly 1.2-1.6 TiB peak; the tested 1 TB filesystem is insufficient",
+    "No long-distance routing hierarchy exists; global chunks still support bounded local/regional routes only",
     "No packaged releases, Docker image, or hosted demo yet"
   ],
   "near_term_roadmap_hints": [
+    "Redesign global contribution partitioning to avoid per-reference binary searches and the projected ~672 GiB duplicated contribution spool",
+    "Add a representative extract capacity benchmark that reports peak RSS, work bytes, store bytes, throughput, and a preflight disk requirement before planet builds",
+    "Resume official-planet acceptance only on at least 2 TB storage, preferably 3 TB, or after reducing peak storage below the current 1 TB filesystem",
     "Docker packaging, tagged releases, generated SDK packaging, and hosted demo",
     "Service-calendar filtering and GTFS-realtime ingestion",
     "Geocoder integration (e.g., Nominatim/Photon) for address search",
