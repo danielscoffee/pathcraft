@@ -327,7 +327,9 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 		state.Counts.Shards = int64(len(shards))
 		state.Counts.Segments = fragmentCounts.Segments
 		state.Counts.Fragments = fragmentCounts.Fragments
+		state.Counts.FragmentBytes = fragmentCounts.FragmentBytes
 		state.Counts.Contributions = fragmentCounts.Contributions
+		state.FragmentSpools = append([]fragmentSpoolSummary(nil), fragmentCounts.Spools...)
 		if err := complete("partition-fragments-v2"); err != nil {
 			return worldgraph.Manifest{}, err
 		}
@@ -364,8 +366,11 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 		return worldgraph.Manifest{}, fmt.Errorf("%w: packed stage path changed", ErrGlobalBuildStateMismatch)
 	}
 	occupied := make(map[string]worldgraph.TileID, len(state.OccupiedShards))
-	for _, shard := range state.OccupiedShards {
-		occupied[globalShardStateKey(shard)] = shard
+	fragmentSpools := make(map[string]fragmentSpoolSummary, len(state.FragmentSpools))
+	for index, shard := range state.OccupiedShards {
+		key := globalShardStateKey(shard)
+		occupied[key] = shard
+		fragmentSpools[key] = state.FragmentSpools[index]
 	}
 	recorded := make(map[string]struct{}, len(state.PackedShards))
 	for _, key := range state.PackedShards {
@@ -420,7 +425,11 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 			if err != nil {
 				return worldgraph.Manifest{}, err
 			}
-			builtChunks, builtEdges, err := buildPackedShardFromFragmentSpool(ctx, spoolPath, shard, stage.Path(), options.PackSegmentBytes)
+			summary, ok := fragmentSpools[key]
+			if !ok {
+				return worldgraph.Manifest{}, fmt.Errorf("%w: fragment spool summary %q is missing", ErrGlobalBuildStateMismatch, key)
+			}
+			builtChunks, builtEdges, err := buildPackedShardFromVerifiedFragmentSpool(ctx, spoolPath, summary, stage.Path(), options.PackSegmentBytes)
 			if err != nil {
 				return worldgraph.Manifest{}, err
 			}

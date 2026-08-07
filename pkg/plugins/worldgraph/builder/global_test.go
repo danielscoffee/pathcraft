@@ -3,7 +3,9 @@ package builder
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"errors"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
@@ -230,6 +232,9 @@ func TestGlobalPartitionV2MatchesLegacyPackedBytesWithSmallerSpool(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if fragmentBytes != state.Counts.FragmentBytes {
+		t.Fatalf("fragment directory bytes = %d, state count = %d", fragmentBytes, state.Counts.FragmentBytes)
+	}
 	legacyBytes, err := directoryBytes(legacyRoot)
 	if err != nil {
 		t.Fatal(err)
@@ -368,6 +373,66 @@ func TestBuildGlobalUpgradesValidatedVersionOneCheckpointAndCleansResidue(t *tes
 	}
 	if _, err := os.Stat(filepath.Dir(legacyResidue)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("legacy residue remains after migration: %v", err)
+	}
+}
+
+func TestBuildGlobalRejectsCleanBoundaryFragmentLossBeforeShardRebuild(t *testing.T) {
+	root := t.TempDir()
+	options := GlobalOptions{
+		PBFPath: seamFixturePath(), StorePath: filepath.Join(root, "store"), WorkDir: filepath.Join(root, "work"),
+		RunMemoryBytes: 64, PackSegmentBytes: 1 << 20, MaxOpenShards: 2, Resume: true,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	options.Progress = func(progress GlobalProgress) {
+		if progress.Stage == "partition-fragments-v2" && progress.Completed {
+			cancel()
+		}
+	}
+	if _, err := BuildGlobal(ctx, options); !errors.Is(err, context.Canceled) {
+		t.Fatalf("BuildGlobal() error = %v, want context.Canceled", err)
+	}
+	state, err := readGlobalBuildState(filepath.Join(options.WorkDir, globalBuildStateFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.FragmentSpools) != 1 || state.FragmentSpools[0].Records < 2 {
+		t.Fatalf("fragment spool summaries = %+v, want one multi-record spool", state.FragmentSpools)
+	}
+	spoolPath, err := fragmentSpoolPath(filepath.Join(options.WorkDir, "fragments-v2"), state.FragmentSpools[0].Shard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(spoolPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lengthBytes [4]byte
+	if _, err := io.ReadFull(file, lengthBytes[:]); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	firstRecordEnd := int64(4 + binary.BigEndian.Uint32(lengthBytes[:]))
+	if firstRecordEnd >= state.FragmentSpools[0].Bytes {
+		t.Fatalf("first record boundary = %d, spool bytes = %d", firstRecordEnd, state.FragmentSpools[0].Bytes)
+	}
+	if err := os.Truncate(spoolPath, firstRecordEnd); err != nil {
+		t.Fatal(err)
+	}
+
+	options.Progress = nil
+	if _, err := BuildGlobal(context.Background(), options); !errors.Is(err, ErrFragmentSpoolSummaryMismatch) {
+		t.Fatalf("BuildGlobal() error = %v, want ErrFragmentSpoolSummaryMismatch", err)
+	}
+	store, err := worldgraph.OpenStore(options.StorePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if _, err := store.Manifest(); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("manifest after fragment loss = %v, want not exist", err)
 	}
 }
 

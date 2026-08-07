@@ -56,10 +56,10 @@ type globalWayFragment struct {
 }
 
 type fragmentSpoolSummary struct {
-	Shard   worldgraph.TileID
-	Records int64
-	Bytes   int64
-	SHA256  string
+	Shard   worldgraph.TileID `json:"shard"`
+	Records int64             `json:"records"`
+	Bytes   int64             `json:"bytes"`
+	SHA256  string            `json:"sha256"`
 }
 
 type fragmentRadixPartition struct {
@@ -1204,6 +1204,27 @@ func buildPackedShardFromFragmentSpool(
 	stageRoot string,
 	maxSegmentBytes int64,
 ) (int, int64, error) {
+	return buildPackedShardFromFragmentSpoolSummary(ctx, spoolPath, shard, stageRoot, maxSegmentBytes, nil)
+}
+
+func buildPackedShardFromVerifiedFragmentSpool(
+	ctx context.Context,
+	spoolPath string,
+	expected fragmentSpoolSummary,
+	stageRoot string,
+	maxSegmentBytes int64,
+) (int, int64, error) {
+	return buildPackedShardFromFragmentSpoolSummary(ctx, spoolPath, expected.Shard, stageRoot, maxSegmentBytes, &expected)
+}
+
+func buildPackedShardFromFragmentSpoolSummary(
+	ctx context.Context,
+	spoolPath string,
+	shard worldgraph.TileID,
+	stageRoot string,
+	maxSegmentBytes int64,
+	expected *fragmentSpoolSummary,
+) (int, int64, error) {
 	if ctx == nil {
 		return 0, 0, fmt.Errorf("packed fragment shard build context is nil")
 	}
@@ -1248,14 +1269,21 @@ func buildPackedShardFromFragmentSpool(
 		batch = batch[:0]
 		return nil
 	}
-	if err := replayFragmentSpool(ctx, spoolPath, shard, func(contribution edgeContribution) error {
+	consume := func(contribution edgeContribution) error {
 		batch = append(batch, contribution)
 		if len(batch) == contributionBatchSize {
 			return flush()
 		}
 		return nil
-	}); err != nil {
-		return 0, 0, err
+	}
+	var replayErr error
+	if expected == nil {
+		replayErr = replayFragmentSpool(ctx, spoolPath, shard, consume)
+	} else {
+		replayErr = replayFragmentSpoolVerified(ctx, spoolPath, *expected, consume)
+	}
+	if replayErr != nil {
+		return 0, 0, replayErr
 	}
 	if err := flush(); err != nil {
 		return 0, 0, err

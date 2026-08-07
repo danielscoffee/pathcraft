@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/danielscoffee/pathcraft/pkg/plugins/worldgraph"
 )
 
 func TestBuildStateWritesAtomicallyAndResumesExactMatch(t *testing.T) {
@@ -130,6 +132,54 @@ func TestBuildStateRejectsMismatchAndDisabledResume(t *testing.T) {
 	}
 	if _, err := loadOrCreateGlobalBuildState(work, expected, false); !errors.Is(err, ErrGlobalBuildStateMismatch) {
 		t.Fatalf("disabled resume error = %v, want ErrGlobalBuildStateMismatch", err)
+	}
+}
+
+func TestBuildStateValidatesFragmentSpoolSummaries(t *testing.T) {
+	shard := worldgraph.TileID{Z: worldgraph.PackedShardZoom, X: 1, Y: 2}
+	valid := globalBuildState{
+		Version: globalBuildStateVersion, SourcePath: "/data/planet.osm.pbf", SourceSize: 123,
+		SourceSHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		RoutingZoom:  12, ShardZoom: 8, RunMemoryBytes: 1024, PackSegmentBytes: 2048,
+		MaxOpenShards: 2, Generation: "global-a", BuiltAt: time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC),
+		Completed: []string{"partition-fragments-v2"}, OccupiedShards: []worldgraph.TileID{shard},
+		FragmentSpools: []fragmentSpoolSummary{{
+			Shard: shard, Records: 2, Bytes: 10,
+			SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		}},
+		Counts: GlobalCounts{Shards: 1, Fragments: 2, FragmentBytes: 10},
+	}
+	if err := validateGlobalBuildState(valid); err != nil {
+		t.Fatalf("valid fragment state: %v", err)
+	}
+	tests := []struct {
+		name   string
+		mutate func(*globalBuildState)
+	}{
+		{name: "missing summary", mutate: func(state *globalBuildState) { state.FragmentSpools = nil }},
+		{name: "record total", mutate: func(state *globalBuildState) { state.FragmentSpools[0].Records++ }},
+		{name: "byte total", mutate: func(state *globalBuildState) { state.FragmentSpools[0].Bytes++ }},
+		{name: "digest", mutate: func(state *globalBuildState) { state.FragmentSpools[0].SHA256 = "bad" }},
+		{name: "shard", mutate: func(state *globalBuildState) { state.FragmentSpools[0].Shard.X++ }},
+		{name: "stage", mutate: func(state *globalBuildState) { state.Completed = nil }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			state := valid
+			state.Completed = append([]string(nil), valid.Completed...)
+			state.OccupiedShards = append([]worldgraph.TileID(nil), valid.OccupiedShards...)
+			state.FragmentSpools = append([]fragmentSpoolSummary(nil), valid.FragmentSpools...)
+			test.mutate(&state)
+			if err := validateGlobalBuildState(state); err == nil {
+				t.Fatal("validateGlobalBuildState() error = nil")
+			}
+		})
+	}
+
+	versionTwo := valid
+	versionTwo.Version = 2
+	if err := validateGlobalBuildState(versionTwo); err == nil {
+		t.Fatal("version-two state validation error = nil")
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,7 +16,7 @@ import (
 )
 
 const (
-	globalBuildStateVersion  = 2
+	globalBuildStateVersion  = 3
 	globalBuildStateFilename = "build-state.json"
 )
 
@@ -52,6 +53,7 @@ type GlobalCounts struct {
 	Nodes         int64 `json:"nodes"`
 	Segments      int64 `json:"segments"`
 	Fragments     int64 `json:"fragments"`
+	FragmentBytes int64 `json:"fragment_bytes"`
 	Edges         int64 `json:"edges"`
 	Contributions int64 `json:"contributions"`
 	Shards        int64 `json:"shards"`
@@ -73,11 +75,12 @@ type globalBuildState struct {
 	Generation       string    `json:"generation"`
 	BuiltAt          time.Time `json:"built_at"`
 
-	Completed      []string            `json:"completed,omitempty"`
-	OccupiedShards []worldgraph.TileID `json:"occupied_shards,omitempty"`
-	PackedShards   []string            `json:"packed_shards,omitempty"`
-	StagePath      string              `json:"stage_path,omitempty"`
-	Counts         GlobalCounts        `json:"counts"`
+	Completed      []string               `json:"completed,omitempty"`
+	OccupiedShards []worldgraph.TileID    `json:"occupied_shards,omitempty"`
+	FragmentSpools []fragmentSpoolSummary `json:"fragment_spools,omitempty"`
+	PackedShards   []string               `json:"packed_shards,omitempty"`
+	StagePath      string                 `json:"stage_path,omitempty"`
+	Counts         GlobalCounts           `json:"counts"`
 }
 
 type globalBuildIdentity struct {
@@ -259,12 +262,45 @@ func validateGlobalBuildState(state globalBuildState) error {
 	}
 	for _, count := range []int64{
 		state.Counts.Ways, state.Counts.References, state.Counts.Nodes, state.Counts.Segments, state.Counts.Fragments,
-		state.Counts.Edges, state.Counts.Contributions, state.Counts.Shards, state.Counts.Chunks,
+		state.Counts.FragmentBytes, state.Counts.Edges, state.Counts.Contributions, state.Counts.Shards, state.Counts.Chunks,
 		state.Counts.WorkBytes, state.Counts.StoreBytes,
 	} {
 		if count < 0 {
 			return fmt.Errorf("global build state contains negative count")
 		}
+	}
+	return validateGlobalFragmentSpoolState(state)
+}
+
+func validateGlobalFragmentSpoolState(state globalBuildState) error {
+	hasPartition := state.hasStage("partition-fragments-v2")
+	if !hasPartition {
+		if len(state.FragmentSpools) != 0 || state.Counts.Fragments != 0 || state.Counts.FragmentBytes != 0 {
+			return fmt.Errorf("global build state contains fragments before partition completion")
+		}
+		return nil
+	}
+	if state.Version != globalBuildStateVersion || len(state.FragmentSpools) != len(state.OccupiedShards) ||
+		state.Counts.Shards != int64(len(state.OccupiedShards)) {
+		return fmt.Errorf("global build fragment spool state is incomplete")
+	}
+	var records int64
+	var bytes int64
+	for index, summary := range state.FragmentSpools {
+		if err := validateFragmentSpoolSummary(summary); err != nil {
+			return fmt.Errorf("global build fragment spool summary %d: %w", index, err)
+		}
+		if summary.Shard != state.OccupiedShards[index] {
+			return fmt.Errorf("global build fragment spool summaries do not match occupied shards")
+		}
+		if records > math.MaxInt64-summary.Records || bytes > math.MaxInt64-summary.Bytes {
+			return fmt.Errorf("global build fragment spool totals exceed int64")
+		}
+		records += summary.Records
+		bytes += summary.Bytes
+	}
+	if records != state.Counts.Fragments || bytes != state.Counts.FragmentBytes {
+		return fmt.Errorf("global build fragment spool totals do not match counts")
 	}
 	return nil
 }

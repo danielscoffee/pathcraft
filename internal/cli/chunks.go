@@ -127,6 +127,7 @@ func cmdChunksBuildGlobal(ctx context.Context, args []string) error {
 	fmt.Printf("Nodes: %d\n", counts.Nodes)
 	fmt.Printf("Segments: %d\n", counts.Segments)
 	fmt.Printf("Fragments: %d\n", counts.Fragments)
+	fmt.Printf("Fragment bytes: %d\n", counts.FragmentBytes)
 	fmt.Printf("Edges: %d\n", counts.Edges)
 	fmt.Printf("Contributions: %d\n", counts.Contributions)
 	fmt.Printf("Work bytes: %d\n", counts.WorkBytes)

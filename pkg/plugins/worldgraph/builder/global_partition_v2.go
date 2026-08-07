@@ -14,7 +14,9 @@ import (
 type globalFragmentCounts struct {
 	Segments      int64
 	Fragments     int64
+	FragmentBytes int64
 	Contributions int64
+	Spools        []fragmentSpoolSummary
 }
 
 func partitionGlobalFragments(
@@ -153,5 +155,25 @@ func partitionGlobalFragments(
 	if replayErr != nil || resolvedCloseErr != nil || writerCloseErr != nil {
 		return nil, globalFragmentCounts{}, errors.Join(replayErr, resolvedCloseErr, writerCloseErr)
 	}
-	return writer.Shards(), counts, nil
+	shards := writer.Shards()
+	counts.Spools = writer.Summaries()
+	if len(counts.Spools) != len(shards) {
+		return nil, globalFragmentCounts{}, fmt.Errorf("fragment spool summary count %d, want %d", len(counts.Spools), len(shards))
+	}
+	var records int64
+	for index, summary := range counts.Spools {
+		if err := validateFragmentSpoolSummary(summary); err != nil {
+			return nil, globalFragmentCounts{}, err
+		}
+		if summary.Shard != shards[index] || records > math.MaxInt64-summary.Records ||
+			counts.FragmentBytes > math.MaxInt64-summary.Bytes {
+			return nil, globalFragmentCounts{}, fmt.Errorf("fragment spool summaries are inconsistent")
+		}
+		records += summary.Records
+		counts.FragmentBytes += summary.Bytes
+	}
+	if records != counts.Fragments {
+		return nil, globalFragmentCounts{}, fmt.Errorf("fragment spool summary records %d, want %d", records, counts.Fragments)
+	}
+	return shards, counts, nil
 }
