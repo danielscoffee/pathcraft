@@ -37,39 +37,53 @@ type resolvedWayNode struct {
 // spoolWayNodeRequests gives every reference a stable position in ways.spool.
 // That position lets later external-sort passes restore exact way order without
 // retaining the planet-wide node set in memory.
-func spoolWayNodeRequests(ctx context.Context, waySpoolPath, outputPath string, maxWayNodes int) (count int64, err error) {
+func spoolWayNodeRequests(ctx context.Context, waySpoolPath, outputPath string, maxWayNodes int) (int64, error) {
+	counts, err := spoolWayNodeRequestsWithCounts(ctx, waySpoolPath, outputPath, maxWayNodes)
+	return counts.References, err
+}
+
+type wayNodeRequestSpoolCounts struct {
+	Ways       int64
+	References int64
+}
+
+func spoolWayNodeRequestsWithCounts(ctx context.Context, waySpoolPath, outputPath string, maxWayNodes int) (counts wayNodeRequestSpoolCounts, err error) {
 	if ctx == nil {
-		return 0, fmt.Errorf("way node request spool context is nil")
+		return wayNodeRequestSpoolCounts{}, fmt.Errorf("way node request spool context is nil")
 	}
 	if err := ctx.Err(); err != nil {
-		return 0, err
+		return wayNodeRequestSpoolCounts{}, err
 	}
 	if waySpoolPath == "" || outputPath == "" {
-		return 0, fmt.Errorf("way node request spool paths are required")
+		return wayNodeRequestSpoolCounts{}, fmt.Errorf("way node request spool paths are required")
 	}
 
 	err = writeAtomicBuilderOutput(ctx, outputPath, ".way-node-requests-*.tmp", func(writer io.Writer) error {
 		return replayWaySpool(ctx, waySpoolPath, maxWayNodes, func(way Way) error {
+			if counts.Ways == math.MaxInt64 {
+				return fmt.Errorf("way node request way count exceeds int64")
+			}
+			counts.Ways++
 			for _, nodeID := range way.NodeIDs {
 				if err := ctx.Err(); err != nil {
 					return err
 				}
-				if count == math.MaxInt64 {
+				if counts.References == math.MaxInt64 {
 					return fmt.Errorf("way node request count exceeds int64")
 				}
-				request := wayNodeRequest{NodeID: nodeID, Occurrence: uint64(count)}
+				request := wayNodeRequest{NodeID: nodeID, Occurrence: uint64(counts.References)}
 				if err := writeWayNodeRequestRecord(writer, request); err != nil {
 					return err
 				}
-				count++
+				counts.References++
 			}
 			return nil
 		})
 	})
 	if err != nil {
-		return 0, err
+		return wayNodeRequestSpoolCounts{}, err
 	}
-	return count, nil
+	return counts, nil
 }
 
 func sortWayNodeRequests(ctx context.Context, input, output, runDir string, maxRecords int) error {

@@ -224,6 +224,120 @@ func TestGlobalPartitionV2MatchesLegacyPackedBytesWithSmallerSpool(t *testing.T)
 	}
 }
 
+func TestBuildGlobalValidatesArtifactsBeforeVersionOneUpgrade(t *testing.T) {
+	pbf := writeGlobalTestPBF(t)
+	root := t.TempDir()
+	options := GlobalOptions{
+		PBFPath: pbf, StorePath: filepath.Join(root, "store"), WorkDir: filepath.Join(root, "work"),
+		RunMemoryBytes: 24, PackSegmentBytes: 1_024, MaxOpenShards: 2, Resume: true,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	options.Progress = func(progress GlobalProgress) {
+		if progress.Stage == "select-nodes" && progress.Completed {
+			cancel()
+		}
+	}
+	if _, err := BuildGlobal(ctx, options); !errors.Is(err, context.Canceled) {
+		t.Fatalf("BuildGlobal() error = %v, want context.Canceled", err)
+	}
+	statePath := filepath.Join(options.WorkDir, globalBuildStateFilename)
+	state, err := readGlobalBuildState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Version = 1
+	if err := writeGlobalBuildState(statePath, state); err != nil {
+		t.Fatal(err)
+	}
+	legacyResidue := filepath.Join(options.WorkDir, "contributions", "partial.spool")
+	if err := os.MkdirAll(filepath.Dir(legacyResidue), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyResidue, []byte("uncheckpointed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nodesPath := filepath.Join(options.WorkDir, "nodes.idx")
+	info, err := os.Stat(nodesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(nodesPath, info.Size()-globalNodeRecordBytes); err != nil {
+		t.Fatal(err)
+	}
+
+	options.Progress = nil
+	if _, err := BuildGlobal(context.Background(), options); !errors.Is(err, ErrGlobalBuildStateMismatch) {
+		t.Fatalf("BuildGlobal() error = %v, want ErrGlobalBuildStateMismatch", err)
+	}
+	stored, err := readGlobalBuildState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Version != 1 || stored.hasStage("spool-way-node-requests-v2") {
+		t.Fatalf("failed migration changed state = %+v", stored)
+	}
+	if _, err := os.Stat(legacyResidue); err != nil {
+		t.Fatalf("legacy residue was removed before validation: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(options.WorkDir, "way-node-requests.raw")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("request artifact exists after failed validation: %v", err)
+	}
+}
+
+func TestBuildGlobalUpgradesValidatedVersionOneCheckpointAndCleansResidue(t *testing.T) {
+	pbf := writeGlobalTestPBF(t)
+	root := t.TempDir()
+	options := GlobalOptions{
+		PBFPath: pbf, StorePath: filepath.Join(root, "store"), WorkDir: filepath.Join(root, "work"),
+		RunMemoryBytes: 24, PackSegmentBytes: 1_024, MaxOpenShards: 2, Resume: true,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	options.Progress = func(progress GlobalProgress) {
+		if progress.Stage == "select-nodes" && progress.Completed {
+			cancel()
+		}
+	}
+	if _, err := BuildGlobal(ctx, options); !errors.Is(err, context.Canceled) {
+		t.Fatalf("BuildGlobal() error = %v, want context.Canceled", err)
+	}
+	statePath := filepath.Join(options.WorkDir, globalBuildStateFilename)
+	state, err := readGlobalBuildState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Version = 1
+	if err := writeGlobalBuildState(statePath, state); err != nil {
+		t.Fatal(err)
+	}
+	legacyResidue := filepath.Join(options.WorkDir, "contributions", "partial.spool")
+	if err := os.MkdirAll(filepath.Dir(legacyResidue), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyResidue, []byte("uncheckpointed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel = context.WithCancel(context.Background())
+	options.Progress = func(progress GlobalProgress) {
+		if progress.Stage == "spool-way-node-requests-v2" && progress.Completed {
+			cancel()
+		}
+	}
+	if _, err := BuildGlobal(ctx, options); !errors.Is(err, context.Canceled) {
+		t.Fatalf("resumed BuildGlobal() error = %v, want context.Canceled", err)
+	}
+	stored, err := readGlobalBuildState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Version != globalBuildStateVersion || !stored.hasStage("spool-way-node-requests-v2") {
+		t.Fatalf("migrated state = %+v", stored)
+	}
+	if _, err := os.Stat(filepath.Dir(legacyResidue)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("legacy residue remains after migration: %v", err)
+	}
+}
+
 func TestBuildGlobalRejectsLegacyUnpublishedPartitionState(t *testing.T) {
 	root := t.TempDir()
 	options := GlobalOptions{

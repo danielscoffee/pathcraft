@@ -57,7 +57,7 @@ func TestBuildStateWritesAtomicallyAndResumesExactMatch(t *testing.T) {
 	}
 }
 
-func TestBuildStateMigratesVersionOneIdentityAtomically(t *testing.T) {
+func TestBuildStateDefersVersionOneUpgradeUntilArtifactValidation(t *testing.T) {
 	work := t.TempDir()
 	expected := globalBuildState{
 		Version: globalBuildStateVersion, SourcePath: "/data/planet.osm.pbf", SourceSize: 123,
@@ -73,19 +73,19 @@ func TestBuildStateMigratesVersionOneIdentityAtomically(t *testing.T) {
 	if err := writeGlobalBuildState(filepath.Join(work, globalBuildStateFilename), legacy); err != nil {
 		t.Fatal(err)
 	}
-	migrated, err := loadOrCreateGlobalBuildState(work, expected, true)
+	loaded, err := loadOrCreateGlobalBuildState(work, expected, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if migrated.Version != globalBuildStateVersion || !reflect.DeepEqual(migrated.Completed, legacy.Completed) || migrated.Counts != legacy.Counts {
-		t.Fatalf("migrated state = %+v, want version %d with legacy progress", migrated, globalBuildStateVersion)
+	if loaded.Version != 1 || !reflect.DeepEqual(loaded.Completed, legacy.Completed) || loaded.Counts != legacy.Counts {
+		t.Fatalf("loaded state = %+v, want unchanged version-one progress", loaded)
 	}
 	stored, err := readGlobalBuildState(filepath.Join(work, globalBuildStateFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.Version != globalBuildStateVersion {
-		t.Fatalf("stored version = %d, want %d", stored.Version, globalBuildStateVersion)
+	if stored.Version != 1 {
+		t.Fatalf("stored version = %d, want deferred version 1", stored.Version)
 	}
 }
 

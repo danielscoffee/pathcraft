@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/danielscoffee/pathcraft/pkg/plugins/worldgraph"
@@ -78,6 +80,15 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 	if err != nil {
 		return worldgraph.Manifest{}, err
 	}
+	if err := validateLegacyGlobalBuildStageFrontier(state); err != nil {
+		return worldgraph.Manifest{}, err
+	}
+	if err := removeGlobalBuildTemporaryMatches(options.WorkDir,
+		".build-state-*.tmp", ".ways-*.tmp", ".refs-*.tmp", ".sorted-*.tmp", ".nodes-*.tmp",
+		".way-node-requests-*.tmp", ".resolved-way-nodes-*.tmp", ".fixed-sort-output-*.tmp",
+	); err != nil {
+		return worldgraph.Manifest{}, err
+	}
 
 	persist := func(stage string, completed bool, checkCancellation bool) error {
 		workBytes, measureErr := directoryBytes(options.WorkDir)
@@ -112,6 +123,7 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 	}
 	if hasCurrent && current.Generation == generation && current.Layout == worldgraph.PackedLayout &&
 		len(current.Regions) == 1 && current.Regions[0].SourceSHA256 == source.Fingerprint() && current.SourceBytes == source.Size() {
+		state.Version = globalBuildStateVersion
 		state.completeStage("publish")
 		state.Counts.Shards = int64(len(current.Shards))
 		if err := persist("publish", true, false); err != nil {
@@ -120,6 +132,12 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 		return current, nil
 	}
 	state.uncompleteStage("publish")
+	if state.hasStage("partition-contributions") && !state.hasStage("partition-fragments-v2") {
+		return worldgraph.Manifest{}, fmt.Errorf("%w: legacy contribution partition cannot resume with partition v2; use a fresh work directory", ErrGlobalBuildStateMismatch)
+	}
+	if state.Version == 1 && len(state.Completed) > 4 {
+		return worldgraph.Manifest{}, fmt.Errorf("%w: legacy contribution partition cannot resume with partition v2; use a fresh work directory", ErrGlobalBuildStateMismatch)
+	}
 
 	if !state.hasStage("validate-source") {
 		if err := complete("validate-source"); err != nil {
@@ -185,8 +203,15 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 		}
 	}
 
-	if state.hasStage("partition-contributions") && !state.hasStage("partition-fragments-v2") {
-		return worldgraph.Manifest{}, fmt.Errorf("%w: legacy contribution partition cannot resume with partition v2; use a fresh work directory", ErrGlobalBuildStateMismatch)
+	if state.Version == 1 {
+		if err := validateLegacyGlobalBuildArtifacts(waysPath, referencesPath, sortedReferencesPath, nodesPath, state.Counts); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+		// A legacy partition never checkpointed partial output. Remove it only
+		// after proving that every checkpointed input needed by v2 is intact.
+		if err := os.RemoveAll(filepath.Join(options.WorkDir, "contributions")); err != nil {
+			return worldgraph.Manifest{}, err
+		}
 	}
 
 	requestsRawPath := filepath.Join(options.WorkDir, "way-node-requests.raw")
@@ -194,13 +219,15 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 		if err := os.Remove(requestsRawPath); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return worldgraph.Manifest{}, err
 		}
-		count, err := spoolWayNodeRequests(ctx, waysPath, requestsRawPath, DefaultMaxWayNodes)
+		counts, err := spoolWayNodeRequestsWithCounts(ctx, waysPath, requestsRawPath, DefaultMaxWayNodes)
 		if err != nil {
 			return worldgraph.Manifest{}, err
 		}
-		if count != state.Counts.References {
-			return worldgraph.Manifest{}, fmt.Errorf("%w: way-node request count %d, want %d", ErrGlobalBuildStateMismatch, count, state.Counts.References)
+		if counts.Ways != state.Counts.Ways || counts.References != state.Counts.References {
+			_ = os.Remove(requestsRawPath)
+			return worldgraph.Manifest{}, fmt.Errorf("%w: way-node request spool has %d ways and %d references, want %d and %d", ErrGlobalBuildStateMismatch, counts.Ways, counts.References, state.Counts.Ways, state.Counts.References)
 		}
+		state.Version = globalBuildStateVersion
 		if err := complete("spool-way-node-requests-v2"); err != nil {
 			return worldgraph.Manifest{}, err
 		}
@@ -306,6 +333,9 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 	if len(state.OccupiedShards) == 0 {
 		return worldgraph.Manifest{}, fmt.Errorf("global build state has no occupied shards")
 	}
+	if err := removeGlobalBuildScratchFiles(fragmentRoot, ".fragment-contributions-", ".db"); err != nil {
+		return worldgraph.Manifest{}, err
+	}
 	manifest := worldgraph.Manifest{
 		Generation: generation, Zoom: worldgraph.GlobalRoutingZoom, Bounds: globalShardBounds(state.OccupiedShards),
 		Layout: worldgraph.PackedLayout, LayoutVersion: worldgraph.PackedLayoutVersion,
@@ -329,40 +359,43 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 	for _, shard := range state.OccupiedShards {
 		occupied[globalShardStateKey(shard)] = shard
 	}
-	packed := make(map[string]struct{}, len(state.PackedShards))
-	validPacked := make([]string, 0, len(state.PackedShards))
-	state.Counts.Chunks, state.Counts.Edges = 0, 0
-	recovered := false
+	recorded := make(map[string]struct{}, len(state.PackedShards))
 	for _, key := range state.PackedShards {
-		shard, ok := occupied[key]
-		if !ok {
+		if _, ok := occupied[key]; !ok {
 			return worldgraph.Manifest{}, fmt.Errorf("%w: packed shard %q is not occupied", ErrGlobalBuildStateMismatch, key)
 		}
+		if _, duplicate := recorded[key]; duplicate {
+			return worldgraph.Manifest{}, fmt.Errorf("%w: duplicate packed shard %q", ErrGlobalBuildStateMismatch, key)
+		}
+		recorded[key] = struct{}{}
+	}
+
+	// Synced shard files are their own recovery journal. Discover all valid
+	// occupied shards in one O(N) pass so progress does not rewrite and rescan
+	// the entire work/store tree after every shard.
+	packed := make(map[string]struct{}, len(state.OccupiedShards))
+	validPacked := make([]string, 0, len(state.OccupiedShards))
+	state.Counts.Chunks, state.Counts.Edges = 0, 0
+	for _, shard := range state.OccupiedShards {
+		key := globalShardStateKey(shard)
 		chunks, edges, inspectErr := stage.ValidateShard(ctx, shard)
-		if inspectErr == nil {
-			state.Counts.Chunks += int64(chunks)
-			state.Counts.Edges += edges
-			validPacked = append(validPacked, key)
-			packed[key] = struct{}{}
+		if inspectErr != nil {
+			if err := ctx.Err(); err != nil {
+				return worldgraph.Manifest{}, err
+			}
 			continue
 		}
-		if err := ctx.Err(); err != nil {
-			return worldgraph.Manifest{}, err
-		}
-		if err := stage.ResetShard(shard); err != nil {
-			return worldgraph.Manifest{}, fmt.Errorf("recover packed shard %q after %v: %w", key, inspectErr, err)
-		}
-		recovered = true
+		state.Counts.Chunks += int64(chunks)
+		state.Counts.Edges += edges
+		validPacked = append(validPacked, key)
+		packed[key] = struct{}{}
 	}
+	sort.Strings(validPacked)
 	state.PackedShards = validPacked
 	if len(packed) != len(state.OccupiedShards) {
 		state.uncompleteStage("write-packs")
 	}
-	if recovered {
-		if err := persist("write-packs", false, true); err != nil {
-			return worldgraph.Manifest{}, err
-		}
-	}
+
 	if !state.hasStage("write-packs") {
 		for _, shard := range state.OccupiedShards {
 			if err := ctx.Err(); err != nil {
@@ -392,13 +425,19 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 			}
 			state.Counts.Chunks += int64(chunks)
 			state.Counts.Edges += edges
-			state.PackedShards = append(state.PackedShards, key)
-			sort.Strings(state.PackedShards)
 			packed[key] = struct{}{}
-			if err := persist("write-packs", false, true); err != nil {
+			if options.Progress != nil {
+				options.Progress(GlobalProgress{Stage: "write-packs", Counts: state.Counts, Elapsed: time.Since(started)})
+			}
+			if err := ctx.Err(); err != nil {
 				return worldgraph.Manifest{}, err
 			}
 		}
+		state.PackedShards = state.PackedShards[:0]
+		for key := range packed {
+			state.PackedShards = append(state.PackedShards, key)
+		}
+		sort.Strings(state.PackedShards)
 		if err := complete("write-packs"); err != nil {
 			return worldgraph.Manifest{}, err
 		}
@@ -476,6 +515,77 @@ func globalSortRecordLimit(memoryBytes int64, recordBytes int) int {
 		return 1
 	}
 	return int(limit)
+}
+
+func validateLegacyGlobalBuildArtifacts(waysPath, referencesPath, sortedReferencesPath, nodesPath string, counts GlobalCounts) error {
+	ways, err := os.Stat(waysPath)
+	if err != nil {
+		return fmt.Errorf("%w: validate legacy way spool: %v", ErrGlobalBuildStateMismatch, err)
+	}
+	if !ways.Mode().IsRegular() {
+		return fmt.Errorf("%w: legacy way spool is not a regular file", ErrGlobalBuildStateMismatch)
+	}
+	checks := []struct {
+		path        string
+		description string
+		records     int64
+		recordBytes int64
+	}{
+		{referencesPath, "raw references", counts.References, int64RecordBytes},
+		{sortedReferencesPath, "sorted references", counts.Nodes, int64RecordBytes},
+		{nodesPath, "selected nodes", counts.Nodes, globalNodeRecordBytes},
+	}
+	for _, check := range checks {
+		if check.records < 0 || check.records > math.MaxInt64/check.recordBytes {
+			return fmt.Errorf("%w: legacy %s count is invalid", ErrGlobalBuildStateMismatch, check.description)
+		}
+		info, err := os.Stat(check.path)
+		if err != nil {
+			return fmt.Errorf("%w: validate legacy %s: %v", ErrGlobalBuildStateMismatch, check.description, err)
+		}
+		expected := check.records * check.recordBytes
+		if !info.Mode().IsRegular() || info.Size() != expected {
+			return fmt.Errorf("%w: legacy %s size %d, want %d", ErrGlobalBuildStateMismatch, check.description, info.Size(), expected)
+		}
+	}
+	return nil
+}
+
+func removeGlobalBuildTemporaryMatches(directory string, patterns ...string) error {
+	for _, pattern := range patterns {
+		matches, err := filepath.Glob(filepath.Join(directory, pattern))
+		if err != nil {
+			return err
+		}
+		for _, path := range matches {
+			if filepath.Dir(path) != filepath.Clean(directory) {
+				return fmt.Errorf("global temporary path escaped work directory: %q", path)
+			}
+			if err := os.RemoveAll(path); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func removeGlobalBuildScratchFiles(root, prefix, suffix string) error {
+	if root == "" || prefix == "" || suffix == "" {
+		return fmt.Errorf("global scratch cleanup parameters are required")
+	}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasPrefix(entry.Name(), prefix) || !strings.HasSuffix(entry.Name(), suffix) {
+			return nil
+		}
+		return os.Remove(path)
+	})
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 func removeGlobalBuildArtifacts(paths ...string) error {

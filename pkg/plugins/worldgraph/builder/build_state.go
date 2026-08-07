@@ -21,6 +21,31 @@ const (
 
 var ErrGlobalBuildStateMismatch = errors.New("global build state does not match requested build")
 
+var legacyGlobalBuildStageOrder = []string{
+	"validate-source",
+	"spool-ways-and-refs",
+	"sort-refs",
+	"select-nodes",
+	"partition-contributions",
+	"write-packs",
+	"publish",
+}
+
+func validateLegacyGlobalBuildStageFrontier(state globalBuildState) error {
+	if state.Version != 1 {
+		return nil
+	}
+	if len(state.Completed) > len(legacyGlobalBuildStageOrder) {
+		return ErrGlobalBuildStateMismatch
+	}
+	for index, stage := range state.Completed {
+		if stage != legacyGlobalBuildStageOrder[index] {
+			return fmt.Errorf("%w: unsupported version-one stage frontier at %q", ErrGlobalBuildStateMismatch, stage)
+		}
+	}
+	return nil
+}
+
 type GlobalCounts struct {
 	Ways          int64 `json:"ways"`
 	References    int64 `json:"references"`
@@ -92,13 +117,13 @@ func loadOrCreateGlobalBuildState(workDir string, expected globalBuildState, res
 			return globalBuildState{}, ErrGlobalBuildStateMismatch
 		}
 		if state.Version == 1 && expected.Version == globalBuildStateVersion {
-			state.Version = globalBuildStateVersion
-			if state.identity() != expected.identity() {
+			candidate := state
+			candidate.Version = globalBuildStateVersion
+			if candidate.identity() != expected.identity() {
 				return globalBuildState{}, ErrGlobalBuildStateMismatch
 			}
-			if err := writeGlobalBuildState(path, state); err != nil {
-				return globalBuildState{}, err
-			}
+			// BuildGlobal upgrades the only durable copy after validating the
+			// completed-stage frontier and every artifact needed to continue.
 			return state, nil
 		}
 		if state.identity() != expected.identity() {
