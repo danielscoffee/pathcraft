@@ -3,6 +3,7 @@ package builder
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"math"
@@ -198,48 +199,103 @@ func TestFragmentSpoolValidationAndLimits(t *testing.T) {
 	}
 }
 
-func TestFragmentSpoolWriterBoundsLRUFlushesAndReopens(t *testing.T) {
-	root := t.TempDir()
-	writer, err := newFragmentSpoolWriter(context.Background(), root, 2)
-	if err != nil {
-		t.Fatal(err)
+func TestFragmentSpoolWriterRadixBoundsAndIsDeterministic(t *testing.T) {
+	const shardCount = 257
+	shards := make([]worldgraph.TileID, shardCount)
+	fragments := make([]globalWayFragment, shardCount)
+	for index := range shards {
+		// An odd multiplier spreads adjacent way order across both key bytes.
+		key := uint16(index * 25173)
+		shards[index] = fragmentSpoolShardForKey(key)
+		fragments[index] = fragmentTestWay(t, shards[index], int64(10_000+index*10))
 	}
-	shards := []worldgraph.TileID{
-		{Z: worldgraph.PackedShardZoom, X: 19, Y: 2},
-		{Z: worldgraph.PackedShardZoom, X: 17, Y: 2},
-		{Z: worldgraph.PackedShardZoom, X: 18, Y: 2},
-	}
-	fragments := make([]globalWayFragment, len(shards))
-	for index, shard := range shards {
-		fragments[index] = fragmentTestWay(t, shard, int64(300+index*10))
-		if err := writer.Add(shard, fragments[index]); err != nil {
+
+	write := func(root string, maxOpen int) []fragmentSpoolSummary {
+		t.Helper()
+		writer, err := newFragmentSpoolWriter(context.Background(), root, maxOpen)
+		if err != nil {
 			t.Fatal(err)
 		}
-		if len(writer.open) > 2 || writer.lru.Len() > 2 {
-			t.Fatalf("open descriptors = %d/%d, limit 2", len(writer.open), writer.lru.Len())
+		for round := 0; round < 2; round++ {
+			for offset := range shards {
+				index := offset
+				if round == 1 {
+					index = len(shards) - 1 - offset
+				}
+				if err := writer.Add(shards[index], fragments[index]); err != nil {
+					t.Fatal(err)
+				}
+			}
 		}
+		if _, err := os.Stat(filepath.Join(root, "fragments")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("final fragment tree became visible before Close: %v", err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if writer.openFiles != 0 || writer.openOutputs != 0 {
+			t.Fatalf("writer retained %d files/%d outputs", writer.openFiles, writer.openOutputs)
+		}
+		if writer.peakOpenOutput > maxOpen {
+			t.Fatalf("peak outputs = %d, limit %d", writer.peakOpenOutput, maxOpen)
+		}
+		if writer.peakOpenFiles > maxOpen+1 {
+			t.Fatalf("peak descriptors = %d, limit %d plus one input", writer.peakOpenFiles, maxOpen)
+		}
+		if writer.finalSyncs != len(shards) {
+			t.Fatalf("final Sync calls = %d, want one per %d shards", writer.finalSyncs, len(shards))
+		}
+		if err := writer.Add(shards[0], fragments[0]); err == nil {
+			t.Fatal("Add() after Close() error = nil")
+		}
+		return writer.Summaries()
 	}
-	firstPath, err := fragmentSpoolPath(root, shards[0])
-	if err != nil {
-		t.Fatal(err)
+
+	tinyRoot, widerRoot := t.TempDir(), t.TempDir()
+	tiny := write(tinyRoot, 1)
+	wider := write(widerRoot, 7)
+	if !reflect.DeepEqual(tiny, wider) {
+		t.Fatalf("summaries differ by descriptor limit:\n tiny: %+v\nwider: %+v", tiny, wider)
 	}
-	if info, err := os.Stat(firstPath); err != nil || info.Size() == 0 {
-		t.Fatalf("evicted spool was not flushed: %v, %+v", err, info)
+	if len(tiny) != shardCount {
+		t.Fatalf("summary count = %d, want %d", len(tiny), shardCount)
 	}
-	if err := writer.Add(shards[0], fragments[0]); err != nil {
-		t.Fatal(err)
-	}
-	if len(writer.open) > 2 {
-		t.Fatalf("open descriptors after reopen = %d", len(writer.open))
-	}
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if len(writer.open) != 0 || writer.lru.Len() != 0 {
-		t.Fatalf("writer retained descriptors after close: %d/%d", len(writer.open), writer.lru.Len())
-	}
-	if err := writer.Add(shards[0], fragments[0]); err == nil {
-		t.Fatal("Add() after Close() error = nil")
+	for _, summary := range tiny {
+		if summary.Records != 2 {
+			t.Fatalf("shard %+v records = %d, want 2", summary.Shard, summary.Records)
+		}
+		tinyPath, err := fragmentSpoolPath(tinyRoot, summary.Shard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		widerPath, err := fragmentSpoolPath(widerRoot, summary.Shard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tinyBytes, err := os.ReadFile(tinyPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		widerBytes, err := os.ReadFile(widerPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(tinyBytes, widerBytes) {
+			t.Fatalf("shard %+v bytes differ by descriptor limit", summary.Shard)
+		}
+		if int64(len(tinyBytes)) != summary.Bytes {
+			t.Fatalf("shard %+v bytes = %d, summary %d", summary.Shard, len(tinyBytes), summary.Bytes)
+		}
+		if err := verifyFragmentSpoolSummary(context.Background(), tinyPath, summary); err != nil {
+			t.Fatalf("verify shard %+v: %v", summary.Shard, err)
+		}
+		info, err := os.Stat(tinyPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o600 {
+			t.Fatalf("%s mode = %o, want 600", tinyPath, info.Mode().Perm())
+		}
 	}
 
 	wantShards := append([]worldgraph.TileID(nil), shards...)
@@ -249,40 +305,211 @@ func TestFragmentSpoolWriterBoundsLRUFlushesAndReopens(t *testing.T) {
 		}
 		return wantShards[i].Y < wantShards[j].Y
 	})
-	if got := writer.Shards(); !reflect.DeepEqual(got, wantShards) {
-		t.Fatalf("Shards() = %+v, want %+v", got, wantShards)
+	gotShards := make([]worldgraph.TileID, len(tiny))
+	for index := range tiny {
+		gotShards[index] = tiny[index].Shard
 	}
-	wantPath := filepath.Join(root, "fragments", "1", "19", "2.spool")
-	if firstPath != wantPath {
-		t.Fatalf("fragmentSpoolPath() = %q, want %q", firstPath, wantPath)
+	if !reflect.DeepEqual(gotShards, wantShards) {
+		t.Fatalf("summary shards are not sorted")
 	}
-	for _, shard := range shards {
-		path, err := fragmentSpoolPath(root, shard)
-		if err != nil {
-			t.Fatal(err)
-		}
-		info, err := os.Stat(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if info.Mode().Perm() != 0o600 {
-			t.Fatalf("%s mode = %o, want 600", path, info.Mode().Perm())
-		}
-	}
+}
 
-	file, err := os.Open(firstPath)
+func TestReplayFragmentSpoolVerifiedChecksSummaryDuringExpansion(t *testing.T) {
+	shard := worldgraph.TileID{Z: worldgraph.PackedShardZoom, X: 19, Y: 2}
+	fragment := fragmentTestWay(t, shard, 19_000)
+	root := t.TempDir()
+	writer, err := newFragmentSpoolWriter(context.Background(), root, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
-	for index := 0; index < 2; index++ {
-		got, ok, err := readFragmentSpoolRecord(file, shards[0])
-		if err != nil || !ok || !reflect.DeepEqual(got, fragments[0]) {
-			t.Fatalf("reopened record %d = %+v, %v, %v", index, got, ok, err)
+	for range 2 {
+		if err := writer.Add(shard, fragment); err != nil {
+			t.Fatal(err)
 		}
 	}
-	if _, ok, err := readFragmentSpoolRecord(file, shards[0]); err != nil || ok {
-		t.Fatalf("record after reopened records = %v, %v", ok, err)
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	summaries := writer.Summaries()
+	if len(summaries) != 1 {
+		t.Fatalf("summaries = %+v", summaries)
+	}
+	path, err := fragmentSpoolPath(root, shard)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var contributions []edgeContribution
+	if err := replayFragmentSpoolVerified(context.Background(), path, summaries[0], func(contribution edgeContribution) error {
+		contributions = append(contributions, contribution)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(contributions) != 4 {
+		t.Fatalf("verified replay contributions = %d, want 4", len(contributions))
+	}
+
+	tests := []struct {
+		name   string
+		change func(*fragmentSpoolSummary)
+	}{
+		{name: "records", change: func(summary *fragmentSpoolSummary) { summary.Records++ }},
+		{name: "bytes", change: func(summary *fragmentSpoolSummary) { summary.Bytes++ }},
+		{name: "digest", change: func(summary *fragmentSpoolSummary) { summary.SHA256 = strings.Repeat("0", sha256.Size*2) }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			expected := summaries[0]
+			test.change(&expected)
+			consumed := 0
+			err := replayFragmentSpoolVerified(context.Background(), path, expected, func(edgeContribution) error {
+				consumed++
+				return nil
+			})
+			if !errors.Is(err, ErrFragmentSpoolSummaryMismatch) {
+				t.Fatalf("verified replay error = %v, want summary mismatch", err)
+			}
+			if consumed != len(contributions) {
+				t.Fatalf("verified replay consumed %d contributions before final verification, want %d", consumed, len(contributions))
+			}
+		})
+	}
+
+	invalid := summaries[0]
+	invalid.SHA256 = "not-a-digest"
+	consumed := false
+	if err := replayFragmentSpoolVerified(context.Background(), path, invalid, func(edgeContribution) error {
+		consumed = true
+		return nil
+	}); err == nil || errors.Is(err, ErrFragmentSpoolSummaryMismatch) {
+		t.Fatalf("invalid summary error = %v", err)
+	}
+	if consumed {
+		t.Fatal("invalid summary reached consumer")
+	}
+}
+
+func TestFragmentSpoolSummaryDetectsCleanRecordBoundaryDamage(t *testing.T) {
+	shard := worldgraph.TileID{Z: worldgraph.PackedShardZoom, X: 19, Y: 2}
+	fragment := fragmentTestWay(t, shard, 20_000)
+	root := t.TempDir()
+	writer, err := newFragmentSpoolWriter(context.Background(), root, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Add(shard, fragment); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Add(shard, fragment); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	summaries := writer.Summaries()
+	if len(summaries) != 1 || summaries[0].Records != 2 {
+		t.Fatalf("summaries = %+v", summaries)
+	}
+	path, err := fragmentSpoolPath(root, shard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstRecordBytes := 4 + int(binary.BigEndian.Uint32(contents[:4]))
+	if err := os.WriteFile(path, contents[:firstRecordBytes], 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := replayFragmentSpool(context.Background(), path, shard, func(edgeContribution) error { return nil }); err != nil {
+		t.Fatalf("clean-boundary truncation is structurally valid: %v", err)
+	}
+	consumed := 0
+	if err := replayFragmentSpoolVerified(context.Background(), path, summaries[0], func(edgeContribution) error {
+		consumed++
+		return nil
+	}); !errors.Is(err, ErrFragmentSpoolSummaryMismatch) {
+		t.Fatalf("verified replay of truncated spool error = %v, want summary mismatch", err)
+	}
+	if consumed == 0 {
+		t.Fatal("verified replay did not expand the intact record before final verification")
+	}
+	if err := verifyFragmentSpoolSummary(context.Background(), path, summaries[0]); !errors.Is(err, ErrFragmentSpoolSummaryMismatch) {
+		t.Fatalf("verify truncated spool error = %v, want summary mismatch", err)
+	}
+}
+
+func TestFragmentSpoolWriterAddFailureDoesNotInstallPartialTree(t *testing.T) {
+	root := t.TempDir()
+	shard := worldgraph.TileID{Z: worldgraph.PackedShardZoom, X: 37, Y: 91}
+	writer, err := newFragmentSpoolWriter(context.Background(), root, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Add(shard, fragmentTestWay(t, shard, 29_000)); err != nil {
+		t.Fatal(err)
+	}
+	invalid := fragmentTestWay(t, shard, 29_010)
+	invalid.Highway = ""
+	addErr := writer.Add(shard, invalid)
+	if addErr == nil {
+		t.Fatal("invalid Add() error = nil")
+	}
+	if err := writer.Add(shard, fragmentTestWay(t, shard, 29_020)); err == nil {
+		t.Fatal("Add() after failure error = nil")
+	}
+	if err := writer.Close(); err == nil || !strings.Contains(err.Error(), addErr.Error()) {
+		t.Fatalf("Close() error = %v, want original Add error %v", err, addErr)
+	}
+	if summaries := writer.Summaries(); len(summaries) != 0 {
+		t.Fatalf("failed writer summaries = %+v", summaries)
+	}
+	for _, path := range []string{filepath.Join(root, "fragments"), filepath.Join(root, ".fragment-radix-work")} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("failed writer retained %s: %v", path, err)
+		}
+	}
+}
+
+func TestFragmentSpoolWriterCleansInterruptedPrivateTree(t *testing.T) {
+	root := t.TempDir()
+	workPath := filepath.Join(root, ".fragment-radix-work", "abandoned.bucket")
+	stalePath := filepath.Join(root, "fragments", "stale.spool")
+	for _, path := range []string{workPath, stalePath} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("stale"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writer, err := newFragmentSpoolWriter(context.Background(), root, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stalePath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stale final fragment survived recovery: %v", err)
+	}
+	shard := worldgraph.TileID{Z: worldgraph.PackedShardZoom, X: 211, Y: 37}
+	fragment := fragmentTestWay(t, shard, 30_000)
+	if err := writer.Add(shard, fragment); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".fragment-radix-work")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("completed writer retained crash marker: %v", err)
+	}
+	path, err := fragmentSpoolPath(root, shard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := verifyFragmentSpoolSummary(context.Background(), path, writer.Summaries()[0]); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -427,7 +654,8 @@ func TestFragmentSpoolCancellation(t *testing.T) {
 	shard := worldgraph.TileID{Z: worldgraph.PackedShardZoom, X: 17, Y: 128}
 	fragment := fragmentTestWay(t, shard, 700)
 	ctx, cancel := context.WithCancel(context.Background())
-	writer, err := newFragmentSpoolWriter(ctx, t.TempDir(), 1)
+	root := t.TempDir()
+	writer, err := newFragmentSpoolWriter(ctx, root, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,6 +665,11 @@ func TestFragmentSpoolCancellation(t *testing.T) {
 	}
 	if err := writer.Close(); !errors.Is(err, context.Canceled) {
 		t.Fatalf("Close() error = %v, want context.Canceled", err)
+	}
+	for _, path := range []string{filepath.Join(root, "fragments"), filepath.Join(root, ".fragment-radix-work")} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("cancelled writer retained %s: %v", path, err)
+		}
 	}
 	if _, err := newFragmentSpoolWriter(ctx, t.TempDir(), 1); !errors.Is(err, context.Canceled) {
 		t.Fatalf("newFragmentSpoolWriter() error = %v, want context.Canceled", err)
