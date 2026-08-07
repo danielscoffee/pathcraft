@@ -10,6 +10,17 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
+func TestContributionStoreDisablesSyncForReconstructibleScratch(t *testing.T) {
+	store, err := openContributionStore(filepath.Join(t.TempDir(), "scratch.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if !store.db.NoSync {
+		t.Fatal("contribution scratch database sync is enabled")
+	}
+}
+
 func TestContributionBucketsRejectStructuralLimits(t *testing.T) {
 	db, err := bolt.Open(filepath.Join(t.TempDir(), "limits.db"), 0o600, nil)
 	if err != nil {

@@ -38,7 +38,10 @@ type contributionStore struct {
 }
 
 func openContributionStore(path string) (*contributionStore, error) {
-	db, err := bolt.Open(path, 0o600, &bolt.Options{Timeout: time.Second})
+	// Contribution databases are reconstructible, process-local scratch. The
+	// immutable chunk/pack publication path supplies the required durability;
+	// syncing every scratch transaction would add millions of HDD barriers.
+	db, err := bolt.Open(path, 0o600, &bolt.Options{Timeout: time.Second, NoSync: true})
 	if err != nil {
 		return nil, err
 	}

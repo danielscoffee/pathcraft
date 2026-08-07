@@ -200,6 +200,20 @@ func (writer *fragmentSpoolWriter) Add(shard worldgraph.TileID, fragment globalW
 	return nil
 }
 
+func (writer *fragmentSpoolWriter) Abort() error {
+	if writer == nil || writer.closed {
+		return nil
+	}
+	writer.closed = true
+	var closeErr error
+	if writer.journal != nil {
+		closeErr = writer.journal.Close()
+		writer.openFiles--
+	}
+	writer.journal, writer.journalBuffer = nil, nil
+	return errors.Join(closeErr, writer.cleanupIncompleteFragmentTree())
+}
+
 func (writer *fragmentSpoolWriter) Close() error {
 	if writer == nil || writer.closed {
 		return nil

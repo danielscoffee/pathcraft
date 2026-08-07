@@ -650,6 +650,29 @@ func TestFragmentSpoolAcceptsMercatorLimitAndRejectsPolarOverflow(t *testing.T) 
 	}
 }
 
+func TestFragmentSpoolAbortDiscardsJournalWithoutInstallingTree(t *testing.T) {
+	root := t.TempDir()
+	shard := worldgraph.TileID{Z: worldgraph.PackedShardZoom, X: 17, Y: 128}
+	writer, err := newFragmentSpoolWriter(context.Background(), root, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Add(shard, fragmentTestWay(t, shard, 700)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Abort(); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Abort(); err != nil {
+		t.Fatalf("second Abort() error = %v", err)
+	}
+	for _, path := range []string{filepath.Join(root, ".fragment-radix-work"), filepath.Join(root, "fragments")} {
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("aborted writer retained %q: %v", path, err)
+		}
+	}
+}
+
 func TestFragmentSpoolCancellation(t *testing.T) {
 	shard := worldgraph.TileID{Z: worldgraph.PackedShardZoom, X: 17, Y: 128}
 	fragment := fragmentTestWay(t, shard, 700)

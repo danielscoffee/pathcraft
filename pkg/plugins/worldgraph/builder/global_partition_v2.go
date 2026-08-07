@@ -151,7 +151,12 @@ func partitionGlobalFragments(
 		}
 	}
 	resolvedCloseErr := resolved.Close()
-	writerCloseErr := writer.Close()
+	var writerCloseErr error
+	if replayErr != nil || resolvedCloseErr != nil {
+		writerCloseErr = writer.Abort()
+	} else {
+		writerCloseErr = writer.Close()
+	}
 	if replayErr != nil || resolvedCloseErr != nil || writerCloseErr != nil {
 		return nil, globalFragmentCounts{}, errors.Join(replayErr, resolvedCloseErr, writerCloseErr)
 	}
