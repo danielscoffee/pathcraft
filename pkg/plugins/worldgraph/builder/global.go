@@ -167,12 +167,8 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 		}); err != nil {
 			return worldgraph.Manifest{}, err
 		}
-		index, err := openGlobalNodeIndex(nodesPath)
+		state.Counts.Nodes, err = globalNodeRecordCount(nodesPath)
 		if err != nil {
-			return worldgraph.Manifest{}, err
-		}
-		state.Counts.Nodes = index.count
-		if err := index.Close(); err != nil {
 			return worldgraph.Manifest{}, err
 		}
 		if err := complete("select-nodes"); err != nil {

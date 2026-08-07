@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"bufio"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -45,9 +46,10 @@ func openGlobalNodeIndex(path string) (*globalNodeIndex, error) {
 		return nil, errors.Join(fmt.Errorf("%w: global node index size %d", ErrTruncatedFixedRecord, info.Size()), file.Close())
 	}
 	index := &globalNodeIndex{file: file, count: info.Size() / globalNodeRecordBytes}
+	reader := bufio.NewReaderSize(file, 4<<20)
 	var previous int64
 	for position := int64(0); position < index.count; position++ {
-		record, err := index.readRecord(position)
+		record, err := readSequentialGlobalNodeRecord(reader)
 		if err != nil {
 			return nil, errors.Join(err, file.Close())
 		}
@@ -57,6 +59,31 @@ func openGlobalNodeIndex(path string) (*globalNodeIndex, error) {
 		previous = record.ID
 	}
 	return index, nil
+}
+
+func globalNodeRecordCount(path string) (int64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	if !info.Mode().IsRegular() {
+		return 0, fmt.Errorf("global node index is not a regular file")
+	}
+	if info.Size()%globalNodeRecordBytes != 0 {
+		return 0, fmt.Errorf("%w: global node index size %d", ErrTruncatedFixedRecord, info.Size())
+	}
+	return info.Size() / globalNodeRecordBytes, nil
+}
+
+func readSequentialGlobalNodeRecord(reader io.Reader) (globalNodeRecord, error) {
+	var encoded [globalNodeRecordBytes]byte
+	if _, err := io.ReadFull(reader, encoded[:]); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return globalNodeRecord{}, fmt.Errorf("%w: global node record", ErrTruncatedFixedRecord)
+		}
+		return globalNodeRecord{}, err
+	}
+	return decodeGlobalNodeRecord(encoded[:])
 }
 
 func (index *globalNodeIndex) Get(id int64) (worldgraph.Node, bool, error) {
