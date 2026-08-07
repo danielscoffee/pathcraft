@@ -93,6 +93,13 @@ func TestBuildGlobalResumesStagesAndPublishesPackedGeneration(t *testing.T) {
 		state.Counts.Segments != 3 || state.Counts.Fragments != 3 || state.Counts.Contributions == 0 {
 		t.Fatalf("final state = %+v", state)
 	}
+	workBytes, err := directoryBytes(workDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Counts.WorkBytes != workBytes {
+		t.Fatalf("checkpoint work bytes = %d, measured %d", state.Counts.WorkBytes, workBytes)
+	}
 	for _, obsolete := range []string{
 		"ways.spool", "references.raw", "references.sorted", "nodes.idx",
 		"way-node-requests.raw", "way-node-requests.sorted",

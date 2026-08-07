@@ -150,8 +150,20 @@ func loadOrCreateGlobalBuildState(workDir string, expected globalBuildState, res
 	return expected, nil
 }
 
-func writeGlobalBuildState(path string, state globalBuildState) error {
+func encodeGlobalBuildState(state globalBuildState) ([]byte, error) {
 	if err := validateGlobalBuildState(state); err != nil {
+		return nil, err
+	}
+	encoded, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(encoded, '\n'), nil
+}
+
+func writeGlobalBuildState(path string, state globalBuildState) error {
+	encoded, err := encodeGlobalBuildState(state)
+	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -172,9 +184,7 @@ func writeGlobalBuildState(path string, state globalBuildState) error {
 	if err := file.Chmod(0o600); err != nil {
 		return err
 	}
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(state); err != nil {
+	if _, err := file.Write(encoded); err != nil {
 		return err
 	}
 	if err := file.Sync(); err != nil {

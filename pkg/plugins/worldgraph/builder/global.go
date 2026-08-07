@@ -99,8 +99,33 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 		if measureErr != nil {
 			return fmt.Errorf("measure global store directory: %w", measureErr)
 		}
-		state.Counts.WorkBytes = workBytes
+		stateInfo, measureErr := os.Stat(statePath)
+		if measureErr != nil {
+			return fmt.Errorf("measure global build state: %w", measureErr)
+		}
+		workBytesWithoutState := workBytes - stateInfo.Size()
+		if workBytesWithoutState < 0 {
+			return fmt.Errorf("global work-byte accounting underflow")
+		}
 		state.Counts.StoreBytes = storeBytes
+		for attempt := 0; attempt < 4; attempt++ {
+			encoded, encodeErr := encodeGlobalBuildState(state)
+			if encodeErr != nil {
+				return encodeErr
+			}
+			exactWorkBytes := workBytesWithoutState + int64(len(encoded))
+			if state.Counts.WorkBytes == exactWorkBytes {
+				break
+			}
+			state.Counts.WorkBytes = exactWorkBytes
+		}
+		encoded, encodeErr := encodeGlobalBuildState(state)
+		if encodeErr != nil {
+			return encodeErr
+		}
+		if state.Counts.WorkBytes != workBytesWithoutState+int64(len(encoded)) {
+			return fmt.Errorf("global work-byte accounting did not converge")
+		}
 		if err := writeGlobalBuildState(statePath, state); err != nil {
 			return err
 		}
