@@ -73,7 +73,7 @@ func cmdChunksBuildGlobal(ctx context.Context, args []string) error {
 	workDir := fs.String("work-dir", "", "Restartable build work directory")
 	runMemoryMB := fs.Int64("run-memory-mb", 512, "External-sort memory in MiB")
 	packMB := fs.Int64("pack-mb", 1024, "Maximum pack segment size in MiB")
-	openShards := fs.Int("open-shards", 64, "Maximum open shard spool files")
+	openShards := fs.Int("open-shards", 64, "Maximum fragment radix output files (plus one input)")
 	resume := fs.Bool("resume", true, "Resume matching completed work")
 	zoom := fs.Int("zoom", 12, "Fixed global routing zoom")
 	if err := fs.Parse(args); err != nil {
