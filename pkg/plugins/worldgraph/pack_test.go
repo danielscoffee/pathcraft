@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -80,6 +81,124 @@ func TestPackWriterSplitsAndIndexesChunks(t *testing.T) {
 			t.Fatalf("segment %d mode = %o, want 600", segment, mode)
 		}
 	}
+}
+
+func TestWritePackedShardFromMatchesBatchBytes(t *testing.T) {
+	shard := TileID{Z: PackedShardZoom, X: 17, Y: 2}
+	chunks := []Chunk{
+		{Tile: mustPackedTile(t, shard, 0)},
+		{Tile: mustPackedTile(t, shard, 17)},
+		{Tile: mustPackedTile(t, shard, 255)},
+	}
+	first := mustEncodeChunk(t, chunks[0])
+	second := mustEncodeChunk(t, chunks[1])
+	maxSegmentBytes := int64(len(first) + len(second))
+
+	batchRoot := t.TempDir()
+	if err := WritePackedShard(context.Background(), batchRoot, shard, chunks, maxSegmentBytes); err != nil {
+		t.Fatal(err)
+	}
+	streamRoot := t.TempDir()
+	position := 0
+	if err := WritePackedShardFrom(context.Background(), streamRoot, shard, func() (Chunk, bool, error) {
+		if position == len(chunks) {
+			return Chunk{}, false, nil
+		}
+		chunk := chunks[position]
+		position++
+		return chunk, true, nil
+	}, maxSegmentBytes); err != nil {
+		t.Fatal(err)
+	}
+	if position != len(chunks) {
+		t.Fatalf("source returned %d chunks, want %d", position, len(chunks))
+	}
+
+	batchFiles := readPackFileTree(t, batchRoot)
+	streamFiles := readPackFileTree(t, streamRoot)
+	if !reflect.DeepEqual(streamFiles, batchFiles) {
+		t.Fatalf("streamed packed shard differs from batch output")
+	}
+}
+
+func TestWritePackedShardFromSerializesBeforeFetchingNextChunk(t *testing.T) {
+	root := t.TempDir()
+	shard := TileID{Z: PackedShardZoom, X: 17, Y: 2}
+	prefix, err := shardPackPrefix(root, shard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	position := 0
+	var previousSize int64
+	next := func() (Chunk, bool, error) {
+		if position > 0 {
+			info, err := os.Stat(packSegmentPath(prefix, 0))
+			if err != nil {
+				return Chunk{}, false, err
+			}
+			if info.Size() <= previousSize {
+				return Chunk{}, false, fmt.Errorf("pack size %d did not grow before source call %d", info.Size(), position+1)
+			}
+			previousSize = info.Size()
+		}
+		if position == packedShardSlots {
+			return Chunk{}, false, nil
+		}
+		chunk := Chunk{Tile: mustPackedTile(t, shard, uint8(position))}
+		position++
+		return chunk, true, nil
+	}
+	if err := WritePackedShardFrom(context.Background(), root, shard, next, DefaultPackSegmentBytes); err != nil {
+		t.Fatal(err)
+	}
+	if position != packedShardSlots {
+		t.Fatalf("source returned %d chunks, want %d", position, packedShardSlots)
+	}
+	index, err := loadShardIndex(context.Background(), shardIndexPath(prefix))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(index.Entries) != packedShardSlots {
+		t.Fatalf("index has %d entries, want %d", len(index.Entries), packedShardSlots)
+	}
+}
+
+func TestWritePackedShardFromCancellationRemovesArtifacts(t *testing.T) {
+	root := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	shard := TileID{Z: PackedShardZoom, X: 3, Y: 4}
+	position := 0
+	err := WritePackedShardFrom(ctx, root, shard, func() (Chunk, bool, error) {
+		if position == 1 {
+			cancel()
+		}
+		chunk := Chunk{Tile: mustPackedTile(t, shard, uint8(position))}
+		position++
+		return chunk, true, nil
+	}, DefaultPackSegmentBytes)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("WritePackedShardFrom() error = %v, want context.Canceled", err)
+	}
+	assertNoPackArtifacts(t, root)
+}
+
+func TestWritePackedShardFromSourceFailureRemovesArtifacts(t *testing.T) {
+	root := t.TempDir()
+	shard := TileID{Z: PackedShardZoom, X: 3, Y: 4}
+	failure := errors.New("source failed")
+	position := 0
+	err := WritePackedShardFrom(context.Background(), root, shard, func() (Chunk, bool, error) {
+		if position == 1 {
+			return Chunk{}, false, failure
+		}
+		chunk := Chunk{Tile: mustPackedTile(t, shard, 0)}
+		position++
+		return chunk, true, nil
+	}, DefaultPackSegmentBytes)
+	if !errors.Is(err, failure) {
+		t.Fatalf("WritePackedShardFrom() error = %v, want source failure", err)
+	}
+	assertNoPackArtifacts(t, root)
 }
 
 func TestPackWriterRejectsInvalidOrder(t *testing.T) {
@@ -279,6 +398,43 @@ func writePackSegment(t *testing.T, data []byte) string {
 		t.Fatal(err)
 	}
 	return prefix
+}
+
+func readPackFileTree(t *testing.T, root string) map[string][]byte {
+	t.Helper()
+	files := make(map[string][]byte)
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		relative, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		files[relative], err = os.ReadFile(path)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
+func assertNoPackArtifacts(t *testing.T, root string) {
+	t.Helper()
+	if err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if extension := filepath.Ext(path); extension == ".pack" || extension == ".idx" {
+			t.Fatalf("packed shard artifact remains after cancellation: %s", path)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func assertNoPackFiles(t *testing.T, root string) {

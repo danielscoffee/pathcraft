@@ -598,19 +598,27 @@ func buildPackedShardFromFragmentSpool(
 		rightX, rightY := tiles[j].X&(width-1), tiles[j].Y&(width-1)
 		return leftY*width+leftX < rightY*width+rightX
 	})
-	chunks := make([]worldgraph.Chunk, 0, len(tiles))
+	position := 0
 	var ownedEdges int64
-	for _, tile := range tiles {
+	next := func() (worldgraph.Chunk, bool, error) {
+		if position == len(tiles) {
+			if err := store.Close(); err != nil {
+				return worldgraph.Chunk{}, false, err
+			}
+			closed = true
+			return worldgraph.Chunk{}, false, nil
+		}
+		tile := tiles[position]
 		actual, err := packedBuilderShard(tile)
 		if err != nil || actual != shard {
-			return 0, 0, fmt.Errorf("fragment spool produced tile %+v outside shard %+v", tile, shard)
+			return worldgraph.Chunk{}, false, fmt.Errorf("fragment spool produced tile %+v outside shard %+v", tile, shard)
 		}
 		chunk, found, err := store.Chunk(ctx, tile)
 		if err != nil {
-			return 0, 0, err
+			return worldgraph.Chunk{}, false, err
 		}
 		if !found {
-			return 0, 0, fmt.Errorf("fragment contribution tile %+v disappeared", tile)
+			return worldgraph.Chunk{}, false, fmt.Errorf("fragment contribution tile %+v disappeared", tile)
 		}
 		normalized := normalizeChunk(chunk)
 		for _, edge := range normalized.Edges {
@@ -618,14 +626,11 @@ func buildPackedShardFromFragmentSpool(
 				ownedEdges++
 			}
 		}
-		chunks = append(chunks, normalized)
+		position++
+		return normalized, true, nil
 	}
-	if err := store.Close(); err != nil {
+	if err := worldgraph.WritePackedShardFrom(ctx, stageRoot, shard, next, maxSegmentBytes); err != nil {
 		return 0, 0, err
 	}
-	closed = true
-	if err := worldgraph.WritePackedShard(ctx, stageRoot, shard, chunks, maxSegmentBytes); err != nil {
-		return 0, 0, err
-	}
-	return len(chunks), ownedEdges, nil
+	return position, ownedEdges, nil
 }

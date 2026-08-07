@@ -230,6 +230,33 @@ func WritePackedShard(ctx context.Context, root string, shard TileID, chunks []C
 	if len(chunks) == 0 {
 		return fmt.Errorf("packed shard %+v has no chunks", shard)
 	}
+	position := 0
+	return WritePackedShardFrom(ctx, root, shard, func() (Chunk, bool, error) {
+		if position == len(chunks) {
+			return Chunk{}, false, nil
+		}
+		chunk := chunks[position]
+		position++
+		return chunk, true, nil
+	}, maxSegmentBytes)
+}
+
+// WritePackedShardFrom pulls sorted chunks one at a time and writes their immutable shard index beneath root.
+// The source must return chunks in strictly increasing packed-shard slot order. A false result ends the stream.
+// Each chunk is encoded and appended before the source is called for the next chunk.
+func WritePackedShardFrom(
+	ctx context.Context,
+	root string,
+	shard TileID,
+	next func() (Chunk, bool, error),
+	maxSegmentBytes int64,
+) error {
+	if ctx == nil {
+		return fmt.Errorf("packed shard context is nil")
+	}
+	if next == nil {
+		return fmt.Errorf("packed shard chunk source is nil")
+	}
 	writer, err := newShardPackWriter(ctx, root, shard, packWriterOptions{MaxSegmentBytes: maxSegmentBytes})
 	if err != nil {
 		return err
@@ -240,10 +267,25 @@ func WritePackedShard(ctx context.Context, root string, shard TileID, chunks []C
 			_ = writer.Abort()
 		}
 	}()
-	for _, chunk := range chunks {
+	chunkCount := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		chunk, ok, err := next()
+		if err != nil {
+			return err
+		}
+		if !ok {
+			break
+		}
 		if err := writer.Append(chunk.Tile, chunk); err != nil {
 			return err
 		}
+		chunkCount++
+	}
+	if chunkCount == 0 {
+		return fmt.Errorf("packed shard %+v has no chunks", shard)
 	}
 	index, err := writer.Close()
 	if err != nil {
