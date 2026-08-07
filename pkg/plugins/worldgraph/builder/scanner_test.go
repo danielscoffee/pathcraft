@@ -187,6 +187,50 @@ func TestScanRejectsWrongPrimitiveBlockScalarWireType(t *testing.T) {
 	}
 }
 
+func TestValidatePBFAcceptsPlanetSizedDenseBlock(t *testing.T) {
+	const nodes = 288_000
+	column := bytes.Repeat([]byte{0}, nodes)
+	dense := testPBFBytesField(nil, 1, column)
+	dense = testPBFBytesField(dense, 8, column)
+	dense = testPBFBytesField(dense, 9, column)
+	group := testPBFBytesField(nil, 2, dense)
+	stringTable := testPBFBytesField(nil, 1, nil)
+	block := testPBFBytesField(nil, 1, stringTable)
+	block = testPBFBytesField(block, 2, group)
+
+	if err := validatePBFPrimitiveBlock(block, DefaultMaxWayNodes); err != nil {
+		t.Fatalf("validatePBFPrimitiveBlock() error = %v", err)
+	}
+}
+
+func TestScanStreamsPlanetSizedDenseBlocks(t *testing.T) {
+	const (
+		nodesPerBlock = 288_000
+		blocks        = 3
+	)
+	column := bytes.Repeat([]byte{0}, nodesPerBlock)
+	dense := testPBFBytesField(nil, 1, column)
+	dense = testPBFBytesField(dense, 8, column)
+	dense = testPBFBytesField(dense, 9, column)
+	group := testPBFBytesField(nil, 2, dense)
+	stringTable := testPBFBytesField(nil, 1, nil)
+	block := testPBFBytesField(nil, 1, stringTable)
+	block = testPBFBytesField(block, 2, group)
+	encoded := testPBFZlibFileBlock("OSMData", block)
+	path := writeTestPBF(t, bytes.Repeat(encoded, blocks))
+
+	count := 0
+	if err := ScanNodes(context.Background(), path, func(nodes []worldgraph.Node) error {
+		count += len(nodes)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if count != nodesPerBlock*blocks {
+		t.Fatalf("scanned nodes = %d, want %d", count, nodesPerBlock*blocks)
+	}
+}
+
 func TestScanRejectsCompressedDenseEntityBomb(t *testing.T) {
 	column := bytes.Repeat([]byte{0}, maxPBFEntitiesPerBlock+1)
 	dense := testPBFBytesField(nil, 1, column)
@@ -311,6 +355,16 @@ func TestValidatedScannerUsesPrivateSnapshot(t *testing.T) {
 	}
 }
 
+func TestScanPropagatesConsumerErrors(t *testing.T) {
+	want := errors.New("stop scan")
+	if err := ScanNodes(context.Background(), seamFixturePath(), func([]worldgraph.Node) error { return want }); !errors.Is(err, want) {
+		t.Fatalf("ScanNodes() error = %v, want consumer error", err)
+	}
+	if err := ScanWays(context.Background(), seamFixturePath(), func(Way) error { return want }); !errors.Is(err, want) {
+		t.Fatalf("ScanWays() error = %v, want consumer error", err)
+	}
+}
+
 func TestScanHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -319,6 +373,16 @@ func TestScanHonorsCancellation(t *testing.T) {
 	}
 	if err := ScanWays(ctx, seamFixturePath(), func(Way) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("ScanWays() error = %v, want context.Canceled", err)
+	}
+}
+
+func TestCopyGlobalNodeAcceptsPolarCoordinates(t *testing.T) {
+	node, err := copyGlobalNode(&paul.Node{ID: 1, Lon: 0, Lat: 90})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if node.Lat != 90 {
+		t.Fatalf("node = %+v", node)
 	}
 }
 

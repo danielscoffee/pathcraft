@@ -106,6 +106,54 @@ func TestBuildGlobalResumesStagesAndPublishesPackedGeneration(t *testing.T) {
 	}
 }
 
+func TestBuildGlobalPreservesPolarReferencesWithoutPublishingPolarEdges(t *testing.T) {
+	pbf := writeGlobalFixturePBF(t, []globalFixtureNode{
+		{id: 1, lon: 0, lat: 80},
+		{id: 2, lon: 0, lat: 90},
+		{id: 3, lon: 0.010, lat: 80},
+		{id: 4, lon: 0.011, lat: 80},
+	}, []globalFixtureWay{{id: 100, nodeIDs: []int64{1, 2, 3, 4}, name: "Polar"}})
+	root := t.TempDir()
+	manifest, err := BuildGlobal(context.Background(), GlobalOptions{
+		PBFPath: pbf, StorePath: filepath.Join(root, "store"), WorkDir: filepath.Join(root, "work"),
+		RunMemoryBytes: 24, PackSegmentBytes: 1_024, MaxOpenShards: 2, Resume: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(manifest.Shards) != 1 {
+		t.Fatalf("occupied shards = %v, want one", manifest.Shards)
+	}
+	state, err := readGlobalBuildState(filepath.Join(root, "work", globalBuildStateFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Counts.Nodes != 4 || state.Counts.Edges != 2 {
+		t.Fatalf("global counts = %+v, want four selected nodes and two published edges", state.Counts)
+	}
+	store, err := worldgraph.OpenStore(filepath.Join(root, "store"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	tile, err := worldgraph.TileForPosition(0.010, 80, worldgraph.GlobalRoutingZoom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk, err := store.LoadChunk(tile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunk.Nodes) != 2 || chunk.Nodes[0].ID != 3 || chunk.Nodes[1].ID != 4 || len(chunk.Edges) != 2 {
+		t.Fatalf("published polar-adjacent chunk = %+v", chunk)
+	}
+	for _, edge := range chunk.Edges {
+		if edge.ID.From < 3 || edge.ID.To < 3 {
+			t.Fatalf("published edge touches skipped polar segment: %+v", edge)
+		}
+	}
+}
+
 func TestBuildGlobalRecoversUncheckpointedPartialShard(t *testing.T) {
 	pbf := writeGlobalTestPBF(t)
 	root := t.TempDir()
@@ -286,30 +334,39 @@ type globalFixtureNode struct {
 }
 
 type globalFixtureWay struct {
-	id   int64
-	from int64
-	to   int64
-	name string
+	id      int64
+	nodeIDs []int64
+	name    string
 }
 
 func writeGlobalTestPBF(t *testing.T) string {
 	t.Helper()
-	nodes := []globalFixtureNode{
+	return writeGlobalFixturePBF(t, []globalFixtureNode{
 		{id: 1, lon: 12.56, lat: 55.67}, {id: 2, lon: 12.57, lat: 55.68},
 		{id: 3, lon: -34.90, lat: -8.05}, {id: 4, lon: -34.89, lat: -8.04},
 		{id: 5, lon: 139.69, lat: 35.68}, {id: 6, lon: 139.70, lat: 35.69},
+	}, []globalFixtureWay{
+		{id: 100, nodeIDs: []int64{1, 2}, name: "Copenhagen"},
+		{id: 101, nodeIDs: []int64{3, 4}, name: "Recife"},
+		{id: 102, nodeIDs: []int64{5, 6}, name: "Tokyo"},
+	})
+}
+
+func writeGlobalFixturePBF(t *testing.T, nodes []globalFixtureNode, ways []globalFixtureWay) string {
+	t.Helper()
+	stringsTable := []string{"", "highway", "residential", "name"}
+	stringIDs := map[string]uint64{"highway": 1, "residential": 2, "name": 3}
+	for _, way := range ways {
+		if _, exists := stringIDs[way.name]; exists {
+			continue
+		}
+		stringIDs[way.name] = uint64(len(stringsTable))
+		stringsTable = append(stringsTable, way.name)
 	}
-	ways := []globalFixtureWay{
-		{id: 100, from: 1, to: 2, name: "Copenhagen"},
-		{id: 101, from: 3, to: 4, name: "Recife"},
-		{id: 102, from: 5, to: 6, name: "Tokyo"},
-	}
-	stringsTable := []string{"", "highway", "residential", "name", "Copenhagen", "Recife", "Tokyo"}
 	var stringTable []byte
 	for _, value := range stringsTable {
 		stringTable = testPBFBytesField(stringTable, 1, []byte(value))
 	}
-	stringIDs := map[string]uint64{"highway": 1, "residential": 2, "name": 3, "Copenhagen": 4, "Recife": 5, "Tokyo": 6}
 
 	var ids, lats, lons []int64
 	var previousID, previousLat, previousLon int64
@@ -332,7 +389,13 @@ func writeGlobalTestPBF(t *testing.T) string {
 		encoded := testPBFVarintField(nil, 1, uint64(way.id))
 		encoded = testPBFBytesField(encoded, 2, testPBFPackedVarints(stringIDs["highway"], stringIDs["name"]))
 		encoded = testPBFBytesField(encoded, 3, testPBFPackedVarints(stringIDs["residential"], stringIDs[way.name]))
-		encoded = testPBFBytesField(encoded, 8, testPBFPackedSInt64(way.from, way.to-way.from))
+		references := make([]int64, len(way.nodeIDs))
+		var previous int64
+		for index, nodeID := range way.nodeIDs {
+			references[index] = nodeID - previous
+			previous = nodeID
+		}
+		encoded = testPBFBytesField(encoded, 8, testPBFPackedSInt64(references...))
 		wayGroup = testPBFBytesField(wayGroup, 3, encoded)
 	}
 	block := testPBFBytesField(nil, 1, stringTable)

@@ -152,7 +152,8 @@ func decodeGlobalNodeRecord(encoded []byte) (globalNodeRecord, error) {
 	ownerZ := binary.BigEndian.Uint32(encoded[24:28])
 	ownerX := binary.BigEndian.Uint32(encoded[28:32])
 	ownerY := binary.BigEndian.Uint32(encoded[32:36])
-	if ownerZ != worldgraph.GlobalRoutingZoom || ownerX >= 1<<worldgraph.GlobalRoutingZoom || ownerY >= 1<<worldgraph.GlobalRoutingZoom {
+	zeroOwner := ownerZ == 0 && ownerX == 0 && ownerY == 0
+	if !zeroOwner && (ownerZ != worldgraph.GlobalRoutingZoom || ownerX >= 1<<worldgraph.GlobalRoutingZoom || ownerY >= 1<<worldgraph.GlobalRoutingZoom) {
 		return globalNodeRecord{}, fmt.Errorf("%w: invalid global node owner", worldgraph.ErrInvalidChunk)
 	}
 	record := globalNodeRecord{
@@ -170,9 +171,14 @@ func decodeGlobalNodeRecord(encoded []byte) (globalNodeRecord, error) {
 }
 
 func validateGlobalNodeRecord(record globalNodeRecord) error {
-	if !finiteCoordinate(record.Lon) || record.Lon < -180 || record.Lon > 180 ||
-		!finiteCoordinate(record.Lat) || record.Lat < -worldgraph.MaxMercatorLatitude || record.Lat > worldgraph.MaxMercatorLatitude {
+	if !validOSMPosition(record.Lon, record.Lat) {
 		return fmt.Errorf("%w: node %d has invalid coordinates", worldgraph.ErrInvalidChunk, record.ID)
+	}
+	if !validMercatorPosition(record.Lon, record.Lat) {
+		if record.Owner != (worldgraph.TileID{}) {
+			return fmt.Errorf("%w: node %d has invalid owner", worldgraph.ErrInvalidChunk, record.ID)
+		}
+		return nil
 	}
 	owner, err := worldgraph.TileForPosition(record.Lon, record.Lat, worldgraph.GlobalRoutingZoom)
 	if err != nil || owner != record.Owner {
@@ -256,8 +262,7 @@ func writeSelectedGlobalNodes(
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if !finiteCoordinate(node.Lon) || node.Lon < -180 || node.Lon > 180 ||
-				!finiteCoordinate(node.Lat) || node.Lat < -worldgraph.MaxMercatorLatitude || node.Lat > worldgraph.MaxMercatorLatitude {
+			if !validOSMPosition(node.Lon, node.Lat) {
 				return fmt.Errorf("%w: node %d has invalid coordinates", worldgraph.ErrInvalidChunk, node.ID)
 			}
 			if hasPreviousNode {
@@ -279,11 +284,15 @@ func writeSelectedGlobalNodes(
 			if !hasReference || reference != node.ID {
 				continue
 			}
-			owner, err := worldgraph.TileForPosition(node.Lon, node.Lat, worldgraph.GlobalRoutingZoom)
-			if err != nil {
-				return err
+			record := globalNodeRecord{ID: node.ID, Lon: node.Lon, Lat: node.Lat}
+			if validMercatorPosition(node.Lon, node.Lat) {
+				owner, err := worldgraph.TileForPosition(node.Lon, node.Lat, worldgraph.GlobalRoutingZoom)
+				if err != nil {
+					return err
+				}
+				record.Owner = owner
 			}
-			if err := writeGlobalNodeRecord(output, globalNodeRecord{ID: node.ID, Lon: node.Lon, Lat: node.Lat, Owner: owner}); err != nil {
+			if err := writeGlobalNodeRecord(output, record); err != nil {
 				return err
 			}
 			if err := advanceReference(); err != nil {

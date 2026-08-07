@@ -18,7 +18,7 @@ const (
 	maxPBFBlobHeaderSize     = 64 << 10
 	maxPBFBlobSize           = 32 << 20
 	maxPBFUncompressedBlock  = 64 << 20
-	maxPBFEntitiesPerBlock   = 100_000
+	maxPBFEntitiesPerBlock   = 500_000
 	maxPBFHeaderBlockBytes   = 1 << 20
 	maxPBFHeaderFeatures     = 1_024
 	maxPBFHeaderStringBytes  = 64 << 10

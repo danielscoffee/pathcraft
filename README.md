@@ -126,7 +126,8 @@ for resource flags, storage planning, recovery, and acceptance commands.
 Runtime defaults are routing zoom 12, one-tile initial halo, 256 route tiles,
 three expansions, and a 512 MiB decoded cache.
 Longitude wraps at the antimeridian; latitude is limited to Web Mercator
-`±85.05112878°`.
+`±85.05112878°`. Packed global builds preserve valid OSM nodes beyond that
+range to resolve source references, but omit their adjacent road segments.
 
 Each build publishes an immutable generation. Regional reimports replace prior
 region provenance and remove deleted roads; global builds represent one source
@@ -143,9 +144,11 @@ never HTTP uploads. Each build hashes and scans one private regular-file PBF
 snapshot; concurrent stale publishers fail instead of replacing newer
 manifests. Before decoding, imports
 reject unsupported protobuf wire layouts; headers cap at 1 MiB, while data
-blocks cap at 100,000 entities, 1,000,000 tags, 250,000 string entries, and
-64 MiB decompressed. Routing labels and per-tile contribution bytes are also
-bounded. Chunks cap at 250,000 nodes, 500,000 edges, and 64 MiB encoded payload.
+blocks cap at 500,000 entities, 1,000,000 tags, 250,000 string entries, and
+64 MiB decompressed. Accepted entities stream through one ordered decoder
+worker and bounded application batches instead of accumulating decoded blocks.
+Routing labels and per-tile contribution bytes are also bounded. Chunks cap at
+250,000 nodes, 500,000 edges, and 64 MiB encoded payload.
 These are fixed MVP resource limits, so split denser extracts when needed. Keep
 OpenStreetMap attribution visible when rendering derived data:
 © OpenStreetMap contributors, under the ODbL. The HTTP server is

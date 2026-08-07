@@ -163,7 +163,7 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 			return worldgraph.Manifest{}, err
 		}
 		if err := writeSelectedGlobalNodes(ctx, sortedReferencesPath, nodesPath, func(consume func([]worldgraph.Node) error) error {
-			return scanNodesReader(ctx, source.Reader(), consume)
+			return scanGlobalNodesReader(ctx, source.Reader(), consume)
 		}); err != nil {
 			return worldgraph.Manifest{}, err
 		}

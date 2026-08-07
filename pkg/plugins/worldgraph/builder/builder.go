@@ -284,6 +284,9 @@ func addWayContributionsWithLookup(
 	if !found {
 		return fmt.Errorf("way %d references missing node %d", way.ID, way.NodeIDs[0])
 	}
+	if !validOSMPosition(from.Lon, from.Lat) {
+		return fmt.Errorf("way %d references node %d with invalid coordinates", way.ID, from.ID)
+	}
 	for _, toID := range way.NodeIDs[1:] {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -295,7 +298,10 @@ func addWayContributionsWithLookup(
 		if !found {
 			return fmt.Errorf("way %d references missing node %d", way.ID, toID)
 		}
-		if from.ID != to.ID {
+		if !validOSMPosition(to.Lon, to.Lat) {
+			return fmt.Errorf("way %d references node %d with invalid coordinates", way.ID, to.ID)
+		}
+		if from.ID != to.ID && validMercatorPosition(from.Lon, from.Lat) && validMercatorPosition(to.Lon, to.Lat) {
 			edges, err := segmentEdges(way, policy, from, to, region, zoom)
 			if err != nil {
 				return err

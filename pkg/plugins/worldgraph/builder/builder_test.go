@@ -172,6 +172,37 @@ func TestAddWayContributionsRejectsOversizedRoutingText(t *testing.T) {
 	}
 }
 
+func TestAddWayContributionsSkipsSegmentsOutsideMercator(t *testing.T) {
+	nodes := map[int64]worldgraph.Node{
+		1: {ID: 1, Lon: 0, Lat: 80},
+		2: {ID: 2, Lon: 0, Lat: 90},
+		3: {ID: 3, Lon: 1, Lat: 80},
+		4: {ID: 4, Lon: 2, Lat: 80},
+	}
+	var emitted [][2]int64
+	err := addWayContributionsWithLookup(
+		context.Background(),
+		func(id int64) (worldgraph.Node, bool, error) { node, ok := nodes[id]; return node, ok, nil },
+		func(from, to worldgraph.Node, _ worldgraph.Edge) error {
+			emitted = append(emitted, [2]int64{from.ID, to.ID})
+			return nil
+		},
+		Way{ID: 1, NodeIDs: []int64{1, 2, 3, 4}, Tags: map[string]string{"highway": "residential"}},
+		"planet", worldgraph.GlobalRoutingZoom,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(emitted) == 0 {
+		t.Fatal("no in-range segment emitted")
+	}
+	for _, segment := range emitted {
+		if segment[0] < 3 || segment[1] < 3 {
+			t.Fatalf("polar segment emitted: %v", segment)
+		}
+	}
+}
+
 func TestMalformedPBFLeavesCurrentGenerationUntouched(t *testing.T) {
 	storePath := t.TempDir()
 	before := buildFixture(t, context.Background(), storePath, "region-a")

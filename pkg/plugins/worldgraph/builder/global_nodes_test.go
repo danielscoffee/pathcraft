@@ -93,6 +93,32 @@ func TestGlobalNodeIndexRejectsMalformedRecords(t *testing.T) {
 	})
 }
 
+func TestGlobalNodeRecordValidatesPolarOwnerSentinel(t *testing.T) {
+	mercatorOwner, err := worldgraph.TileForPosition(0, 0, worldgraph.GlobalRoutingZoom)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name    string
+		record  globalNodeRecord
+		wantErr bool
+	}{
+		{name: "north pole", record: globalNodeRecord{ID: 1, Lon: 0, Lat: 90}},
+		{name: "south pole", record: globalNodeRecord{ID: 2, Lon: 0, Lat: -90}},
+		{name: "polar owner", record: globalNodeRecord{ID: 3, Lon: 0, Lat: 90, Owner: mercatorOwner}, wantErr: true},
+		{name: "missing Mercator owner", record: globalNodeRecord{ID: 4, Lon: 0, Lat: 0}, wantErr: true},
+		{name: "latitude above pole", record: globalNodeRecord{ID: 5, Lon: 0, Lat: 90.0001}, wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := encodeGlobalNodeRecord(test.record)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("encodeGlobalNodeRecord(%+v) error = %v, wantErr %v", test.record, err, test.wantErr)
+			}
+		})
+	}
+}
+
 func TestGlobalNodeSelectionMergesMonotonicNodes(t *testing.T) {
 	root := t.TempDir()
 	references := filepath.Join(root, "refs.sorted")
@@ -130,6 +156,32 @@ func TestGlobalNodeSelectionMergesMonotonicNodes(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("output mode = %o, want 600", info.Mode().Perm())
+	}
+}
+
+func TestGlobalNodeSelectionPreservesPolarReferences(t *testing.T) {
+	root := t.TempDir()
+	references := filepath.Join(root, "refs.sorted")
+	writeInt64TestFile(t, references, []int64{1, 2})
+	output := filepath.Join(root, "nodes.idx")
+	nodes := []worldgraph.Node{{ID: 1, Lon: 0, Lat: 0}, {ID: 2, Lon: 0, Lat: 90}}
+
+	if err := writeSelectedGlobalNodes(context.Background(), references, output, func(consume func([]worldgraph.Node) error) error {
+		return consume(nodes)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	index, err := openGlobalNodeIndex(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer index.Close()
+	polar, found, err := index.Get(2)
+	if err != nil || !found {
+		t.Fatalf("Get(2) = %+v, %v, %v", polar, found, err)
+	}
+	if polar.Lat != 90 || polar.Owner != (worldgraph.TileID{}) {
+		t.Fatalf("polar node = %+v", polar)
 	}
 }
 
