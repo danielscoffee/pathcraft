@@ -4,6 +4,11 @@
 
 **Goal:** Build and serve one local planet-wide fixed-zoom worldgraph generation through sparse immutable shard packs.
 
+> **Partition update (2026-08-07):** Tasks 8–10 describe the original searchable
+> node-index/full-contribution-spool builder. That work format is superseded by
+> [Global Contribution Partition v2](2026-08-07-global-partition-v2-design.md).
+> Packed layout/runtime/publication tasks and invariants remain current.
+
 **Architecture:** Zoom-12 chunks are grouped under zoom-8 shard indexes and immutable pack segments. Runtime resolves coverage through bounded shard-index caching and reads chunk ranges with `ReadAt`; a restartable multi-pass global PBF builder writes a complete new generation and atomically switches the existing manifest pointer.
 
 **Tech Stack:** Go standard library, existing `osmpbf`, existing bbolt temporary indexes, existing worldgraph chunk codec/cache/router, Vitest frontend checks.

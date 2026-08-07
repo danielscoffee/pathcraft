@@ -94,6 +94,25 @@ Deliverable:
 
 ---
 
+## Global Worldgraph Scale Follow-up
+
+Goal: Prove the packed builder on representative and official global data.
+
+- [x] Sparse zoom-8 shard packs with atomic publication and bounded runtime reads
+- [x] Restartable source/reference/node preprocessing
+- [x] Sequential occurrence sort/merge join (no per-reference disk binary search)
+- [x] Compact undirected fragment spools with legacy-output parity tests
+- [x] Sequential bounded-radix shard partitioning and per-spool recovery hashes
+- [x] One-chunk-at-a-time packed-shard generation and O(N) shard recovery
+- [ ] [Versioned machine-readable capacity report and disk preflight](plans/2026-08-07-global-capacity-report-design.md)
+- [ ] Representative pinned-extract throughput/RSS/high-water benchmark
+- [ ] Official-planet publication and multi-continent local-route acceptance
+
+The v2 work format is synthetic-tested. Until the remaining measurements pass,
+PathCraft does not claim planet-build capacity or long-distance routing.
+
+---
+
 ## Long-Term Vision
 
 Pathcraft aims to be:

@@ -1,7 +1,11 @@
 # Global Worldgraph Storage Design
 
 **Date:** 2026-07-30
-**Status:** Approved
+**Status:** Approved; contribution partition stage superseded
+
+The packed runtime/store design remains current. Global build stages 6–7 that
+used searchable node-index lookups and full edge-contribution spools are
+superseded by [Global Contribution Partition v2](2026-08-07-global-partition-v2-design.md).
 
 ## Goal
 

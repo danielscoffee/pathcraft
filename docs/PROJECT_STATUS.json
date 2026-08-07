@@ -4,8 +4,8 @@
     "tagline": "Self-hosted multimodal routing engine (OSM + GTFS) with a plugin architecture and an embedded web directions app",
     "repository": "github.com/danielscoffee/pathcraft",
     "license": "see LICENSE in repo",
-    "status": "working prototype / pre-release; packed global store is synthetic-tested, but full-planet acceptance is blocked by disk capacity and contribution-partition throughput",
-    "as_of": "2026-08-02"
+    "status": "working prototype / pre-release; sequential packed-global builder v2 is synthetic-tested, but full-planet capacity/publication awaits measured acceptance",
+    "as_of": "2026-08-07"
   },
   "what_it_does": [
     "Parses OpenStreetMap extracts into a mode-aware street graph (walk/car/bike, oneway and access restrictions honored)",
@@ -16,7 +16,7 @@
     "Runs street routing in browser-compatible Go WebAssembly through a small JavaScript binding",
     "Ships a single native Go binary with an embedded React SPA: Google-Maps-style directions UI (A/B picking, per-mode ETAs solved in parallel, transit itineraries, debug overlays)",
     "Caches parsed OSM graphs and directed degree-two contraction indexes in source-hashed, versioned, atomically replaced binary files",
-    "Builds restartable regional per-tile and global packed worldgraph stores from local OSM PBF snapshots; official-planet publication is not yet proven",
+    "Builds restartable regional per-tile and global packed worldgraph stores with sequential reference joins and compact shard fragments; official-planet publication is not yet proven",
     "Runs concurrent read-only routes against published graph/index state; loading and mutation remain serial"
   ],
   "tech_stack": {
@@ -34,7 +34,7 @@
     "query_latency_observed": "street route solve ~20 ms; multimodal journey with real feed returns sub-second; all four modes solved in parallel per request pair",
     "example_real_result": "08:00 departure across Recife -> arrival 08:38, walk 358 m + bus with transfer, real trip IDs",
     "phase_0_4_synthetic_profile": "10,000-node linear A* median: 3.895 ms base vs 118.226 us contracted; contraction build median 21.501 ms and 17.9 MB allocated on one documented laptop",
-    "worldgraph_synthetic": "regional and restartable packed-global pipelines pass deterministic seam and multi-city synthetic tests, including routing, serving, interruption, and publication recovery",
+    "worldgraph_synthetic": "regional and restartable packed-global pipelines pass deterministic seam and multi-city synthetic tests, including v2 sequential joins, compact-fragment/legacy packed-byte parity, routing, serving, interruption, and publication recovery",
     "worldgraph_planet": "official planet snapshot was validated and processed through node selection, but no packed planet generation was published",
     "profiling": "standard Go benchmarks, race detector, and reproducible pprof alloc_space/inuse_space commands; synthetic numbers are not city-wide guarantees"
   },
@@ -78,21 +78,58 @@
       "sort_refs": "complete at 2h41m24s cumulative",
       "select_nodes_after_resume": "complete at 2h16m28s cumulative, including mandatory source revalidation"
     },
-    "partition_contributions": {
-      "status": "incomplete and not checkpointed; resume restarts this stage from zero",
+    "legacy_partition_contributions": {
+      "pipeline": "v1 binary-search/full-contribution spool, superseded by partition v2",
+      "status": "incomplete and not checkpointed; this attempted stage was stopped and must not be resumed with the old binary",
       "sampled_way_spool_progress": "one observed reader offset was 0.13% (49,617,312 of 38,043,122,015 bytes); the 8,424,914,510-byte residue was measured later, so those figures are not one linear-extrapolation sample",
       "sampled_throughput": "91.5 KiB/s through ways.spool",
       "linear_eta_at_sample": "about 4d16h for this stage",
       "bottleneck": "each way-node lookup performs binary searches against the 93.3 GB node index on an HDD",
       "uncheckpointed_bytes_left_after_stop": 8424914510
     },
-    "capacity": {
+    "legacy_capacity_projection": {
+      "pipeline": "v1 projection retained as historical evidence; it does not predict partition v2 peak space",
       "source_plus_checkpointed_work_gib": 247.3,
       "projected_contribution_spool_gib": 672.4,
       "projected_before_final_store_gib": 919.7,
       "estimated_peak_with_final_store_tib": "1.2-1.6",
       "estimate_quality": "the operational projection is low confidence because sample timestamps were not captured consistently; an independent count calculation yields about 687 GiB for two minimum-size records per candidate segment before skipped segments or seam copies, enough to show the current 1 TB drive is insufficient",
-      "recommendation": "do not resume on the current drive; use at least 2 TB, preferably 3 TB, unless the partition/storage design is reduced first"
+      "recommendation_at_time": "do not resume on the current drive; use at least 2 TB, preferably 3 TB, unless the partition/storage design is reduced first",
+      "current_use": "historical evidence only; v2 must be approved from its own representative high-water report and topology-aware preflight"
+    },
+    "partition_v2": {
+      "status": "implemented and synthetic-tested; official planet continuation has not been run with v2",
+      "design": "docs/plans/2026-08-07-global-partition-v2-design.md",
+      "commits": [
+        "01e627e sequential node-index scan",
+        "855b87b external occurrence join",
+        "b27f883 compact fragment codec and parity foundation",
+        "95968b5 v2 orchestration",
+        "f21d85a streamed packed-shard chunks",
+        "4a02751 validated v1 migration and O(N) shard recovery",
+        "f39fe5d consumed-artifact deletion frontier",
+        "267586e sequential radix fragment partitioning",
+        "897af8b per-spool recovery summaries and verification",
+        "3bd53b9 exact checkpoint work-byte snapshots",
+        "a3dc57c buffered sequential fragment replay",
+        "75bfc52 O(1) staged-shard membership checks",
+        "e2bb024 abort cleanup and non-sync reconstructible scratch",
+        "7fcc97f corrected radix CLI semantics"
+      ],
+      "pipeline": "fixed 16-byte way-reference occurrences -> external sort by node ID -> one sequential merge with nodes.idx -> fixed 32-byte resolved occurrences -> external sort to way order -> one keyed fragment journal -> bounded stable radix partition by zoom-8 shard -> verified fragment replay -> one-chunk-at-a-time v1 packs",
+      "work_state": "build-state version 3; matching version-1 checkpoints are validated before an atomic upgrade, unpublished states that completed legacy partition-contributions are rejected, and unreleased version-2 state is not guessed",
+      "synthetic_acceptance": {
+        "fixture": "tracked z12 seam PBF",
+        "fragment_bytes": 232,
+        "legacy_contribution_spool_bytes": 1372,
+        "spool_reduction_percent": 83.1,
+        "semantic_result": "logical contribution counts, normalized chunks, shard indexes, and pack bytes match the legacy builder; final fragment bytes are recorded",
+        "resume_result": "cancellation after every v2 stage, O(N) discovery of synced shards, clean record-boundary fragment-loss rejection, and publication recovery pass",
+        "checkpoint_accounting": "printed work bytes exactly matched the remaining build-state plus fragment files; the JSON timestamp makes the tiny fixture total vary by a few bytes between runs"
+      },
+      "bounded_resources": "external sort memory/fan-in are bounded; fragments use one append-only journal and bounded stable radix passes rather than random per-shard fsyncs; each final spool has count/bytes/SHA-256; pack generation retains one normalized chunk at a time; invalid partial partitions abort without radix installation, staged-shard membership is O(1), and reconstructible pack scratch avoids per-batch fsync barriers",
+      "remaining_acceptance": "implement the versioned high-water report and topology-aware disk preflight, benchmark one pinned representative extract with external RSS telemetry, then continue the verified planet checkpoint only if every required budget and headroom check passes",
+      "capacity_follow_up_design": "docs/plans/2026-08-07-global-capacity-report-design.md"
     },
     "planet_compatibility_findings": [
       {
@@ -107,21 +144,21 @@
       }
     ],
     "verification": {
-      "command": "go test ./... -count=1",
-      "result": "525 tests passed across 39 listed packages",
-      "race": "go test -race ./pkg/plugins/worldgraph/builder -count=1 passed",
-      "static_analysis": "go vet ./... and git diff --check passed",
-      "code_state": "planet compatibility fixes were reviewed and committed as b16cfdb"
+      "command": "CGO_ENABLED=0 go test ./... -count=1",
+      "result": "625 tests passed across 39 listed packages",
+      "race": "CGO_ENABLED=1 go test -race ./pkg/plugins/worldgraph/... -count=1 passed",
+      "static_analysis": "CGO_ENABLED=0 go vet ./... and git diff --check passed",
+      "code_state": "planet compatibility fixes b16cfdb; sequential index/join 01e627e/855b87b; compact fragments b27f883; v2 orchestration 95968b5; streamed packs f21d85a; validated recovery 4a02751; artifact deletion f39fe5d; radix partition 267586e; spool verification 897af8b; exact accounting 3bd53b9; buffered replay a3dc57c; O(1) shard membership 75bfc52; scratch-barrier cleanup e2bb024; CLI semantics 7fcc97f"
     },
     "resume": {
       "stop_result": "SIGTERM produced context canceled and exited cleanly",
       "checkpoint_path": "/mnt/storage/pathcraft/work/planet-260727/build-state.json",
-      "requirements": "same verified PBF path, store/work paths, resource flags, and a binary containing commit b16cfdb or later",
-      "warning": "do not resume on the current 1 TB filesystem without redesigning storage use or moving the snapshot and checkpoint to larger storage"
+      "requirements": "same verified PBF path, store/work paths, and resource flags; a current binary validates the eligible stage-4 work state and atomically upgrades it from version 1 to version 3",
+      "warning": "do not launch the planet continuation until a representative v2 capacity report shows sufficient headroom on the 1 TB filesystem; never resume with the legacy partition binary"
     }
   },
   "quality_signals": {
-    "tests": "Deterministic Go, gRPC bufconn, WASM/Node, frontend, regional-worldgraph, and packed-global tests cover graph, contraction differential behavior, source-safe caches, concurrent routing, transit, engine, transports, registry, interruption, and publication recovery; latest local planet-fix verification passed 525 Go tests",
+    "tests": "Deterministic Go, gRPC bufconn, WASM/Node, frontend, regional-worldgraph, and packed-global tests cover graph, contraction differential behavior, source-safe caches, concurrent routing, transit, engine, transports, registry, interruption, sequential occurrence joins, compact-fragment parity, and publication recovery; latest local verification passed 625 Go tests",
     "ci": "GitHub Actions runs Go tests, real js/wasm build and Node smoke test, frontend tests, lint, and production build",
     "docs": "architecture, Go SDK, JavaScript/WASM, gRPC, plugin-system, roadmap, demo, and reproducible performance/memory guides live in docs/"
   },
@@ -141,15 +178,14 @@
     "Base street graph remains resident beside contraction index; concurrent hot reload and graph mutation are unsupported",
     "Router marked by author as debug/demo grade rather than production",
     "Packed global format is synthetic-tested, but the official planet build has not reached publication",
-    "Current contribution partition performs billions of random disk-index lookups and is impractically slow on an HDD",
-    "Current planet work/store layout is projected to need roughly 1.2-1.6 TiB peak; the tested 1 TB filesystem is insufficient",
+    "Sequential partition v2 removes random node lookups, random fragment fsync churn, all-shard chunk accumulation, and quadratic shard checkpoint scans, but has not completed an official-planet run",
+    "No representative v2 high-water capacity report or disk preflight exists yet; the legacy 1.2-1.6 TiB projection does not establish v2 requirements",
     "No long-distance routing hierarchy exists; global chunks still support bounded local/regional routes only",
     "No packaged releases, Docker image, or hosted demo yet"
   ],
   "near_term_roadmap_hints": [
-    "Redesign global contribution partitioning to avoid per-reference binary searches and the projected ~672 GiB duplicated contribution spool",
-    "Add a representative extract capacity benchmark that reports peak RSS, work bytes, store bytes, throughput, and a preflight disk requirement before planet builds",
-    "Resume official-planet acceptance only on at least 2 TB storage, preferably 3 TB, or after reducing peak storage below the current 1 TB filesystem",
+    "Add a versioned representative-extract capacity report and disk preflight covering peak RSS, artifact high-water bytes, sequential throughput, fragment amplification, and filesystem headroom",
+    "Continue the eligible official-planet checkpoint only after v2 preflight proves enough headroom on its target filesystem; otherwise move to larger storage",
     "Docker packaging, tagged releases, generated SDK packaging, and hosted demo",
     "Service-calendar filtering and GTFS-realtime ingestion",
     "Geocoder integration (e.g., Nominatim/Photon) for address search",

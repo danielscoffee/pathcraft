@@ -55,8 +55,8 @@ wraps existing internals without rewriting them.
 ## `pkg/plugins/worldgraph`
 
 - Streaming regional importer plus restartable global PBF pipeline with
-  external reference sorting, compact node lookup, bounded shard writers, and
-  shared street-access policy.
+  external occurrence sort/merge joins, sequential radix-partitioned way
+  fragments, streamed shard packs, and shared street-access policy.
 - Versioned fixed-zoom XYZ chunks stored as regional `.pcg` files or sparse
   zoom-8 indexes and segmented packs, with stable OSM IDs, edge ownership,
   seam copies, source provenance, checksums, and immutable generations.

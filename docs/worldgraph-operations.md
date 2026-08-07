@@ -26,6 +26,9 @@ make build
   --open-shards 64
 ```
 
+This is the build interface, not approval to continue the current official
+planet checkpoint. Complete the capacity gates below first.
+
 Global routing zoom is fixed at 12; `--zoom` exists only to reject accidental
 other values. Resource flags mean:
 
@@ -33,11 +36,13 @@ other values. Resource flags mean:
 |---|---:|---|
 | `--run-memory-mb` | 512 | Approximate fixed-record payload memory per external-sort run; not a process RSS limit |
 | `--pack-mb` | 1024 | Maximum size of each immutable pack segment, not total store size |
-| `--open-shards` | 64 | Maximum contribution spool descriptors kept open |
+| `--open-shards` | 64 | Maximum radix-partition output descriptors; one sequential input is additional and fan-out caps at 64 |
 | `--resume` | true | Reuse matching completed stages and packed shards |
 
 Progress names each stage and ends with generation, shard, chunk, way,
-reference, node, edge, contribution, work-byte, store-byte, and elapsed totals.
+reference, node, candidate-segment, compact-fragment, final-fragment-byte,
+edge, logical-contribution, current work-byte, current store-byte, and elapsed
+totals.
 
 ## Resume contract
 
@@ -59,14 +64,37 @@ Completed stages are:
 
 1. source validation;
 2. way/reference spooling;
-3. external reference sort;
+3. external unique-reference sort;
 4. referenced-node selection;
-5. contribution partitioning;
-6. per-shard pack writing;
-7. atomic publication.
+5. way-reference occurrence spooling;
+6. occurrence sort by node ID;
+7. sequential occurrence/node merge;
+8. resolved-node sort back to way order;
+9. compact per-shard fragment partitioning;
+10. per-shard pack writing;
+11. atomic publication.
 
-Per-shard completion is checkpointed. A resumed pack stage skips already synced
-shards instead of rebuilding the whole snapshot.
+Stages 5–9 are partition pipeline v2. They replace per-reference binary searches
+against `nodes.idx` with sequential external sort/merge I/O. A work-state v1
+checkpoint is atomically upgraded to state v3 only after its completed-stage
+frontier, fixed-size artifacts, and way/reference counts pass validation. The
+official checkpoint completed through stage 4 and is eligible. Intermediate
+state v2 was never released and is rejected rather than guessed.
+An unpublished state that completed the old `partition-contributions` stage is
+rejected rather than reinterpreted; use a fresh work directory for that case.
+Published packed stores are unchanged and need no migration.
+
+Synced shard files are their own recovery journal. A resumed pack stage validates
+all occupied shards once and skips valid ones instead of rewriting build state or
+recursively measuring the work tree after every shard. Consumed references,
+node indexes, way spools, occurrence files, and sort runs are removed only after
+their downstream checkpoint is durable.
+
+State v3 records each final fragment spool's shard, record count, byte count, and
+SHA-256. A rebuilt shard verifies that summary during the same sequential replay;
+clean record-boundary loss cannot silently publish a shorter graph. Fragment
+spools remain in the work directory so staged shards can be rebuilt, including
+after publication, until the operator intentionally removes the work directory.
 
 ## Store and work layout
 
@@ -96,24 +124,85 @@ publishers fail rather than overwrite a newer manifest.
 Legacy regional generations remain readable. Their files stay under
 `generations/<generation>/<z>/<x>/<y>.pcg`.
 
+A partition-v2 work directory adds transient files similar to:
+
+```text
+WORK/
+  ways.spool                  # removed after fragment partition
+  references.raw              # removed after referenced-node selection
+  references.sorted           # removed after referenced-node selection
+  nodes.idx                   # removed after the sequential join
+  way-node-requests.raw       # removed after request sort
+  way-node-requests.sorted    # removed after the sequential join
+  resolved-way-nodes.raw      # removed after occurrence sort
+  resolved-way-nodes.sorted   # removed after fragment partition
+  fragments-v2/
+    .fragment-radix-work/     # exists only while partitioning
+    fragments/<x-prefix>/<x>/<y>.spool
+  build-state.json            # includes final-spool summaries
+```
+
 ## Capacity planning
 
-Work space can exceed final store size because it simultaneously holds raw and
-sorted references, way spools, the compact node index, contribution spools, and
-a staged generation. Publication can also coexist with all previously retained
-generations. PBF compression ratios and road density vary too much for one safe
-source-size multiplier.
+Work space can exceed final store size because it holds raw and sorted unique
+references, the way spool, the compact selected-node index, occurrence sort
+runs, resolved-node sort runs, compact fragment spools, and a staged generation
+at different points in the pipeline. Publication can also coexist with all
+previously retained generations. PBF compression ratios and road density vary
+too much for one safe source-size multiplier.
+
+At the recorded planet count of 2,671,633,633 references, the 16-byte
+occurrence stream is 42,746,138,128 bytes (39.8 GiB) and the 32-byte resolved
+stream is 85,492,276,256 bytes (79.6 GiB). A fixed sort can temporarily retain
+its input, one complete run generation, and its final output: 119.4 GiB for the
+request sort and 238.9 GiB for the resolved sort, before other live artifacts.
+With the current deletion frontier, the corresponding work-tree bounds from the
+stage-4 planet counts are 259,620,631,359 and 294,519,950,783 bytes. The PBF,
+store, retained generations, filesystem metadata, and required headroom are
+additional when they share a filesystem.
+
+Fragment size is data-dependent. Partitioning first writes one keyed sequential
+journal, then stable-partitions its 16-bit shard key in bounded radix passes; it
+does not perform random per-shard append/fsync churn. One input generation and
+one output generation coexist, so radix scratch can approach twice the keyed
+journal. The final format stores way policy/text once per `(way, shard)` plus
+undirected endpoint pairs, then reconstructs directed halo copies while packing.
+Packing streams one normalized chunk at a time instead of retaining all 256
+possible chunks in a shard. Its current-shard contribution database is
+reconstructible scratch and does not fsync every transaction; only the completed
+index/pack shard becomes a synced recovery artifact. A host failure therefore
+rebuilds at most the current shard.
+
+The seam regression is byte-identical to the legacy pack output and uses 232
+final fragment bytes instead of 1,372 legacy contribution-spool bytes. That tiny
+result proves semantics and format amplification, not planet capacity. Printed
+`Work bytes` and `Store bytes` are current checkpoint snapshots, not observed
+high-water marks; sort runs and radix generations may be created and removed
+between them.
 
 Before a planet build:
 
-1. run a representative extract with production resource flags;
-2. record printed `Work bytes`, `Store bytes`, and peak RSS;
-3. extrapolate with headroom for denser regions and sort runs;
-4. reserve room for work data, staged output, current output, and retained old
-   generations at the same time;
-5. monitor free bytes and inode counts during the build.
+1. run one pinned representative extract with production resource flags and
+   external process/OS telemetry;
+2. record stage wall time, logical I/O, peak RSS, filesystem available-byte
+   minima, radix journal/scratch bytes, maximum per-shard pack scratch, staged
+   generation bytes, and final store bytes;
+3. create a versioned capacity plan with explicit fragment, pack-scratch, new
+   generation, retained-generation, and free-space headroom budgets;
+4. aggregate those budgets by filesystem device: PBF, work, and store paths may
+   share the same available bytes;
+5. fail a disk preflight on a known deficit and treat any unknown required
+   budget as not approved;
+6. monitor free bytes, inode counts, and external peak RSS during the build.
 
-`--run-memory-mb` controls sort-run payloads only. Decoder buffers, indexes,
+PathCraft does not yet emit that machine-readable high-water report or enforce
+that preflight. The approved follow-up is
+[Global Worldgraph Capacity Report and Preflight](plans/2026-08-07-global-capacity-report-design.md). Therefore the official planet checkpoint must not be continued
+merely because the fixed-sort bounds fit the current drive. Capacity reporting,
+a representative run, and explicit topology/headroom approval remain hard gates.
+
+`--run-memory-mb` controls the approximate payload of each external-sort run
+only. Decoder buffers, indexes,
 shard writers, Go runtime overhead, and OS page cache contribute additional RSS.
 Lower it when measured RSS is too high. Lower `--open-shards` when descriptor
 limits are tight. Lower `--pack-mb` only when deployment tooling needs smaller

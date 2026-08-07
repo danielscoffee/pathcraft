@@ -7,6 +7,9 @@
 - `cmd/pathcraft-wasm`: Browser Go-WASM entrypoint.
 - `pkg/pathcraft/engine`: Primary public Go routing API.
 - `pkg/pathcraft/{core,registry,plugins}`: Public compile-time plugin interfaces and adapters.
+- `pkg/plugins/worldgraph`: Regional and packed-global graph stores; global
+  builds use sequential occurrence joins, radix-partitioned fragment spools,
+  and streamed immutable shard packs.
 - `sdk/js`: JavaScript loader for browser WASM.
 - `web/`: Frontend and visualization tools.
 

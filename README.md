@@ -119,8 +119,9 @@ mode IDs and the same runtime:
 
 `make demo-chunks PBF=region.osm.pbf REGION=demo STORE=world` remains the
 thin regional build-and-serve flow. Global builds use fixed routing zoom 12,
-zoom-8 shard indexes, segmented packs, bounded external sorts, and resumable
-stage checkpoints. See [World graph operations](docs/worldgraph-operations.md)
+zoom-8 shard indexes, segmented packs, bounded sequential sort/merge joins,
+radix-partitioned compact way fragments, and resumable stage checkpoints. See
+[World graph operations](docs/worldgraph-operations.md)
 for resource flags, storage planning, recovery, and acceptance commands.
 
 Runtime defaults are routing zoom 12, one-tile initial halo, 256 route tiles,
