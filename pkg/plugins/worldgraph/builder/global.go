@@ -183,6 +183,11 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 			return worldgraph.Manifest{}, err
 		}
 	}
+	if state.Version != 1 && state.hasStage("sort-refs") {
+		if err := removeGlobalBuildArtifacts(referencesPath); err != nil {
+			return worldgraph.Manifest{}, err
+		}
+	}
 
 	nodesPath := filepath.Join(options.WorkDir, "nodes.idx")
 	if !state.hasStage("select-nodes") {
@@ -212,6 +217,9 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 		if err := os.RemoveAll(filepath.Join(options.WorkDir, "contributions")); err != nil {
 			return worldgraph.Manifest{}, err
 		}
+	}
+	if err := removeGlobalBuildArtifacts(referencesPath, sortedReferencesPath); err != nil {
+		return worldgraph.Manifest{}, err
 	}
 
 	requestsRawPath := filepath.Join(options.WorkDir, "way-node-requests.raw")
@@ -273,7 +281,7 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 		}
 	}
 	if state.hasStage("join-way-node-requests-v2") {
-		if err := removeGlobalBuildArtifacts(requestsSortedPath); err != nil {
+		if err := removeGlobalBuildArtifacts(requestsSortedPath, nodesPath); err != nil {
 			return worldgraph.Manifest{}, err
 		}
 	}
@@ -325,7 +333,7 @@ func BuildGlobal(ctx context.Context, options GlobalOptions) (worldgraph.Manifes
 		}
 	}
 	if state.hasStage("partition-fragments-v2") {
-		if err := removeGlobalBuildArtifacts(resolvedSortedPath); err != nil {
+		if err := removeGlobalBuildArtifacts(resolvedSortedPath, waysPath); err != nil {
 			return worldgraph.Manifest{}, err
 		}
 	}
@@ -530,16 +538,20 @@ func validateLegacyGlobalBuildArtifacts(waysPath, referencesPath, sortedReferenc
 		description string
 		records     int64
 		recordBytes int64
+		required    bool
 	}{
-		{referencesPath, "raw references", counts.References, int64RecordBytes},
-		{sortedReferencesPath, "sorted references", counts.Nodes, int64RecordBytes},
-		{nodesPath, "selected nodes", counts.Nodes, globalNodeRecordBytes},
+		{referencesPath, "raw references", counts.References, int64RecordBytes, false},
+		{sortedReferencesPath, "sorted references", counts.Nodes, int64RecordBytes, false},
+		{nodesPath, "selected nodes", counts.Nodes, globalNodeRecordBytes, true},
 	}
 	for _, check := range checks {
 		if check.records < 0 || check.records > math.MaxInt64/check.recordBytes {
 			return fmt.Errorf("%w: legacy %s count is invalid", ErrGlobalBuildStateMismatch, check.description)
 		}
 		info, err := os.Stat(check.path)
+		if errors.Is(err, os.ErrNotExist) && !check.required {
+			continue
+		}
 		if err != nil {
 			return fmt.Errorf("%w: validate legacy %s: %v", ErrGlobalBuildStateMismatch, check.description, err)
 		}

@@ -91,6 +91,15 @@ func TestBuildGlobalResumesStagesAndPublishesPackedGeneration(t *testing.T) {
 		state.Counts.Segments != 3 || state.Counts.Fragments != 3 || state.Counts.Contributions == 0 {
 		t.Fatalf("final state = %+v", state)
 	}
+	for _, obsolete := range []string{
+		"ways.spool", "references.raw", "references.sorted", "nodes.idx",
+		"way-node-requests.raw", "way-node-requests.sorted",
+		"resolved-way-nodes.raw", "resolved-way-nodes.sorted",
+	} {
+		if _, err := os.Stat(filepath.Join(workDir, obsolete)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("obsolete work artifact %q remains: %v", obsolete, err)
+		}
+	}
 	store, err := worldgraph.OpenStore(storePath)
 	if err != nil {
 		t.Fatal(err)
@@ -165,6 +174,30 @@ func TestGlobalPartitionV2MatchesLegacyPackedBytesWithSmallerSpool(t *testing.T)
 		PBFPath: seamFixturePath(), StorePath: filepath.Join(root, "store"), WorkDir: filepath.Join(root, "work"),
 		RunMemoryBytes: 64, PackSegmentBytes: 1 << 20, MaxOpenShards: 2, Resume: true,
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+	options.Progress = func(progress GlobalProgress) {
+		if progress.Stage == "select-nodes" && progress.Completed {
+			cancel()
+		}
+	}
+	if _, err := BuildGlobal(ctx, options); !errors.Is(err, context.Canceled) {
+		t.Fatalf("BuildGlobal() error = %v, want context.Canceled", err)
+	}
+	legacyWaysPath := filepath.Join(root, "legacy-ways.spool")
+	legacyNodesPath := filepath.Join(root, "legacy-nodes.idx")
+	for _, paths := range [][2]string{
+		{filepath.Join(options.WorkDir, "ways.spool"), legacyWaysPath},
+		{filepath.Join(options.WorkDir, "nodes.idx"), legacyNodesPath},
+	} {
+		data, err := os.ReadFile(paths[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(paths[1], data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	options.Progress = nil
 	manifest, err := BuildGlobal(context.Background(), options)
 	if err != nil {
 		t.Fatal(err)
@@ -175,12 +208,12 @@ func TestGlobalPartitionV2MatchesLegacyPackedBytesWithSmallerSpool(t *testing.T)
 	}
 
 	legacyRoot := filepath.Join(root, "legacy-contributions")
-	index, err := openGlobalNodeIndex(filepath.Join(options.WorkDir, "nodes.idx"))
+	index, err := openGlobalNodeIndex(legacyNodesPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	legacyShards, legacyContributions, partitionErr := partitionGlobalContributions(
-		context.Background(), filepath.Join(options.WorkDir, "ways.spool"), index, legacyRoot,
+		context.Background(), legacyWaysPath, index, legacyRoot,
 		fragmentPlanetSource, options.MaxOpenShards, DefaultMaxWayNodes,
 	)
 	closeErr := index.Close()
