@@ -703,7 +703,8 @@ func summarizeFragmentSpool(ctx context.Context, path string, shard worldgraph.T
 		return fragmentSpoolSummary{}, errors.Join(fmt.Errorf("fragment spool is not a regular file"), closeErr)
 	}
 	digest := sha256.New()
-	counter := &fragmentSpoolSummaryReader{reader: io.TeeReader(file, digest)}
+	buffered := bufio.NewReaderSize(file, fragmentSpoolBufferBytes)
+	counter := &fragmentSpoolSummaryReader{reader: io.TeeReader(buffered, digest)}
 	var records int64
 	var readErr error
 	for {
@@ -1128,10 +1129,11 @@ func replayFragmentSpoolWithSummary(
 
 	var digest hash.Hash
 	var counter *fragmentSpoolSummaryReader
-	var reader io.Reader = file
+	buffered := bufio.NewReaderSize(file, fragmentSpoolBufferBytes)
+	var reader io.Reader = buffered
 	if expected != nil {
 		digest = sha256.New()
-		counter = &fragmentSpoolSummaryReader{reader: io.TeeReader(file, digest)}
+		counter = &fragmentSpoolSummaryReader{reader: io.TeeReader(buffered, digest)}
 		reader = counter
 	}
 
