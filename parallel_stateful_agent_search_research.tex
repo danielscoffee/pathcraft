@@ -1,0 +1,1387 @@
+% Options for packages loaded elsewhere
+\PassOptionsToPackage{unicode}{hyperref}
+\PassOptionsToPackage{hyphens}{url}
+\PassOptionsToPackage{dvipsnames,svgnames,x11names}{xcolor}
+\documentclass[
+  letterpaper,
+]{article}
+\usepackage{xcolor}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\setcounter{secnumdepth}{-\maxdimen} % remove section numbering
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp} % provide euro and other symbols
+\else % if luatex or xetex
+  \usepackage{unicode-math} % this also loads fontspec
+  \defaultfontfeatures{Scale=MatchLowercase}
+  \defaultfontfeatures[\rmfamily]{Ligatures=TeX,Scale=1}
+\fi
+\usepackage{lmodern}
+\ifPDFTeX\else
+  % xetex/luatex font selection
+\fi
+% Use upquote if available, for straight quotes in verbatim environments
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\IfFileExists{microtype.sty}{% use microtype if available
+  \usepackage[]{microtype}
+  \UseMicrotypeSet[protrusion]{basicmath} % disable protrusion for tt fonts
+}{}
+\makeatletter
+\@ifundefined{KOMAClassName}{% if non-KOMA class
+  \IfFileExists{parskip.sty}{%
+    \usepackage{parskip}
+  }{% else
+    \setlength{\parindent}{0pt}
+    \setlength{\parskip}{6pt plus 2pt minus 1pt}}
+}{% if KOMA class
+  \KOMAoptions{parskip=half}}
+\makeatother
+\usepackage{color}
+\usepackage{fancyvrb}
+\newcommand{\VerbBar}{|}
+\newcommand{\VERB}{\Verb[commandchars=\\\{\}]}
+\DefineVerbatimEnvironment{Highlighting}{Verbatim}{commandchars=\\\{\}}
+% Add ',fontsize=\small' for more characters per line
+\newenvironment{Shaded}{}{}
+\newcommand{\AlertTok}[1]{\textcolor[rgb]{1.00,0.00,0.00}{\textbf{#1}}}
+\newcommand{\AnnotationTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textbf{\textit{#1}}}}
+\newcommand{\AttributeTok}[1]{\textcolor[rgb]{0.49,0.56,0.16}{#1}}
+\newcommand{\BaseNTok}[1]{\textcolor[rgb]{0.25,0.63,0.44}{#1}}
+\newcommand{\BuiltInTok}[1]{\textcolor[rgb]{0.00,0.50,0.00}{#1}}
+\newcommand{\CharTok}[1]{\textcolor[rgb]{0.25,0.44,0.63}{#1}}
+\newcommand{\CommentTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textit{#1}}}
+\newcommand{\CommentVarTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textbf{\textit{#1}}}}
+\newcommand{\ConstantTok}[1]{\textcolor[rgb]{0.53,0.00,0.00}{#1}}
+\newcommand{\ControlFlowTok}[1]{\textcolor[rgb]{0.00,0.44,0.13}{\textbf{#1}}}
+\newcommand{\DataTypeTok}[1]{\textcolor[rgb]{0.56,0.13,0.00}{#1}}
+\newcommand{\DecValTok}[1]{\textcolor[rgb]{0.25,0.63,0.44}{#1}}
+\newcommand{\DocumentationTok}[1]{\textcolor[rgb]{0.73,0.13,0.13}{\textit{#1}}}
+\newcommand{\ErrorTok}[1]{\textcolor[rgb]{1.00,0.00,0.00}{\textbf{#1}}}
+\newcommand{\ExtensionTok}[1]{#1}
+\newcommand{\FloatTok}[1]{\textcolor[rgb]{0.25,0.63,0.44}{#1}}
+\newcommand{\FunctionTok}[1]{\textcolor[rgb]{0.02,0.16,0.49}{#1}}
+\newcommand{\ImportTok}[1]{\textcolor[rgb]{0.00,0.50,0.00}{\textbf{#1}}}
+\newcommand{\InformationTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textbf{\textit{#1}}}}
+\newcommand{\KeywordTok}[1]{\textcolor[rgb]{0.00,0.44,0.13}{\textbf{#1}}}
+\newcommand{\NormalTok}[1]{#1}
+\newcommand{\OperatorTok}[1]{\textcolor[rgb]{0.40,0.40,0.40}{#1}}
+\newcommand{\OtherTok}[1]{\textcolor[rgb]{0.00,0.44,0.13}{#1}}
+\newcommand{\PreprocessorTok}[1]{\textcolor[rgb]{0.74,0.48,0.00}{#1}}
+\newcommand{\RegionMarkerTok}[1]{#1}
+\newcommand{\SpecialCharTok}[1]{\textcolor[rgb]{0.25,0.44,0.63}{#1}}
+\newcommand{\SpecialStringTok}[1]{\textcolor[rgb]{0.73,0.40,0.53}{#1}}
+\newcommand{\StringTok}[1]{\textcolor[rgb]{0.25,0.44,0.63}{#1}}
+\newcommand{\VariableTok}[1]{\textcolor[rgb]{0.10,0.09,0.49}{#1}}
+\newcommand{\VerbatimStringTok}[1]{\textcolor[rgb]{0.25,0.44,0.63}{#1}}
+\newcommand{\WarningTok}[1]{\textcolor[rgb]{0.38,0.63,0.69}{\textbf{\textit{#1}}}}
+\usepackage{longtable,booktabs,array}
+\newcounter{none} % for unnumbered tables
+\usepackage{calc} % for calculating minipage widths
+% Correct order of tables after \paragraph or \subparagraph
+\usepackage{etoolbox}
+\makeatletter
+\patchcmd\longtable{\par}{\if@noskipsec\mbox{}\fi\par}{}{}
+\makeatother
+% Allow footnotes in longtable head/foot
+\IfFileExists{footnotehyper.sty}{\usepackage{footnotehyper}}{\usepackage{footnote}}
+\makesavenoteenv{longtable}
+\setlength{\emergencystretch}{3em} % prevent overfull lines
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+\usepackage{bookmark}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{} % add URL line breaks if available
+\urlstyle{same}
+\hypersetup{
+  pdftitle={Parallel Stateful Agent Search},
+  colorlinks=true,
+  linkcolor={blue},
+  filecolor={Maroon},
+  citecolor={Blue},
+  urlcolor={blue},
+  pdfcreator={LaTeX via pandoc}}
+
+\title{Parallel Stateful Agent Search}
+\usepackage{etoolbox}
+\makeatletter
+\providecommand{\subtitle}[1]{% add subtitle to \maketitle
+  \apptocmd{\@title}{\par {\large #1 \par}}{}{}
+}
+\makeatother
+\subtitle{A Systems and Research Assessment}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+{
+\setcounter{tocdepth}{3}
+\tableofcontents
+}
+\section{Bottom line}\label{bottom-line}
+
+\textbf{Yes, conditionally.} Parallel agent forking can reduce \textbf{time-to-verified-solution}, but it does not reduce the causal depth of the correct solution. It helps by overlapping work that a sequential agent would otherwise spend on:
+
+\begin{itemize}
+\tightlist
+\item
+  wrong hypotheses and restarts,
+\item
+  uncertain high-impact choices,
+\item
+  independent evidence gathering or tool calls,
+\item
+  heavy-tailed failures,
+\item
+  parallelizable subtasks.
+\end{itemize}
+
+It is unlikely to help when the task has one obvious path, is mostly sequential, branches are highly correlated, tools are bottlenecked, or intermediate progress cannot be evaluated reliably.
+
+The strongest version of the idea is not ``clone the same chat \(N\) times.'' It is:
+
+\begin{quote}
+\textbf{Asynchronous, cost-aware search over checkpointed agent execution states, using deliberate diversity, predictive evaluation, adaptive horizons, and transactional side-effect isolation.}
+\end{quote}
+
+The search structure will usually be an \textbf{AND/OR DAG with stochastic transitions}, not a clean tree.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{1. What exactly is being forked?}\label{what-exactly-is-being-forked}
+
+A stateful-agent node is much larger than a text prefix:
+
+\[
+s = (\text{task}, \text{transcript}, \text{controller/memory},
+\text{workspace}, \text{tool/world state}, \text{pending effects},
+\text{model/config}, \text{budget}, \text{lineage})
+\]
+
+A transcript alone is insufficient: two agents with identical text but different files, browser sessions, database versions, pending calls, or credentials are not in the same state.
+
+A practical architecture is:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{Task/specification}
+\NormalTok{       |}
+\NormalTok{Immutable root checkpoint}
+\NormalTok{       |}
+\NormalTok{Proposal generator: create K \textgreater{} N structured alternatives}
+\NormalTok{       |}
+\NormalTok{Diversity + value portfolio selector}
+\NormalTok{       |}
+\NormalTok{Copy{-}on{-}write sandbox workers, up to N concurrently}
+\NormalTok{       |}
+\NormalTok{Roll out each branch to adaptive horizon X}
+\NormalTok{       |}
+\NormalTok{Hard tests + value model + uncertainty + deduplication}
+\NormalTok{       |}
+\NormalTok{Async frontier scheduler}
+\NormalTok{   /       |       \textbackslash{}}
+\NormalTok{prune   continue   fork again}
+\NormalTok{       |}
+\NormalTok{Select / typed merge / synthesis}
+\NormalTok{       |}
+\NormalTok{Clean replay, independent verification, single commit}
+\end{Highlighting}
+\end{Shaded}
+
+Each proposal should describe:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{assumptions}
+\NormalTok{strategy or hypothesis}
+\NormalTok{planned actions}
+\NormalTok{expected milestone at horizon X}
+\NormalTok{falsifying observation}
+\NormalTok{estimated cost}
+\NormalTok{side{-}effect class}
+\end{Highlighting}
+\end{Shaded}
+
+This makes branches comparable before spending a full rollout on them.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{2. Does parallel forking reduce wall-clock time?}\label{does-parallel-forking-reduce-wall-clock-time}
+
+\subsection{The important distinction}\label{the-important-distinction}
+
+If one sequential run always takes \(\tau\), and \(N\) replicas also each take \(\tau\), running all \(N\) does \textbf{not} make a result appear before \(\tau\). It raises the probability that a good result exists at time \(\tau\).
+
+Actual latency reduction occurs when parallelism overlaps:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  attempts that would otherwise be tried sequentially;
+\item
+  variable-time trajectories, allowing stop-on-first-success;
+\item
+  backtracking and debugging;
+\item
+  independent tool latency;
+\item
+  genuinely separable subtasks.
+\end{enumerate}
+
+\subsection{Work--span view}\label{workspan-view}
+
+Let:
+
+\begin{itemize}
+\tightlist
+\item
+  \(W(N,X)\): total work across all branches, including evaluation and canceled work;
+\item
+  \(P\): actual concurrent execution capacity;
+\item
+  \(D(N,X)\): longest causal chain of the selected solution;
+\item
+  \(H(N,X)\): snapshot, queue, coordination, evaluation, merge, and commit overhead.
+\end{itemize}
+
+Any implementation is bounded by approximately:
+
+\[
+T_{\text{parallel}} \gtrsim
+\max\left(\frac{W(N,X)}{P}, D(N,X)\right)+H(N,X)
+\]
+
+Therefore, a necessary feasibility condition is:
+
+\[
+\max\left(\frac{W}{P},D\right)+H<T_{\text{sequential}}
+\]
+
+Parallelism cannot reduce \(D\). It can only remove sequential search and wrong turns around that critical path.
+
+\subsection{Simple independent-attempt model}\label{simple-independent-attempt-model}
+
+Suppose one branch reaches an acceptable result by horizon \(X\) with probability \(p_X\). Under independence:
+
+\[
+P_{\text{any}}(N,X)=1-(1-p_X)^N
+\]
+
+If the coordinator successfully recognizes or selects a good branch with probability \(\eta(N,X)\), then approximately:
+
+\[
+P_{\text{delivered}}(N,X)
+=
+\eta(N,X)\left[1-(1-p_X)^N\right]
+\]
+
+This distinction is critical: \textbf{generating a correct branch is not the same as returning it}.
+
+Let:
+
+\begin{itemize}
+\tightlist
+\item
+  \(R_N(X)\): wall time of one parallel batch, including overhead;
+\item
+  \(W_N(X)\): compute cost of one batch.
+\end{itemize}
+
+If batches are repeated until a verified success:
+
+\[
+\mathbb E[T_{\text{parallel}}]
+=
+\frac{R_N(X)}{P_{\text{delivered}}(N,X)}
+\]
+
+\[
+\mathbb E[W_{\text{parallel}}]
+=
+\frac{W_N(X)}{P_{\text{delivered}}(N,X)}
+\]
+
+For one sequential restart policy:
+
+\[
+\mathbb E[T_{\text{sequential}}]
+=
+\frac{R_1(X)}{p_X}
+\]
+
+Thus parallelism wins on expected latency when:
+
+\[
+\boxed{
+\frac{P_{\text{delivered}}(N,X)}{R_N(X)}
+>
+\frac{p_X}{R_1(X)}
+}
+\]
+
+That is: \textbf{verified successes per wall-clock second must increase}.
+
+An economic constraint can be added:
+
+\[
+\boxed{
+\frac{W_N(X)}{P_{\text{delivered}}(N,X)}
+\le
+\kappa\frac{W_1(X)}{p_X}
+}
+\]
+
+where \(\kappa\) is the acceptable compute multiplier.
+
+\subsubsection{Toy example}\label{toy-example}
+
+If \(p_X=0.1\), \(N=4\), branches are independent, and batch overhead is \(0.1\tau\):
+
+\[
+P_{\text{any}}=1-0.9^4=0.3439
+\]
+
+Expected sequential retry time is \(10\tau\). Expected parallel batch time is:
+
+\[
+\frac{1.1\tau}{0.3439}\approx3.2\tau
+\]
+
+This is about a \(3.1\times\) latency improvement for roughly \(16\%\) more expected branch work per success. This is a favorable rare-success regime.
+
+When \(p_X\) is already high, additional replicas usually buy little latency and much more compute.
+
+\subsection{Correlation changes everything}\label{correlation-changes-everything}
+
+The independence formula is optimistic. Same-model branches share:
+
+\begin{itemize}
+\tightlist
+\item
+  training-data blind spots,
+\item
+  prompt anchoring,
+\item
+  tool biases,
+\item
+  evaluator biases,
+\item
+  preferred implementation patterns.
+\end{itemize}
+
+A common-mode failure probability creates a success ceiling no matter how large \(N\) becomes. Therefore the useful quantity is not nominal \(N\), but the empirical \textbf{conditional marginal success} of the next branch.
+
+\subsection{Scaling behavior}\label{scaling-behavior}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Quantity
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+As \(N\) increases
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+As \(X\) increases
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Success coverage & Increases, then saturates & Usually increases \\
+Total work & Roughly \(O(NX)\) per round & Increases per losing branch \\
+Wall latency & Falls toward critical path, then flattens or rises & Longer rollouts, fewer coordination rounds \\
+Evaluator difficulty & More multiple-comparison errors & Usually more informative states \\
+Coordination & \(O(N)\) scoring; naive pairwise \(O(N^2)\) & Fewer evaluations \\
+Diversity benefit & Diminishing with correlation & Branches may diverge more \\
+Pruning risk & More alternatives to rank & Delayed-payoff paths become more visible \\
+\end{longtable}
+}
+
+Waiting for every branch produces a straggler-sensitive \(\max_i L_i\). An asynchronous stop-on-first-verified-success or top-\(k\) quorum is generally better.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{3. What should agents diversify over?}\label{what-should-agents-diversify-over}
+
+Diversify over \textbf{consequential decisions}, not writing style.
+
+High-value axes include:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{Task interpretation and assumptions}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    competing readings of ambiguous requirements;
+  \item
+    different constraint priorities.
+  \end{itemize}
+\item
+  \textbf{Decomposition}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    alternative subproblem boundaries;
+  \item
+    different subtask ordering;
+  \item
+    OR alternatives versus AND-composable subtasks.
+  \end{itemize}
+\item
+  \textbf{Causal hypothesis}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    suspected root causes;
+  \item
+    proof lemmas;
+  \item
+    failure mechanisms.
+  \end{itemize}
+\item
+  \textbf{Strategy}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    proof-first versus experiment-first;
+  \item
+    minimal patch versus architectural correction;
+  \item
+    retrieval-first versus direct implementation.
+  \end{itemize}
+\item
+  \textbf{Tool and evidence acquisition}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    different queries, sources, tests, inspections, simulators, or environments.
+  \end{itemize}
+\item
+  \textbf{Implementation}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    algorithms, data structures, APIs, libraries, or patch designs.
+  \end{itemize}
+\item
+  \textbf{Predicted horizon state}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    expected artifact;
+  \item
+    expected test result;
+  \item
+    milestone and falsifier.
+  \end{itemize}
+\item
+  \textbf{Model or controller heterogeneity}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    different models, prompts, temperatures, tool policies, or context views.
+  \end{itemize}
+\end{enumerate}
+
+Random seeds alone often produce lexical rather than behavioral diversity.
+
+\subsection{Portfolio selection}\label{portfolio-selection}
+
+Generate \(K\gg N\) cheap branch proposals, cluster them, then choose a quality-diversity portfolio such as:
+
+\[
+A^*=
+\arg\max_{|A|=N}
+\left[
+\sum_{i\in A}\mu_i
+-
+\lambda\sum_{i<j}\operatorname{sim}(i,j)
+\right]
+\]
+
+Here \(\mu_i\) is predicted value and similarity should use:
+
+\begin{itemize}
+\tightlist
+\item
+  assumptions,
+\item
+  plan graphs,
+\item
+  proposed tool calls,
+\item
+  expected artifacts,
+\item
+  code or action signatures,
+\end{itemize}
+
+not merely text embeddings.
+
+A reasonable portfolio includes:
+
+\begin{itemize}
+\tightlist
+\item
+  several high-value exploit branches;
+\item
+  one branch per materially different strategy cluster;
+\item
+  a small wildcard/exploration quota.
+\end{itemize}
+
+Keep branches private through their first horizon. Immediate shared memory often causes herding.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{\texorpdfstring{4. How should horizon \(X\) be defined?}{4. How should horizon X be defined?}}\label{how-should-horizon-x-be-defined}
+
+A universal token horizon is usually a poor choice. Use a \textbf{semantic stopping time plus resource ceilings}.
+
+Represent the cap as:
+
+\[
+X=(\text{actions},\text{tool calls},\text{tokens},
+\text{worker-seconds},\text{dollars},\text{effect budget})
+\]
+
+A rollout should normally stop at the first of:
+
+\begin{itemize}
+\tightlist
+\item
+  a new informative tool observation;
+\item
+  a test, compile, or simulation result;
+\item
+  completion of a plan milestone;
+\item
+  hard failure or loop detection;
+\item
+  an irreversible side-effect boundary;
+\item
+  a resource ceiling;
+\item
+  sufficiently strong evidence for pruning or promotion.
+\end{itemize}
+
+For coding, one useful macro-action might be:
+
+\begin{quote}
+inspect or hypothesize → edit → run targeted test → assimilate result → checkpoint.
+\end{quote}
+
+\subsection{Short versus long horizons}\label{short-versus-long-horizons}
+
+\textbf{Too short:}
+
+\begin{itemize}
+\tightlist
+\item
+  evaluations are noisy;
+\item
+  agents cannot establish coherent progress;
+\item
+  coordination dominates;
+\item
+  good delayed-payoff paths are repeatedly pruned.
+\end{itemize}
+
+\textbf{Too long:}
+
+\begin{itemize}
+\tightlist
+\item
+  compute is wasted on bad branches;
+\item
+  mistakes compound;
+\item
+  correction comes late;
+\item
+  fewer alternatives are tested.
+\end{itemize}
+
+If a solution path has effective depth \(D\), and pruning occurs about \(D/X\) times, then even good per-stage retention can compound badly. If the probability of retaining the correct continuation at each stage is \(r\):
+
+\[
+P_{\text{survive}}\approx r^{D/X}
+\]
+
+Thus many short horizons can be worse than a few longer ones.
+
+A good default is asynchronous successive halving:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{many branches receive a small pilot}
+\NormalTok{promising or uncertain branches receive 2X}
+\NormalTok{survivors receive 4X}
+\NormalTok{finalists receive enough budget to finish}
+\end{Highlighting}
+\end{Shaded}
+
+Branches should be compared at similar budget rungs. Horizon should become longer when value estimates are uncertain or rewards are delayed.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{5. Predicting which branch is worth continuing}\label{predicting-which-branch-is-worth-continuing}
+
+There is no general cheap predictor: on open-ended tasks, determining whether a branch will succeed may be nearly as difficult as finishing it. The practical solution is a cascade.
+
+\subsection{Evaluation cascade}\label{evaluation-cascade}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{Hard gates}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    syntax, schema, constraints;
+  \item
+    compile and tests;
+  \item
+    safety policy;
+  \item
+    duplicated state or repeated failure;
+  \item
+    forbidden side effects.
+  \end{itemize}
+\item
+  \textbf{Cheap progress features}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    verified requirements covered;
+  \item
+    newly passing tests;
+  \item
+    unresolved blockers;
+  \item
+    patch complexity;
+  \item
+    quality of evidence;
+  \item
+    tool success history.
+  \end{itemize}
+\item
+  \textbf{Learned process/value model}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    predict:
+    \[
+    V(s,b)=P(\text{terminal verifier passes by deadline}\mid s,b)
+    \]
+  \item
+    also predict remaining cost and uncertainty.
+  \end{itemize}
+\item
+  \textbf{Pairwise or tournament evaluation}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    useful for close finalists;
+  \item
+    avoid all-pairs \(O(N^2)\) comparisons.
+  \end{itemize}
+\item
+  \textbf{Short Monte Carlo rollouts}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    execute several cheap continuations from a promising state;
+  \item
+    use a smaller model or reduced tool environment where possible.
+  \end{itemize}
+\item
+  \textbf{Full verifier}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    expensive tests, simulation, theorem checker, or blinded reviewer.
+  \end{itemize}
+\end{enumerate}
+
+\subsection{Value of computation}\label{value-of-computation}
+
+Let \(v^*\) be the incumbent value. Continue branch \(i\) for another quantum \(\delta\) when:
+
+\[
+\operatorname{VOC}_i(\delta)=
+\mathbb E[\max(v^*,V_i^{\text{after }\delta})]-v^*
+-\lambda_c\mathbb E[C_i]
+-\lambda_t\mathbb E[T_i]
+>0
+\]
+
+Possible schedulers include:
+
+\begin{itemize}
+\tightlist
+\item
+  UCB or Thompson sampling;
+\item
+  MCTS-style selection;
+\item
+  best-first search;
+\item
+  successive halving/Hyperband;
+\item
+  branch-and-bound when a genuinely valid upper bound exists.
+\end{itemize}
+
+A useful priority heuristic is:
+
+\[
+\frac{
+\text{expected improvement}
++\beta\,\text{uncertainty}
++\gamma\,\text{information gain}
++\rho\,\text{novelty}
+}{
+\text{predicted incremental cost}
+}
+\]
+
+\subsection{Evaluator risks}\label{evaluator-risks}
+
+As \(N\) grows, the highest judge score increasingly contains ``winner's curse'' noise. More candidates can therefore reduce delivered quality even while oracle coverage rises.
+
+Mitigations:
+
+\begin{itemize}
+\tightlist
+\item
+  retain uncertainty-aware exploration;
+\item
+  independently re-evaluate the winner;
+\item
+  use objective tests where possible;
+\item
+  use heterogeneous, blinded judges;
+\item
+  keep a random sample of apparently bad branches running offline.
+\end{itemize}
+
+That last point is important: if pruned branches are never continued, the system cannot measure false-negative pruning and can train itself into a self-confirming policy.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{6. Preventing trajectory collapse}\label{preventing-trajectory-collapse}
+
+Use behavioral rather than textual duplicate detection.
+
+Before execution, compare:
+
+\begin{itemize}
+\tightlist
+\item
+  normalized assumptions;
+\item
+  strategy and dependency graphs;
+\item
+  intended tool/action sequences;
+\item
+  queries and evidence sources;
+\item
+  expected artifacts and falsifiers.
+\end{itemize}
+
+During execution, compare:
+
+\begin{itemize}
+\tightlist
+\item
+  tool-call Jaccard similarity;
+\item
+  action-trace edit distance;
+\item
+  code AST or file-delta similarity;
+\item
+  test outcomes;
+\item
+  error and success correlation.
+\end{itemize}
+
+Mechanisms include:
+
+\begin{itemize}
+\tightlist
+\item
+  one quota per strategy cluster;
+\item
+  different role or model assignments;
+\item
+  giving already-selected proposals as negative examples;
+\item
+  novelty penalties;
+\item
+  exact transposition tables for identical states;
+\item
+  perturbing or canceling near-duplicates;
+\item
+  virtual loss or leases so workers do not simultaneously expand the same node.
+\end{itemize}
+
+Near-duplicate summaries are not enough to merge states. Exact equivalence must include workspace and tool/world versions.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{7. How results should be merged}\label{how-results-should-be-merged}
+
+Different output types need different merge semantics.
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 2\tabcolsep) * \real{0.5000}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 2\tabcolsep) * \real{0.5000}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Situation
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Preferred operation
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Competing global solutions & Select one coherent, end-to-end branch \\
+Unique short answer from independent samples & Vote or confidence-weighted vote \\
+Pairwise judgeable outputs & Tournament \\
+Complementary, typed subtasks & AND-join \\
+Code or documents & Three-way merge/cherry-pick, then retest \\
+Facts and evidence & Provenance-preserving union \\
+Mixed ideas requiring reasoning & Create a new synthesis branch \\
+Identical full states & Transposition/DAG merge \\
+\end{longtable}
+}
+
+A synthesis is not automatically better. Treat it as another branch that must be independently verified; otherwise it can produce an inconsistent ``Frankenstein'' result.
+
+Shared memory should have three scopes:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  immutable root specification;
+\item
+  branch-local scratch state;
+\item
+  global ledger containing only validated facts, artifacts, failures, and provenance.
+\end{enumerate}
+
+Do not concatenate private reasoning transcripts.
+
+\subsection{External effects}\label{external-effects}
+
+Speculative branches should not directly send emails, purchase items, deploy code, mutate production databases, or perform other irreversible actions.
+
+Use:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  sandboxed/dry-run execution;
+\item
+  side-effect intents;
+\item
+  idempotency keys and event logs;
+\item
+  prepare/revalidate;
+\item
+  one authoritative commit after winner selection.
+\end{enumerate}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{8. Relation to existing methods}\label{relation-to-existing-methods}
+
+{\def\LTcaptype{none} % do not increment counter
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.3333}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Existing idea
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Similarity
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Stateful-agent difference
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+Speculative execution & Execute alternatives before knowing which is needed & Agent choices are heuristic and long-lived; side effects may not roll back \\
+Speculative decoding & Draft futures and verify them & Token verification is cheap and exact; agent-solution verification usually is not \\
+Beam search & Retain top-\(B\) prefixes & LM likelihood is not task value; agent states are large, mutable, and variable-duration \\
+Tree of Thoughts / Graph of Thoughts & Search semantic reasoning units & Usually text states, not complete external execution snapshots \\
+MCTS & Select, expand, rollout, back up value & Real agent environments may not be resettable, Markov, stationary, or cheap \\
+Branch-and-bound / A* & Prune using incumbent and bounds & LLM judge scores are rarely admissible bounds \\
+Self-consistency / best-of-\(N\) & Independent complete trajectories & No intermediate reallocation or checkpoint continuation \\
+Ensembles/debate & Different perspectives followed by aggregation & Often no explicit frontier, rollback, or state search \\
+Distributed portfolio solvers & Run diverse algorithms concurrently & Probably the closest top-level analogy; agent policies and world states are less structured \\
+Shared-tree distributed search & Work stealing, shared frontier, transpositions & Requires concurrency control over memory, tools, and environmental effects \\
+\end{longtable}
+}
+
+Empirically:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://arxiv.org/abs/2203.11171}{Self-consistency} showed large gains from sampling multiple reasoning paths.
+\item
+  \href{https://arxiv.org/abs/2305.10601}{Tree of Thoughts} reported 74\% versus 4\% on Game of 24 for its searched versus chain-of-thought configurations.
+\item
+  \href{https://arxiv.org/abs/2310.04406}{LATS} applies MCTS, value estimates, reflection, and environment feedback to agents.
+\item
+  \href{https://arxiv.org/abs/2407.01476}{Tree Search for Language Model Agents} reported relative success gains of 39.7\% on VisualWebArena and 28\% on WebArena, but used serial best-first search and replay rather than concurrently live checkpoints.
+\item
+  \href{https://arxiv.org/abs/2407.21787}{Large Language Monkeys} reported SWE-bench Lite oracle coverage increasing from 15.9\% at one sample to 56\% at 250 samples. It also found selection methods plateauing without automatic verifiers.
+\item
+  \href{https://arxiv.org/abs/2408.03314}{Snell et al.} found that adaptive, difficulty-dependent test-time compute could be over four times as efficient as naive best-of-\(N\).
+\item
+  \href{https://arxiv.org/abs/2211.17192}{Speculative decoding} achieved 2--3× decoding acceleration, but relies on an exact acceptance mechanism unavailable for most agent tasks.
+\end{itemize}
+
+These results support additional test-time search, but they do \textbf{not} by themselves establish matched-compute wall-clock speedup for concurrent stateful agents.
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{\texorpdfstring{9. When should \(T_{\text{parallel}}<T_{\text{sequential}}\)?}{9. When should T\_\{\textbackslash text\{parallel\}\}\textless T\_\{\textbackslash text\{sequential\}\}?}}\label{when-should-t_textparallelt_textsequential}
+
+The favorable regime is:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  The success criterion is fixed and independently verifiable.
+\item
+  Much of sequential time is search, backtracking, waiting, or restarting rather than causal execution.
+\item
+  Real spare concurrency exists; the agents are not sharing a saturated GPU or rate-limited tool.
+\item
+  New branches add meaningful conditional diversity.
+\item
+  Useful progress signals appear before completion.
+\item
+  Evaluation is cheaper than finishing every branch.
+\item
+  Snapshot and cancellation overhead are small relative to \(X\).
+\item
+  Tools and external effects are sandboxable.
+\item
+  Latency has enough economic value to justify redundant compute.
+\end{enumerate}
+
+A marginal branch should be launched only when:
+
+\[
+\begin{aligned}
+&V_{\text{success}}\,
+\Delta P(\text{verified success before deadline})\\
+&\quad+\text{value of information}\\
+&>
+\text{compute cost}
++\text{coordination cost}
++\text{latency externality}
++\text{safety risk}
+\end{aligned}
+\]
+
+The unfavorable regime includes:
+
+\begin{itemize}
+\tightlist
+\item
+  strict serial dependency chains;
+\item
+  nearly certain first-run success;
+\item
+  common-mode misinterpretation;
+\item
+  sparse or delayed reward with weak prefix evaluation;
+\item
+  subjective tasks with no reliable verifier;
+\item
+  irreversible actions;
+\item
+  shared GPU/API/database bottlenecks;
+\item
+  tasks where a sequential agent benefits strongly from accumulating failed-attempt knowledge.
+\end{itemize}
+
+A stronger falsifiable hypothesis is:
+
+\begin{quote}
+On a preregistered distribution of sandboxable, objectively verifiable tasks with reserved concurrent capacity, an adaptive heterogeneous portfolio of at most \(N\) checkpointed branches reduces time-to-verified-solution by at least \(\delta\) relative to a tuned sequential agent, while staying within compute multiplier \(\kappa\) and maintaining non-inferior final success.
+\end{quote}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{10. Minimal empirical experiment}\label{minimal-empirical-experiment}
+
+\subsection{Benchmark}\label{benchmark}
+
+Start with code repair because it offers:
+
+\begin{itemize}
+\tightlist
+\item
+  objective hidden tests;
+\item
+  meaningful multi-step tool use;
+\item
+  copy-on-write repository snapshots;
+\item
+  cheap rollback;
+\item
+  no real-world side effects.
+\end{itemize}
+
+Use:
+
+\begin{itemize}
+\tightlist
+\item
+  a stratified subset of SWE-bench Verified;
+\item
+  ideally an additional fresh, post-training-cutoff private set to reduce contamination.
+\end{itemize}
+
+A 40-task pilot can validate mechanics; a defensible confirmatory study should use power analysis and likely 80 or more tasks.
+
+\subsection{Four arms}\label{four-arms}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \textbf{S1: strong sequential}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    one persistent agent;
+  \item
+    allowed planning, self-critique, backtracking, summarization, and restarts;
+  \item
+    receives the entire compute budget.
+  \end{itemize}
+\item
+  \textbf{Serial-\(N\) multistart}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    the same branches and reducer as parallel-\(N\);
+  \item
+    executed one after another.
+  \item
+    Isolates concurrency from breadth.
+  \end{itemize}
+\item
+  \textbf{Parallel-\(N\) best-of-\(N\)}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    independent complete trajectories;
+  \item
+    no intermediate pruning.
+  \item
+    Measures simple racing/ensemble benefits.
+  \end{itemize}
+\item
+  \textbf{Parallel adaptive tree}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    short pilots;
+  \item
+    learned or heuristic evaluation;
+  \item
+    successive halving;
+  \item
+    continuation, pruning, and reforking.
+  \item
+    Tests whether prefix prediction improves over full best-of-\(N\).
+  \end{itemize}
+\end{enumerate}
+
+All arms should have the same aggregate token/tool/accelerator budget in the primary comparison. The parallel arms alone receive \(N\) reserved lanes. Run a secondary experiment with fixed per-branch budgets to expose the purchased-compute frontier.
+
+\subsection{Suggested primary parameters}\label{suggested-primary-parameters}
+
+\begin{itemize}
+\tightlist
+\item
+  \(N=4\);
+\item
+  horizon \(X\): one edit/test macrocycle, bounded by tool calls, tokens, and two minutes;
+\item
+  successive rungs \(X,2X,4X\);
+\item
+  small exploration reserve;
+\item
+  fixed total compute budget \(B\);
+\item
+  fixed deadline \(\tau\).
+\end{itemize}
+
+Later ablate:
+
+\[
+N\in\{1,2,4,8\},\qquad X\in\{1,3,6\}\text{ macro-actions}
+\]
+
+\subsection{Pseudocode}\label{pseudocode}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{def}\NormalTok{ search(task, max\_workers, total\_budget):}
+\NormalTok{    root }\OperatorTok{=}\NormalTok{ checkpoint(isolated\_state(task))}
+\NormalTok{    frontier }\OperatorTok{=}\NormalTok{ PriorityQueue([root])}
+\NormalTok{    active }\OperatorTok{=}\NormalTok{ \{\}}
+\NormalTok{    incumbent }\OperatorTok{=} \VariableTok{None}
+
+    \ControlFlowTok{while}\NormalTok{ budget\_remains(total\_budget):}
+        \ControlFlowTok{while}\NormalTok{ free\_slots(active, max\_workers) }\KeywordTok{and}\NormalTok{ frontier:}
+\NormalTok{            parent }\OperatorTok{=}\NormalTok{ frontier.pop()}
+
+\NormalTok{            proposals }\OperatorTok{=}\NormalTok{ propose\_structured\_options(parent, k}\OperatorTok{=}\DecValTok{4} \OperatorTok{*}\NormalTok{ max\_workers)}
+\NormalTok{            proposals }\OperatorTok{=}\NormalTok{ cluster\_and\_select\_diverse\_portfolio(proposals)}
+
+            \ControlFlowTok{for}\NormalTok{ proposal }\KeywordTok{in}\NormalTok{ proposals[:free\_slots(active, max\_workers)]:}
+\NormalTok{                child }\OperatorTok{=}\NormalTok{ copy\_on\_write\_fork(parent, proposal)}
+\NormalTok{                active[child.}\BuiltInTok{id}\NormalTok{] }\OperatorTok{=}\NormalTok{ launch\_rollout(}
+\NormalTok{                    child,}
+\NormalTok{                    adaptive\_horizon(child),}
+\NormalTok{                    transactional\_tools}\OperatorTok{=}\VariableTok{True}
+\NormalTok{                )}
+
+\NormalTok{        result }\OperatorTok{=}\NormalTok{ await\_first\_completion(active)}
+\NormalTok{        node }\OperatorTok{=}\NormalTok{ atomic\_checkpoint(result.state)}
+
+\NormalTok{        hard\_signal }\OperatorTok{=}\NormalTok{ run\_public\_tests\_and\_safety\_gates(node)}
+\NormalTok{        value, uncertainty, remaining\_cost }\OperatorTok{=}\NormalTok{ evaluate\_prefix(node)}
+
+\NormalTok{        log\_all\_state\_cost\_and\_timing(node)}
+
+        \ControlFlowTok{if}\NormalTok{ public\_acceptance(node):}
+\NormalTok{            incumbent }\OperatorTok{=}\NormalTok{ choose\_better(incumbent, node)}
+
+        \ControlFlowTok{if}\NormalTok{ hard\_failure(node):}
+\NormalTok{            prune(node)}
+        \ControlFlowTok{elif}\NormalTok{ upper\_confidence(value, uncertainty) }\OperatorTok{\textless{}}\NormalTok{ lower\_bound(incumbent):}
+\NormalTok{            prune(node)}
+        \ControlFlowTok{elif}\NormalTok{ value\_of\_next\_quantum(node) }\OperatorTok{\textgreater{}} \DecValTok{0}\NormalTok{:}
+\NormalTok{            frontier.push(node)}
+        \ControlFlowTok{elif}\NormalTok{ value\_of\_forking(node) }\OperatorTok{\textgreater{}} \DecValTok{0}\NormalTok{:}
+\NormalTok{            frontier.extend(make\_diverse\_children(node))}
+
+\NormalTok{        cancel\_dominated\_active\_branches(active, incumbent)}
+
+\NormalTok{    result }\OperatorTok{=}\NormalTok{ select\_or\_synthesize(frontier, incumbent)}
+    \ControlFlowTok{return}\NormalTok{ replay\_in\_clean\_environment\_and\_verify(result)}
+\end{Highlighting}
+\end{Shaded}
+
+The hidden benchmark grader should not be exposed to the coordinator. Grade every timestamped checkpoint afterward to distinguish:
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{oracle time-to-first-generated-good branch};
+\item
+  \textbf{time-to-official-returned-good result};
+\item
+  selection regret;
+\item
+  merge-induced regressions.
+\end{itemize}
+
+\subsection{Primary metrics}\label{primary-metrics}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Official time-to-verified-solution.
+\item
+  Success by deadline:
+  \[
+  P(T\le\tau)
+  \]
+\item
+  Restricted mean time-to-solution, including censored failures.
+\item
+  Total and peak:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    tokens;
+  \item
+    accelerator-seconds;
+  \item
+    dollars;
+  \item
+    tool calls;
+  \item
+    test CPU time.
+  \end{itemize}
+\item
+  Cost per solved task.
+\item
+  p50 and p90 latency.
+\item
+  Coordinator, evaluator, snapshot, and reducer overhead.
+\item
+  Oracle coverage versus returned-result success.
+\item
+  Evaluator:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    calibration/Brier score;
+  \item
+    winner recall;
+  \item
+    false-prune rate;
+  \item
+    selected-versus-oracle regret.
+  \end{itemize}
+\item
+  Diversity:
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  action and tool trace similarity;
+\item
+  branch outcome correlation;
+\item
+  marginal success contributed by each branch.
+\end{itemize}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{10}
+\tightlist
+\item
+  Canceled-but-billed work and straggler cost.
+\end{enumerate}
+
+Use task-paired comparisons, survival curves, and task-cluster bootstrapping. Do not compare latency only among successful runs.
+
+A positive result should require:
+
+\begin{itemize}
+\tightlist
+\item
+  lower time-to-solution or restricted mean latency with confidence intervals;
+\item
+  non-inferior or improved final success;
+\item
+  a preregistered compute bound, such as \(1\times\) or \(2\times\) sequential cost;
+\item
+  advantage over both strong sequential and serial multistart baselines.
+\end{itemize}
+
+\subsection{Main experimental failure modes}\label{main-experimental-failure-modes}
+
+\begin{itemize}
+\tightlist
+\item
+  weak or artificially constrained sequential baseline;
+\item
+  model/API rate limits eliminating real concurrency;
+\item
+  correlated branches masquerading as \(N\) trials;
+\item
+  hidden-test leakage;
+\item
+  flaky benchmark environments;
+\item
+  coordinator selecting the wrong branch;
+\item
+  reducer/synthesis destroying a passing result;
+\item
+  overhead omitted from latency;
+\item
+  repeated prompts and canceled calls omitted from cost;
+\item
+  benchmark contamination;
+\item
+  evaluator overfitting to visible tests;
+\item
+  interpreting oracle branch coverage as delivered success.
+\end{itemize}
+
+\begin{center}\rule{0.5\linewidth}{0.5pt}\end{center}
+
+\section{Conclusion}\label{conclusion}
+
+The future execution of an agent can be made \textbf{partly searchable}, but not perfectly predictable. The most useful abstraction is a portfolio of checkpointed, temporally extended policies operating in isolated environments.
+
+The likely winning design is:
+
+\begin{itemize}
+\tightlist
+\item
+  small, adaptive \(N\), not unlimited replication;
+\item
+  structured, high-level diversity;
+\item
+  event-based horizons;
+\item
+  asynchronous scheduling;
+\item
+  objective verification;
+\item
+  uncertainty-aware pruning;
+\item
+  typed merging;
+\item
+  transactional side-effect handling;
+\item
+  explicit latency--compute--quality Pareto accounting.
+\end{itemize}
+
+The idea should work best as \textbf{speculative search for uncertain, verifiable tasks}, especially coding, formal reasoning, planning in simulators, and read-only tool research. It is not a general method for shortening inherently sequential cognition, and without a reliable verifier, the coordinator---not generation---will usually become the limiting problem.
+
+\end{document}
